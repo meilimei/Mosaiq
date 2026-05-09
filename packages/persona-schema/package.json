@@ -1,0 +1,41 @@
+{
+  "name": "@mosaiq/persona-schema",
+  "version": "0.1.0",
+  "description": "Persona schema definitions for Mosaiq — the canonical source of truth for browser fingerprints",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./templates": {
+      "types": "./dist/templates/index.d.ts",
+      "import": "./dist/templates/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2",
+    "zod-to-json-schema": "^3.23.5"
+  }
+}

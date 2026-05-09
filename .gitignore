@@ -1,0 +1,128 @@
+# ─────────────────────────────────
+# Node / npm / pnpm / yarn
+# ─────────────────────────────────
+node_modules/
+.pnpm-store/
+.yarn/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─────────────────────────────────
+# Rust / Cargo
+# ─────────────────────────────────
+target/
+**/*.rs.bk
+Cargo.lock
+*.pdb
+
+# ─────────────────────────────────
+# C++ / Chromium fork（chromium-fork/ 子仓库内）
+# ─────────────────────────────────
+chromium-fork/src/
+chromium-fork/depot_tools/
+chromium-fork/out/
+chromium-fork/.gclient
+chromium-fork/.gclient_entries
+chromium-fork/.cipd/
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.lib
+*.a
+compile_commands.json
+*.gn.gen
+*.ninja
+*.ninja.d
+*.ninja_log
+*.ninja_deps
+
+# ─────────────────────────────────
+# Build outputs
+# ─────────────────────────────────
+dist/
+dist-electron/
+dist-tsc/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+*.exe
+*.dmg
+*.deb
+*.rpm
+*.AppImage
+*.msi
+
+# ─────────────────────────────────
+# OS / IDE
+# ─────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.suo
+*.user
+
+# ─────────────────────────────────
+# Secrets
+# ─────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.cer
+secrets/
+!.env.example
+
+# ─────────────────────────────────
+# Test / coverage
+# ─────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+.vitest-cache/
+
+# ─────────────────────────────────
+# Persona library（敏感 + 巨大）
+# ─────────────────────────────────
+data/persona/*.bin
+data/persona-raw/
+*.persona-pack
+
+# ─────────────────────────────────
+# Detection Lab 缓存
+# ─────────────────────────────────
+data/detection-cache/
+
+# ─────────────────────────────────
+# Tauri / Desktop runtime
+# ─────────────────────────────────
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/dist/
+apps/desktop/.tauri/
+
+# Mosaiq Desktop 运行时数据（每个 persona 的浏览器数据目录）
+runtime/profiles/
+runtime/cache/
+
+# Biome / ESLint 缓存
+.biome-cache/
+.eslintcache
+
+# tshy 临时输出
+.tshy-build-tmp/

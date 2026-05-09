@@ -1,0 +1,28 @@
+{
+  "name": "mosaiq",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mosaiq — Browser infrastructure for the agentic AI economy",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20.10.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/*\" run build",
+    "build:all": "pnpm -r run build",
+    "dev:desktop": "pnpm --filter @mosaiq/desktop dev",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "clean": "pnpm -r run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3"
+  }
+}

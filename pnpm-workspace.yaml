@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+# 中国大陆友好镜像（开发者可在自己 ~/.npmrc 覆盖）
+# registry=https://registry.npmmirror.com/
+
+# pnpm 优化
+shared-workspace-lockfile: true
+auto-install-peers: true
+strict-peer-dependencies: false
