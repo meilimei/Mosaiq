@@ -11,6 +11,7 @@ import {
   IPC_CHANNELS,
   type ClonePersonaInput,
   type CreatePersonaInput,
+  type ExportPersonaOptions,
   type MosaiqApi,
   type ProxyVerifyInput,
   type UpdatePersonaInput,
@@ -31,6 +32,9 @@ const api: MosaiqApi = {
   getRunningPersonas: () => ipcRenderer.invoke(IPC_CHANNELS.getRunningPersonas),
   openDetectionLab: (id: PersonaId) => ipcRenderer.invoke(IPC_CHANNELS.openDetectionLab, id),
   verifyProxy: (input: ProxyVerifyInput) => ipcRenderer.invoke(IPC_CHANNELS.verifyProxy, input),
+  exportPersona: (id: PersonaId, opts?: ExportPersonaOptions) =>
+    ipcRenderer.invoke(IPC_CHANNELS.exportPersona, id, opts ?? {}),
+  importPersona: () => ipcRenderer.invoke(IPC_CHANNELS.importPersona),
   appInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appInfo),
 };
 

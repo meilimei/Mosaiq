@@ -39,7 +39,11 @@ export interface ProxyInput {
 }
 
 export interface CreatePersonaInput {
-  template: 'win11-chrome-us' | 'macos-sonoma-chrome-us';
+  template:
+    | 'win11-chrome-us'
+    | 'win10-chrome-us'
+    | 'macos-sonoma-chrome-us'
+    | 'ubuntu-2204-chrome-us';
   id: string;
   displayName: string;
   tags?: string[];
@@ -84,6 +88,33 @@ export interface ClonePersonaInput {
   newProxy?: ProxyInput | null;
 }
 
+/**
+ * 导出结果三态：
+ *   - ok:true → 文件已写入，savedTo 是绝对路径
+ *   - canceled:true → 用户取消了 save dialog
+ *   - error → 任何写盘 / 读 persona 失败
+ */
+export type ExportPersonaResult =
+  | { ok: true; savedTo: string }
+  | { ok: false; canceled: true }
+  | { ok: false; error: string };
+
+/**
+ * 导入结果三态：
+ *   - ok:true → persona 已落盘，summary 包含最终 id（可能因冲突被 rename）
+ *   - canceled:true → 用户取消了 open dialog
+ *   - error → JSON 解析 / schema 校验 / 写盘失败
+ */
+export type ImportPersonaResult =
+  | { ok: true; persona: PersonaSummary; renamedFrom?: PersonaId }
+  | { ok: false; canceled: true }
+  | { ok: false; error: string };
+
+export interface ExportPersonaOptions {
+  /** 是否抹掉代理密码。默认 true（安全优先）。 */
+  stripSecrets?: boolean;
+}
+
 export interface MosaiqApi {
   listPersonas(): Promise<PersonaSummary[]>;
   getPersona(id: PersonaId): Promise<Persona>;
@@ -96,6 +127,8 @@ export interface MosaiqApi {
   getRunningPersonas(): Promise<PersonaId[]>;
   openDetectionLab(id: PersonaId): Promise<{ ok: true } | { ok: false; error: string }>;
   verifyProxy(input: ProxyVerifyInput): Promise<ProxyVerifyResult>;
+  exportPersona(id: PersonaId, opts?: ExportPersonaOptions): Promise<ExportPersonaResult>;
+  importPersona(): Promise<ImportPersonaResult>;
   appInfo(): Promise<{ runtimeRoot: string; version: string }>;
 }
 
@@ -117,5 +150,7 @@ export const IPC_CHANNELS = {
   getRunningPersonas: 'mosaiq:getRunningPersonas',
   openDetectionLab: 'mosaiq:openDetectionLab',
   verifyProxy: 'mosaiq:verifyProxy',
+  exportPersona: 'mosaiq:exportPersona',
+  importPersona: 'mosaiq:importPersona',
   appInfo: 'mosaiq:appInfo',
 } as const;

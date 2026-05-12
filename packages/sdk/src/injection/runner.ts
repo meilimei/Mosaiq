@@ -254,122 +254,127 @@ export function injectAll(config: InjectionConfig): void {
   // 4. WebGL
   // ═══════════════════════════════════════════════════════════════════════════
 
-  try {
-    const WEBGL_UNMASKED_VENDOR = 0x9245;
-    const WEBGL_UNMASKED_RENDERER = 0x9246;
+  // typeof guard：极端 headless / 测试环境可能没有 WebGL，提前跳过避免
+  // ReferenceError 触发外层 catch 输出 console.debug 噪声。
+  if (typeof WebGLRenderingContext !== 'undefined')
+    try {
+      const WEBGL_UNMASKED_VENDOR = 0x9245;
+      const WEBGL_UNMASKED_RENDERER = 0x9246;
 
-    const origGetParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function (
-      this: WebGLRenderingContext,
-      pname: number,
-    ) {
-      if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
-      if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
-      return origGetParameter.call(this, pname);
-    };
-
-    if (typeof WebGL2RenderingContext !== 'undefined') {
-      const orig2 = WebGL2RenderingContext.prototype.getParameter;
-      WebGL2RenderingContext.prototype.getParameter = function (
-        this: WebGL2RenderingContext,
+      const origGetParameter = WebGLRenderingContext.prototype.getParameter;
+      WebGLRenderingContext.prototype.getParameter = function (
+        this: WebGLRenderingContext,
         pname: number,
       ) {
         if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
         if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
-        return orig2.call(this, pname);
+        return origGetParameter.call(this, pname);
       };
-    }
 
-    // readPixels 扰动
-    if (config.webglPerturbReadPixels) {
-      const origReadPixels = WebGLRenderingContext.prototype.readPixels;
-      const prng = makePrng(config.webglNoiseSeed);
-      WebGLRenderingContext.prototype.readPixels = function (
-        this: WebGLRenderingContext,
-        x: number,
-        y: number,
-        width: number,
-        height: number,
-        format: number,
-        type: number,
-        pixels: ArrayBufferView | null,
-      ): void {
-        origReadPixels.call(this, x, y, width, height, format, type, pixels);
-        if (pixels && pixels.byteLength > 0) {
-          const view = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
-          // 仅扰动 1% 像素，幅度 ±1。视觉不可察觉但 hash 改变
-          const sampleCount = Math.max(1, Math.floor(view.length * 0.01));
-          for (let i = 0; i < sampleCount; i++) {
-            const idx = Math.floor(prng() * view.length);
-            const delta = (prng() < 0.5 ? -1 : 1);
-            const current = view[idx] ?? 0;
-            view[idx] = Math.max(0, Math.min(255, current + delta));
+      if (typeof WebGL2RenderingContext !== 'undefined') {
+        const orig2 = WebGL2RenderingContext.prototype.getParameter;
+        WebGL2RenderingContext.prototype.getParameter = function (
+          this: WebGL2RenderingContext,
+          pname: number,
+        ) {
+          if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
+          if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
+          return orig2.call(this, pname);
+        };
+      }
+
+      // readPixels 扰动
+      if (config.webglPerturbReadPixels) {
+        const origReadPixels = WebGLRenderingContext.prototype.readPixels;
+        const prng = makePrng(config.webglNoiseSeed);
+        WebGLRenderingContext.prototype.readPixels = function (
+          this: WebGLRenderingContext,
+          x: number,
+          y: number,
+          width: number,
+          height: number,
+          format: number,
+          type: number,
+          pixels: ArrayBufferView | null,
+        ): void {
+          origReadPixels.call(this, x, y, width, height, format, type, pixels);
+          if (pixels && pixels.byteLength > 0) {
+            const view = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+            // 仅扰动 1% 像素，幅度 ±1。视觉不可察觉但 hash 改变
+            const sampleCount = Math.max(1, Math.floor(view.length * 0.01));
+            for (let i = 0; i < sampleCount; i++) {
+              const idx = Math.floor(prng() * view.length);
+              const delta = prng() < 0.5 ? -1 : 1;
+              const current = view[idx] ?? 0;
+              view[idx] = Math.max(0, Math.min(255, current + delta));
+            }
           }
-        }
-      };
+        };
+      }
+    } catch (err) {
+      console.debug('[mosaiq] webgl spoof failed', err);
     }
-  } catch (err) {
-    console.debug('[mosaiq] webgl spoof failed', err);
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. Canvas
   // ═══════════════════════════════════════════════════════════════════════════
 
-  try {
-    const strength = config.canvasNoiseStrength;
-    if (strength > 0) {
-      const prngSeed = config.canvasNoiseSeed;
+  // typeof guard：测试环境通常没有 CanvasRenderingContext2D，跳过避免噪声。
+  if (typeof HTMLCanvasElement !== 'undefined' && typeof CanvasRenderingContext2D !== 'undefined')
+    try {
+      const strength = config.canvasNoiseStrength;
+      if (strength > 0) {
+        const prngSeed = config.canvasNoiseSeed;
 
-      function perturbImageData(imageData: ImageData): ImageData {
-        const prng = makePrng(prngSeed);
-        const data = imageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-          const delta = Math.floor((prng() - 0.5) * 2 * strength);
-          if (delta !== 0) {
-            data[i] = Math.max(0, Math.min(255, (data[i] ?? 0) + delta));
-            data[i + 1] = Math.max(0, Math.min(255, (data[i + 1] ?? 0) + delta));
-            data[i + 2] = Math.max(0, Math.min(255, (data[i + 2] ?? 0) + delta));
+        function perturbImageData(imageData: ImageData): ImageData {
+          const prng = makePrng(prngSeed);
+          const data = imageData.data;
+          for (let i = 0; i < data.length; i += 4) {
+            const delta = Math.floor((prng() - 0.5) * 2 * strength);
+            if (delta !== 0) {
+              data[i] = Math.max(0, Math.min(255, (data[i] ?? 0) + delta));
+              data[i + 1] = Math.max(0, Math.min(255, (data[i + 1] ?? 0) + delta));
+              data[i + 2] = Math.max(0, Math.min(255, (data[i + 2] ?? 0) + delta));
+            }
           }
+          return imageData;
         }
-        return imageData;
+
+        const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+        HTMLCanvasElement.prototype.toDataURL = function (
+          this: HTMLCanvasElement,
+          type?: string,
+          quality?: number,
+        ): string {
+          const ctx = this.getContext('2d');
+          if (ctx && this.width > 0 && this.height > 0) {
+            try {
+              const imageData = ctx.getImageData(0, 0, this.width, this.height);
+              perturbImageData(imageData);
+              ctx.putImageData(imageData, 0, 0);
+            } catch {
+              // tainted canvas 或 CORS，跳过
+            }
+          }
+          return origToDataURL.call(this, type as string, quality);
+        };
+
+        const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+        CanvasRenderingContext2D.prototype.getImageData = function (
+          this: CanvasRenderingContext2D,
+          sx: number,
+          sy: number,
+          sw: number,
+          sh: number,
+          settings?: ImageDataSettings,
+        ): ImageData {
+          const imageData = origGetImageData.call(this, sx, sy, sw, sh, settings);
+          return perturbImageData(imageData);
+        };
       }
-
-      const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = function (
-        this: HTMLCanvasElement,
-        type?: string,
-        quality?: number,
-      ): string {
-        const ctx = this.getContext('2d');
-        if (ctx && this.width > 0 && this.height > 0) {
-          try {
-            const imageData = ctx.getImageData(0, 0, this.width, this.height);
-            perturbImageData(imageData);
-            ctx.putImageData(imageData, 0, 0);
-          } catch {
-            // tainted canvas 或 CORS，跳过
-          }
-        }
-        return origToDataURL.call(this, type as string, quality);
-      };
-
-      const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-      CanvasRenderingContext2D.prototype.getImageData = function (
-        this: CanvasRenderingContext2D,
-        sx: number,
-        sy: number,
-        sw: number,
-        sh: number,
-        settings?: ImageDataSettings,
-      ): ImageData {
-        const imageData = origGetImageData.call(this, sx, sy, sw, sh, settings);
-        return perturbImageData(imageData);
-      };
+    } catch (err) {
+      console.debug('[mosaiq] canvas spoof failed', err);
     }
-  } catch (err) {
-    console.debug('[mosaiq] canvas spoof failed', err);
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 6. AudioContext
@@ -415,7 +420,9 @@ export function injectAll(config: InjectionConfig): void {
         const family = (match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim().toLowerCase();
         if (!family) return origCheck(font, text);
         // 系统通用字体总是返回 true
-        if (['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'].includes(family)) {
+        if (
+          ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'].includes(family)
+        ) {
           return origCheck(font, text);
         }
         // 只有白名单内的字体返回 true

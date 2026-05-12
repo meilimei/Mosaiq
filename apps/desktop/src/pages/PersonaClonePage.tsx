@@ -13,15 +13,15 @@
 import { ArrowLeft, Copy, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { ProxyFieldset, type ProxyProtocol } from '../components/ProxyFieldset.js';
-import { useToast } from '../components/Toast.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { ClonePersonaInput } from '../../electron/ipc-types.js';
 import { Badge } from '@/components/ui/badge.js';
 import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
 import { Input } from '@/components/ui/input.js';
 import { Label } from '@/components/ui/label.js';
+import type { PersonaId } from '@mosaiq/persona-schema';
+import type { ClonePersonaInput } from '../../electron/ipc-types.js';
+import { ProxyFieldset, type ProxyProtocol } from '../components/ProxyFieldset.js';
+import { useToast } from '../components/Toast.js';
 
 interface PersonaClonePageProps {
   sourceId: PersonaId;
@@ -313,7 +313,6 @@ export function PersonaClonePage({ sourceId, onDone, onCancel }: PersonaClonePag
         </CardHeader>
         <ProxyFieldset
           enabled={proxyEnabled}
-          onEnabledChange={setProxyEnabled}
           protocol={proxyProtocol}
           onProtocolChange={setProxyProtocol}
           host={proxyHost}

@@ -8,17 +8,16 @@
 import { CheckCircle2, Loader2, RefreshCw, ShieldAlert, XCircle } from 'lucide-react';
 import { useState } from 'react';
 
-import type { ProxyVerifyResult } from '../../electron/ipc-types.js';
 import { Button } from '@/components/ui/button.js';
 import { CardContent } from '@/components/ui/card.js';
 import { Input } from '@/components/ui/input.js';
 import { Label } from '@/components/ui/label.js';
+import type { ProxyVerifyResult } from '../../electron/ipc-types.js';
 
 export type ProxyProtocol = 'http' | 'https' | 'socks5';
 
 export interface ProxyFieldsetProps {
   enabled: boolean;
-  onEnabledChange: (v: boolean) => void;
 
   protocol: ProxyProtocol;
   onProtocolChange: (v: ProxyProtocol) => void;
@@ -51,9 +50,7 @@ export function ProxyFieldset(props: ProxyFieldsetProps) {
   const formReady = props.enabled && props.host.trim() && props.port.trim();
 
   const timezoneMismatch =
-    result?.ok &&
-    result.detectedTimezone &&
-    result.detectedTimezone !== props.currentTimezone;
+    result?.ok && result.detectedTimezone && result.detectedTimezone !== props.currentTimezone;
 
   const handleTest = async () => {
     if (!formReady) return;
@@ -202,8 +199,8 @@ export function ProxyFieldset(props: ProxyFieldsetProps) {
                   <div className="mt-0.5">
                     代理出口时区是 <span className="font-mono">{result.detectedTimezone}</span>
                     ，但你当前 Persona 设的是{' '}
-                    <span className="font-mono">{props.currentTimezone}</span>。
-                    BrowserScan / pixelscan 会把两者不匹配标红。
+                    <span className="font-mono">{props.currentTimezone}</span>。 BrowserScan /
+                    pixelscan 会把两者不匹配标红。
                   </div>
                   <Button
                     type="button"

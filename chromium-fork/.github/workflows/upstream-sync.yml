@@ -1,0 +1,79 @@
+# Mosaiq Chromium Fork — Upstream Sync Bot
+#
+# ⚠️  **STATUS: DISABLED**（Phase A 全程禁用）
+#
+# 自动检测 chromium stable 是否有新 tag，若有则尝试 rebase patches/ 并触发 build-linux 验证。
+# 启用前必须：
+#   1. Phase A.4 完成（至少 3 个 patch 落地）
+#   2. build-linux.yml 启用并稳定通过
+#   3. 准备好处理 patch 冲突的 SOP（见 docs/CHROMIUM-FORK-GUIDE.md §4.3）
+#
+# 在 Phase A.0-A.4 禁用，因为：
+#   - 我们目前在锁定的 stable tag 上做 patch 设计，不希望 tag 漂移
+#   - 没有跑通 build 之前 sync 也无意义
+
+name: Upstream Sync (Disabled)
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 4 * * 1'   # 每周一 04:00 UTC
+
+defaults:
+  run:
+    shell: bash
+    working-directory: chromium-fork
+
+jobs:
+  detect-new-stable:
+    # ⚠️  guard：Phase A 全程禁用
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    outputs:
+      new_stable: ${{ steps.check.outputs.new }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check chromiumdash for latest stable
+        id: check
+        run: |
+          set -euo pipefail
+          NEW_TAG=$(curl -sSf 'https://chromiumdash.appspot.com/fetch_releases?channel=Stable&platform=Linux&num=1' \
+            | jq -r '.[0].version')
+          CURR_TAG=$(cat .chromium-version)
+          echo "Latest stable: ${NEW_TAG}"
+          echo "Currently on:  ${CURR_TAG}"
+          if [[ "${NEW_TAG}" != "${CURR_TAG}" ]]; then
+            echo "new=true"      >> "$GITHUB_OUTPUT"
+            echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open issue if new stable found
+        if: steps.check.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "chore: new Chromium stable ${{ steps.check.outputs.tag }}" \
+            --body "Currently on $(cat .chromium-version), upstream is ${{ steps.check.outputs.tag }}.
+
+            Manual review needed:
+            1. Check Chromium release notes for breaking changes affecting our patches
+            2. Pull source on local build machine
+            3. \`git checkout ${{ steps.check.outputs.tag }}\`
+            4. \`bash scripts/apply-patches.sh\`
+            5. Resolve conflicts manually
+            6. Update .chromium-version
+            7. Trigger build-linux workflow"
+
+  rebase-and-build:
+    # ⚠️  自动 rebase 太激进，Phase A 阶段始终人工处理
+    if: ${{ false }}
+    needs: detect-new-stable
+    runs-on: [self-hosted, linux, x64, build-128gb]
+    steps:
+      - run: |
+          echo "TODO - implement after Phase A.4"

@@ -1,0 +1,38 @@
+# Mosaiq Chromium Fork — Patch Series（quilt 风格）
+#
+# 每行一个 patch 文件名（相对于 patches/ 目录）。
+# 顺序即应用顺序 —— scripts/apply-patches.sh 按这里的顺序 git apply。
+#
+# 命名约定：NNNN-kebab-case-name.patch
+#   NNNN = 4 位序号
+#     0001-0010 = 基础反检测 patches（Canvas / WebGL / Audio / UA / UA-CH / Screen / Hardware / Timezone / Fonts / WebRTC）
+#     0011-0014 = 高级 patches（TLS-JA4 / H2 帧 / Cookie 分区 / Persona Bridge）
+#     0015      = WebUI 注册（chrome://mosaiq/*）
+#
+# Phase A 范围（仅此三个，按依赖顺序）：
+#   1. 0014-persona-bridge      ← 必须最先，所有其他 patch 依赖此基础设施
+#   2. 0001-canvas-noise         ← 最简单的真 patch，验证流水线
+#   3. 0011-tls-ja4-spoof        ← 最难，BoringSSL + QUIC 同步
+#
+# Phase A.0 状态：series.txt 为空。三个 patch 的设计稿在 patches/*.spec.md
+# 实施时（A.2/A.3/A.4）每完成一个 patch，就把对应文件名加到下面，
+# 并在仓库内生成真 .patch 文件（git format-patch 产生）。
+
+# ── Phase A 待实施 ─────────────────────────────────────────────
+# 0014-persona-bridge.patch       # 见 patches/0014-persona-bridge.spec.md
+# 0001-canvas-noise.patch         # 见 patches/0001-canvas-noise.spec.md
+# 0011-tls-ja4-spoof.patch        # 见 patches/0011-tls-ja4-spoof.spec.md
+
+# ── Phase B+ 规划中（不在 v0.3 范围）──────────────────────────
+# 0002-webgl-renderer-spoof.patch
+# 0003-audio-noise.patch
+# 0004-navigator-id.patch
+# 0005-client-hints.patch
+# 0006-screen-spoof.patch
+# 0007-hardware-spoof.patch
+# 0008-timezone-spoof.patch
+# 0009-fonts-metrics-noise.patch
+# 0010-webrtc-policy.patch
+# 0012-h2-frame-order.patch
+# 0013-cookie-jar-partition.patch
+# 0015-webui-mosaiq.patch

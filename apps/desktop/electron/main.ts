@@ -5,31 +5,40 @@
  *   - 跟踪每个 persona 的运行中 session
  */
 
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { BrowserWindow, app, dialog, ipcMain } from 'electron';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { Persona, PersonaId } from '@mosaiq/persona-schema';
 import {
-  BrowserSession,
+  createMacosSonomaChromeUsPersona,
+  createUbuntu2204ChromeUsPersona,
+  createWin10ChromeUsPersona,
+  createWin11ChromeUsPersona,
+} from '@mosaiq/persona-schema/templates';
+import {
+  type BrowserSession,
+  exportPersonaJson,
+  importPersonaJson,
+  loadPersona,
+  personaExists,
+  recordLaunch,
+  savePersona,
   clonePersona as sdkClonePersona,
   deletePersona as sdkDeletePersona,
   launchPersona as sdkLaunchPersona,
   listPersonas as sdkListPersonas,
-  loadPersona,
-  recordLaunch,
-  savePersona,
   updatePersona as sdkUpdatePersona,
   verifyProxy,
 } from '@mosaiq/sdk';
-import {
-  createWin11ChromeUsPersona,
-  createMacosSonomaChromeUsPersona,
-} from '@mosaiq/persona-schema/templates';
 
 import {
-  IPC_CHANNELS,
   type ClonePersonaInput,
   type CreatePersonaInput,
+  type ExportPersonaOptions,
+  type ExportPersonaResult,
+  IPC_CHANNELS,
+  type ImportPersonaResult,
   type PersonaSummary,
   type ProxyVerifyInput,
   type UpdatePersonaInput,
@@ -71,7 +80,10 @@ async function createWindow() {
 
 const runningSessions = new Map<PersonaId, BrowserSession>();
 
-function buildSummary(personaId: PersonaId, persona: ReturnType<typeof loadPersona>): PersonaSummary {
+function buildSummary(
+  personaId: PersonaId,
+  persona: ReturnType<typeof loadPersona>,
+): PersonaSummary {
   return {
     id: personaId,
     displayName: persona.metadata.displayName,
@@ -102,7 +114,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.createPersona, (_evt, input: CreatePersonaInput): PersonaSummary => {
     const parsedId = input.id as PersonaId;
-    let persona;
+    let persona: Persona;
     switch (input.template) {
       case 'win11-chrome-us':
         persona = createWin11ChromeUsPersona({
@@ -114,8 +126,28 @@ function registerIpcHandlers() {
           proxy: input.proxy,
         });
         break;
+      case 'win10-chrome-us':
+        persona = createWin10ChromeUsPersona({
+          id: parsedId,
+          displayName: input.displayName,
+          tags: input.tags,
+          notes: input.notes,
+          timezone: input.timezone,
+          proxy: input.proxy,
+        });
+        break;
       case 'macos-sonoma-chrome-us':
         persona = createMacosSonomaChromeUsPersona({
+          id: parsedId,
+          displayName: input.displayName,
+          tags: input.tags,
+          notes: input.notes,
+          timezone: input.timezone,
+          proxy: input.proxy,
+        });
+        break;
+      case 'ubuntu-2204-chrome-us':
+        persona = createUbuntu2204ChromeUsPersona({
           id: parsedId,
           displayName: input.displayName,
           tags: input.tags,
@@ -238,6 +270,75 @@ function registerIpcHandlers() {
       password: input.password,
       bypassList: [],
     });
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.exportPersona,
+    async (_evt, id: PersonaId, opts: ExportPersonaOptions): Promise<ExportPersonaResult> => {
+      try {
+        // 先序列化（验证 persona 存在 + schema 合法），再弹 dialog；这样如果
+        // persona 已损坏，用户不会先看到 dialog 然后才报错
+        const json = exportPersonaJson(id, { stripSecrets: opts.stripSecrets ?? true });
+        if (!mainWindow) {
+          return { ok: false, error: 'Main window not available' };
+        }
+        const result = await dialog.showSaveDialog(mainWindow, {
+          title: '导出 Persona',
+          defaultPath: `${id}.json`,
+          filters: [{ name: 'Mosaiq Persona', extensions: ['json'] }],
+        });
+        if (result.canceled || !result.filePath) {
+          return { ok: false, canceled: true };
+        }
+        writeFileSync(result.filePath, json, 'utf-8');
+        return { ok: true, savedTo: result.filePath };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+    },
+  );
+
+  ipcMain.handle(IPC_CHANNELS.importPersona, async (): Promise<ImportPersonaResult> => {
+    if (!mainWindow) {
+      return { ok: false, error: 'Main window not available' };
+    }
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '导入 Persona',
+      properties: ['openFile'],
+      filters: [{ name: 'Mosaiq Persona', extensions: ['json'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, canceled: true };
+    }
+    try {
+      const filePath = result.filePaths[0];
+      if (!filePath) {
+        return { ok: false, error: '未选中文件' };
+      }
+      const json = readFileSync(filePath, 'utf-8');
+      // 提前 peek incoming id 用于决定是否会发生 rename，告诉前端原 id 便于显示
+      // 弱解析（不抛错），最坏情况是 incomingId === undefined 导致 renamedFrom
+      // 不展示，但导入主流程仍由 importPersonaJson 严格校验
+      let incomingId: PersonaId | undefined;
+      try {
+        const peek = JSON.parse(json) as { metadata?: { id?: string } };
+        incomingId = peek.metadata?.id as PersonaId | undefined;
+      } catch {
+        // 落到下面的 importPersonaJson 抛 schema 错
+      }
+      const willRename = incomingId ? personaExists(incomingId as PersonaId) : false;
+      // 默认 'rename' 策略：永远不破坏现有 persona / cookie，最安全的默认
+      const persona = importPersonaJson(json, { onConflict: 'rename' });
+      return {
+        ok: true,
+        persona: buildSummary(persona.metadata.id, persona),
+        renamedFrom: willRename ? incomingId : undefined,
+      };
+    } catch (err) {
+      // 给用户一些上下文：是哪个文件出问题
+      const fileName = result.filePaths[0] ? basename(result.filePaths[0]) : '未知文件';
+      return { ok: false, error: `${fileName}: ${(err as Error).message}` };
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.appInfo, () => {

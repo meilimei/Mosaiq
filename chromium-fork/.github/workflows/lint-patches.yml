@@ -1,0 +1,93 @@
+# Mosaiq Chromium Fork — Lint Patches
+#
+# 唯一**不依赖** Chromium build 的 CI job：在 GitHub-hosted ubuntu-latest 上跑，
+# 验证 patches/ 目录的元数据合规：
+#   - series.txt 里列出的每个 .patch 文件存在
+#   - 每个 .patch 文件能 git apply --check（仅语法）
+#   - 每个 .patch 文件有匹配 spec.md 设计稿
+#
+# 这个 job 在 Phase A.0 就启用（不依赖任何 Chromium 源码）。
+
+name: Lint Patches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'chromium-fork/patches/**'
+      - 'chromium-fork/scripts/**'
+      - '.github/workflows/lint-patches.yml'
+  pull_request:
+    paths:
+      - 'chromium-fork/patches/**'
+      - 'chromium-fork/scripts/**'
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    shell: bash
+    working-directory: chromium-fork
+
+jobs:
+  lint-patches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: apply-patches.sh --verify (series.txt vs patches/*.patch 一致性)
+        run: |
+          bash scripts/apply-patches.sh --verify
+
+      - name: Verify each .patch file has matching .spec.md
+        run: |
+          set -euo pipefail
+          declare -i missing=0
+          declare -i total=0
+          shopt -s nullglob
+          for patch in patches/*.patch; do
+            total=$((total + 1))
+            base="$(basename "${patch}" .patch)"
+            spec="patches/${base}.spec.md"
+            if [[ ! -f "${spec}" ]]; then
+              echo "::warning file=${patch}::Missing design spec: ${spec}"
+              missing=$((missing + 1))
+            fi
+          done
+          # 这是 warning 不是 error —— spec 缺失不阻塞 CI
+          echo "Spec coverage: $((total - missing)) covered, ${missing} missing (total ${total})"
+
+      - name: Validate spec.md frontmatter
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for spec in patches/*.spec.md; do
+            # 必须含 Phase / 优先级 / 难度 / 预期工时
+            for field in 'Phase' '优先级' '难度' '预期工时'; do
+              if ! grep -qF "${field}" "${spec}"; then
+                echo "::error file=${spec}::Missing field: ${field}"
+                exit 1
+              fi
+            done
+          done
+          echo "All spec.md have required fields"
+
+      - name: Shellcheck 所有 scripts/*.sh
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          # 全部 .sh 脚本都需要过 shellcheck
+          shopt -s nullglob
+          declare -i failed=0
+          for script in scripts/*.sh; do
+            echo "::group::shellcheck ${script}"
+            if ! shellcheck -x "${script}"; then
+              failed=$((failed + 1))
+              echo "::error file=${script}::shellcheck failed"
+            fi
+            echo "::endgroup::"
+          done
+          if [[ ${failed} -gt 0 ]]; then
+            echo "::error::${failed} script(s) failed shellcheck"
+            exit 1
+          fi

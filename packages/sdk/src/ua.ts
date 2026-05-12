@@ -11,8 +11,7 @@ export function buildUserAgent(persona: Persona): string {
 
   if (brand !== 'chrome') {
     throw new Error(
-      `buildUserAgent v0.1 only supports Chrome; got '${brand}'. ` +
-        'Please supply persona.browser.userAgent explicitly for non-Chrome brands.',
+      `buildUserAgent v0.1 only supports Chrome; got '${brand}'. Please supply persona.browser.userAgent explicitly for non-Chrome brands.`,
     );
   }
 
@@ -41,10 +40,17 @@ function buildPlatformToken(os: Persona['system']['os']): string {
 
 /**
  * 生成 Accept-Language 头。例：'en-US,en;q=0.9'
+ *
+ * Chrome 约定：首选语言不带 q（隐式 q=1.0），后续每多一档减 0.1。
+ * 即 `[en-US, en]` → `en-US,en;q=0.9`，`[en-US, en, zh]` → `en-US,en;q=0.9,zh;q=0.8`。
+ *
+ * 历史 bug：曾经用 `0.9 - i * 0.1`，i 从 1 开始等于 0.8，等于跳过了 0.9，
+ * 结果是真实 Chrome 上从未出现过的 Accept-Language 序列，反检测站直接挂红。
+ * 正确公式是 `1.0 - i * 0.1`。
  */
 export function buildAcceptLanguage(persona: Persona): string {
   const langs = persona.system.languages;
   return langs
-    .map((lang: string, i: number) => (i === 0 ? lang : `${lang};q=${(0.9 - i * 0.1).toFixed(1)}`))
+    .map((lang: string, i: number) => (i === 0 ? lang : `${lang};q=${(1.0 - i * 0.1).toFixed(1)}`))
     .join(',');
 }

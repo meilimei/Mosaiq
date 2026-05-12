@@ -8,11 +8,17 @@
 
 ## 🚀 想立即跑起来？
 
-**v0.1 已可用**：Electron 桌面壳 + Playwright CDP 注入引擎，能创建 Persona、启动隔离浏览器、跑指纹自检。
+**v0.2 已可用**：Electron 桌面壳 + Playwright CDP 注入引擎 + humanize 类人输入引擎。能创建 Persona（4 模板）、启动隔离浏览器、跑指纹自检、用 SDK 跑类人鼠标键盘。
 
 → **[QUICKSTART.md](./QUICKSTART.md)** — 5 分钟从 clone 到第一次自检
+→ **[docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)** — v0.2 humanize 引擎完整设计稿
 
-下面的内容是 Mosaiq 的**长期产品愿景**（Chromium fork、双引擎、$60–115M ARR），与 v0.1 实际产物存在差距。这是有意为之 —— 先用务实方案在 1 周内验证最小可用路径，再决定哪些愿景值得砸数百人月去落地。
+**v0.3 启动中**：真正的 Chromium fork 工作流（Phase A.0 基础设施已落地，等环境就绪后启动 vanilla build → Persona Bridge → Canvas Noise → TLS/JA4 三个核心 patch）。
+
+→ **[chromium-fork/README.md](./chromium-fork/README.md)** — Phase A 工作流 + 你/Cascade 分工 + 启动步骤
+→ **[docs/CHROMIUM-FORK-GUIDE.md](./docs/CHROMIUM-FORK-GUIDE.md)** — 完整 fork 长期路线（460+ 行）
+
+下面的内容是 Mosaiq 的**长期产品愿景**（Chromium fork、双引擎、$60–115M ARR），与 v0.2 实际产物存在差距。这是有意为之 —— 先用务实方案在 1 周内验证最小可用路径，再决定哪些愿景值得砸数百人月去落地。
 
 ---
 

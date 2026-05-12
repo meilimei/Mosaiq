@@ -6,18 +6,18 @@
  * 保留旧 persona 的 cookie / 养号状态。
  */
 
-import { ArrowLeft, Loader2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { ProxyFieldset, type ProxyProtocol } from '../components/ProxyFieldset.js';
-import { useToast } from '../components/Toast.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { UpdatePersonaInput } from '../../electron/ipc-types.js';
 import { Badge } from '@/components/ui/badge.js';
 import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
 import { Input } from '@/components/ui/input.js';
 import { Label } from '@/components/ui/label.js';
+import type { PersonaId } from '@mosaiq/persona-schema';
+import type { UpdatePersonaInput } from '../../electron/ipc-types.js';
+import { ProxyFieldset, type ProxyProtocol } from '../components/ProxyFieldset.js';
+import { useToast } from '../components/Toast.js';
 
 interface PersonaEditPageProps {
   personaId: PersonaId;
@@ -283,11 +283,12 @@ export function PersonaEditPage({ personaId, onDone, onCancel }: PersonaEditPage
               启用
             </label>
           </CardTitle>
-          <CardDescription>取消勾选并保存即移除代理；改字段即换代理（cookie 不会丢）</CardDescription>
+          <CardDescription>
+            取消勾选并保存即移除代理；改字段即换代理（cookie 不会丢）
+          </CardDescription>
         </CardHeader>
         <ProxyFieldset
           enabled={proxyEnabled}
-          onEnabledChange={setProxyEnabled}
           protocol={proxyProtocol}
           onProtocolChange={setProxyProtocol}
           host={proxyHost}

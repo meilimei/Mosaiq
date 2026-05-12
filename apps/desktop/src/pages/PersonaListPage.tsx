@@ -1,25 +1,30 @@
 import {
+  Activity,
+  Check,
+  Copy,
+  Download,
+  Loader2,
+  Pencil,
   Play,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
   Square,
   Trash2,
-  Plus,
-  Activity,
-  ShieldCheck,
-  Pencil,
-  Copy,
-  Loader2,
-  RefreshCw,
-  Check,
+  Upload,
+  X,
 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { PersonaSummary } from '../../electron/ipc-types.js';
-import { useToast } from '../components/Toast.js';
 import { Badge } from '@/components/ui/badge.js';
 import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
+import { Input } from '@/components/ui/input.js';
 import { formatDate, formatDuration } from '@/lib/utils.js';
+import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaSummary } from '../../electron/ipc-types.js';
+import { useToast } from '../components/Toast.js';
 
 interface PersonaListPageProps {
   onCreate: () => void;
@@ -46,6 +51,12 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
   const [lastRefreshAt, setLastRefreshAt] = useState<number>(Date.now());
   /** 每秒强制 re-render 的 tick，让运行时长 / 刷新时间显示实时变化 */
   const [, setTick] = useState(0);
+
+  // ── 搜索 / 筛选 ─────────────────────────────────────────────────────────
+  /** 搜索词：在 displayName / id / notes / proxyLabel / tags 上做 substring 匹配 */
+  const [searchQuery, setSearchQuery] = useState('');
+  /** 已选中的标签集合。多选 = AND（persona 必须含全部选中的标签才显示） */
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   /** 5s 自动取消二次确认的 timer 引用，避免泄漏 */
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -120,6 +131,54 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
   };
 
   /**
+   * 导出单个 persona 为 JSON 文件。默认脱敏代理密码 (stripSecrets:true)，
+   * 防止不小心把凭据发到 IM / git 。高级用户可手动编辑 JSON 补回。
+   */
+  const handleExport = async (id: PersonaId) => {
+    setBusy(id);
+    setErrorFor(id, null);
+    try {
+      const res = await window.mosaiq.exportPersona(id, { stripSecrets: true });
+      if (res.ok) {
+        toast.success(`已导出 → ${res.savedTo}`);
+      } else if ('canceled' in res && res.canceled) {
+        // 静默，用户取消不是错误
+      } else if ('error' in res) {
+        setErrorFor(id, res.error);
+        toast.error(`导出失败：${res.error}`);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * 从 JSON 文件导入 persona。后端默认 onConflict='rename'，
+   * 冲突时自动走 `<id>-imported` / `<id>-imported-2`，永远不会覆盖现有 persona。
+   */
+  const handleImport = async () => {
+    try {
+      const res = await window.mosaiq.importPersona();
+      if (res.ok) {
+        await refresh();
+        if (res.renamedFrom && res.renamedFrom !== res.persona.id) {
+          toast.success(
+            `导入成功（原 ID 「${res.renamedFrom}」冲突，已重命名为「${res.persona.id}」）`,
+          );
+        } else {
+          toast.success(`已导入 ${res.persona.id}`);
+        }
+      } else if ('canceled' in res && res.canceled) {
+        // 静默
+      } else if ('error' in res) {
+        toast.error(`导入失败：${res.error}`);
+      }
+    } catch (err) {
+      toast.error(`导入失败：${(err as Error).message}`);
+    }
+  };
+
+  /**
    * 双击删除流程：
    *   1. 第一次点 → 进入 confirming 状态（按钮变红 + 显示「确认删除？」），5s 自动取消
    *   2. 在 confirming 状态点 → 真删
@@ -160,6 +219,65 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
 
   const refreshSecondsAgo = Math.floor((Date.now() - lastRefreshAt) / 1000);
 
+  // ── 派生：所有去重后的标签 + 当前过滤后的列表 ─────────────────────────────
+  /**
+   * 全集标签：取所有 persona 的 tags 并集，按字母排序，限制最多展示在 chip
+   * 区域；仅作展示用，搜索时仍可用 `tag:foo` 风格直接命中（substring 也覆盖）。
+   */
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of personas) {
+      for (const t of p.tags) set.add(t);
+    }
+    return Array.from(set).sort();
+  }, [personas]);
+
+  /**
+   * 经过 searchQuery（substring，case-insensitive，覆盖多字段）+ selectedTags（AND）筛选
+   * 后剩下的 persona。注意保持原有顺序（store 来的就是 store 顺序）。
+   */
+  const filteredPersonas = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return personas.filter((p) => {
+      // 标签 AND 过滤
+      if (selectedTags.size > 0) {
+        for (const t of selectedTags) {
+          if (!p.tags.includes(t)) return false;
+        }
+      }
+      // substring 搜索
+      if (q.length === 0) return true;
+      const haystack = [
+        p.displayName,
+        p.id,
+        p.notes,
+        p.proxyLabel ?? '',
+        p.os,
+        p.browser,
+        ...p.tags,
+      ]
+        .join('\u0001')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [personas, searchQuery, selectedTags]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedTags(new Set());
+  };
+
+  const hasActiveFilter = searchQuery.length > 0 || selectedTags.size > 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -178,19 +296,79 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
               刷新于 {refreshSecondsAgo}s 前
             </span>
           )}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleManualRefresh}
-            title="立即刷新"
-          >
+          <Button variant="outline" size="icon" onClick={handleManualRefresh} title="立即刷新">
             <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={handleImport} title="从 JSON 导入 Persona">
+            <Upload className="mr-2 h-4 w-4" /> 导入
           </Button>
           <Button onClick={onCreate}>
             <Plus className="mr-2 h-4 w-4" /> 新建 Persona
           </Button>
         </div>
       </div>
+
+      {/* 搜索 / 标签筛选 toolbar：persona 数 ≥ 1 才显示，避免空态时干扰 */}
+      {!loading && personas.length > 0 && (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="搜索 displayName / id / notes / 代理标签 / 标签…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                title="清除搜索"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-muted-foreground">标签：</span>
+              {allTags.map((tag) => {
+                const active = selectedTags.has(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`rounded-full border px-2 py-0.5 transition-colors ${
+                      active
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+              {hasActiveFilter && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="ml-auto text-muted-foreground hover:text-foreground"
+                >
+                  清除筛选
+                </button>
+              )}
+            </div>
+          )}
+          {hasActiveFilter && (
+            <div className="text-xs text-muted-foreground">
+              {filteredPersonas.length} / {personas.length} 个 Persona
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
@@ -209,9 +387,26 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
             </Button>
           </CardContent>
         </Card>
+      ) : filteredPersonas.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center space-y-3 py-12 text-center">
+            <Search className="h-10 w-10 text-muted-foreground" />
+            <div className="text-base font-medium">没有匹配的 Persona</div>
+            <div className="text-xs text-muted-foreground">
+              当前筛选：
+              {searchQuery && <span className="ml-1 font-mono">「{searchQuery}」</span>}
+              {selectedTags.size > 0 && (
+                <span className="ml-1">标签 {Array.from(selectedTags).join(', ')}</span>
+              )}
+            </div>
+            <Button variant="outline" size="sm" onClick={clearFilters}>
+              清除筛选
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-4">
-          {personas.map((p) => {
+          {filteredPersonas.map((p) => {
             const isBusy = busy === p.id;
             const isConfirming = confirmingDelete === p.id;
             const errMsg = errors[p.id];
@@ -303,6 +498,15 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
                       title="克隆 Persona（复用画像，独立指纹种子）"
                     >
                       <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleExport(p.id)}
+                      disabled={isBusy}
+                      title="导出为 JSON（默认脱敏代理密码）"
+                    >
+                      <Download className="h-4 w-4" />
                     </Button>
                     {/* 内联二次确认替代 native confirm()：第一次点变红 + 文字「确认？」，5s 自动取消 */}
                     {isConfirming ? (

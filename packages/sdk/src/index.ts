@@ -28,6 +28,15 @@ export {
   type CloneOptions,
 } from './persona-store.js';
 export {
+  serializePersona,
+  exportPersonaJson,
+  parsePersonaJson,
+  importPersonaJson,
+  type ExportOptions,
+  type ImportOptions,
+  type ImportConflictOptions,
+} from './persona-portability.js';
+export {
   getRuntimeRoot,
   getUserDataDir,
   getPersonaDir,
@@ -35,6 +44,26 @@ export {
   type PathConfig,
 } from './paths.js';
 export { buildUserAgent, buildAcceptLanguage } from './ua.js';
+export {
+  Humanize,
+  type HumanizeDefaults,
+  type HumanizeSpeed,
+  type MoveOptions,
+  type ClickOptions,
+  type TypeOptions,
+  type PageLike as HumanizePageLike,
+  type LocatorLike as HumanizeLocatorLike,
+  type BoundingBox as HumanizeBoundingBox,
+  planMouseTrajectory,
+  type PlanMouseInput,
+  type MousePoint,
+  type Point as MousePointXY,
+  planTypingPlan,
+  type PlanTypingInput,
+  type KeyEvent as HumanizeKeyEvent,
+  makeRng as makeHumanizeRng,
+  type Rng as HumanizeRng,
+} from './humanize/index.js';
 export {
   buildProxyServerArg,
   toPlaywrightProxy,

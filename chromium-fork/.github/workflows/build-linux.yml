@@ -1,0 +1,84 @@
+# Mosaiq Chromium Fork — Build Linux x64
+#
+# ⚠️  **STATUS: DISABLED**（Phase A.0-A.1 阶段所有 build job 禁用）
+#
+# 这个 workflow 是 Phase A.1 跑通后**未来**启用的 CI。需要先满足：
+#   1. ~/chromium/src 在某 self-hosted runner 上完成首次 vanilla build
+#   2. patches/ 里至少有一个真 .patch 文件
+#   3. self-hosted runner 标签 = self-hosted-build-128gb（或类似）
+#
+# 启用方法：
+#   1. 删除下面的 `if: false` 守卫
+#   2. 配置 self-hosted runner（见 docs/CI-SETUP.md，待 A.1 后写）
+#   3. 推送到 main 触发首次跑
+
+name: Build Linux x64 (Disabled)
+
+on:
+  workflow_dispatch:        # 仅允许手动触发，避免误跑
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'chromium-fork/patches/**'
+  #     - 'chromium-fork/scripts/build-component.sh'
+
+defaults:
+  run:
+    shell: bash
+    working-directory: chromium-fork
+
+jobs:
+  build-linux-x64:
+    # ⚠️  guard：禁止真跑 build，未到时机
+    if: ${{ false }}
+    # 真启用时改为 self-hosted runner 标签：
+    # runs-on: [self-hosted, linux, x64, build-128gb]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+
+      - name: Apply patches to local Chromium checkout
+        run: |
+          # 假定 self-hosted runner 已有 ~/chromium/src 完整 checkout
+          # 切到锁定的 stable tag
+          cd ~/chromium/src
+          git fetch origin --tags
+          STABLE_TAG=$(cat ${GITHUB_WORKSPACE}/chromium-fork/.chromium-version)
+          git checkout "${STABLE_TAG}"
+          # apply mosaiq patches
+          bash ${GITHUB_WORKSPACE}/chromium-fork/scripts/apply-patches.sh
+
+      - name: Configure build (component_build for self-hosted)
+        run: |
+          cd ~/chromium/src
+          gn gen out/Default --args='
+            is_debug=false
+            is_component_build=true
+            symbol_level=1
+            enable_nacl=false
+            blink_symbol_level=0
+            v8_symbol_level=0
+          '
+
+      - name: Build chrome
+        run: |
+          cd ~/chromium/src
+          autoninja -C out/Default chrome
+
+      - name: Run unit tests for mosaiq components
+        run: |
+          cd ~/chromium/src
+          autoninja -C out/Default mosaiq_unittests
+          ./out/Default/mosaiq_unittests
+
+      - name: Smoke test - chrome --version
+        run: |
+          ~/chromium/src/out/Default/chrome --version
+
+      - name: Detection regression suite
+        run: |
+          # 跑 patches 是否真生效的端到端检测：
+          # browserleaks.com/canvas / tls.peet.ws / etc.
+          bash ${GITHUB_WORKSPACE}/chromium-fork/scripts/run-detection-suite.sh

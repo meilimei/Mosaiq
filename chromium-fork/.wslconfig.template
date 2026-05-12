@@ -1,0 +1,38 @@
+# Mosaiq Chromium Fork — WSL2 配置模板
+#
+# 用法：把这个文件**复制**到 C:\Users\<你>\.wslconfig（注意：是用户根目录，不是 WSL 内部）
+#       然后 PowerShell 跑 `wsl --shutdown` 重启 WSL 让配置生效。
+#
+# 这份配置专为 i7-6500U / 16GB / HDD 的机器在 D: 盘 build Chromium 优化：
+#   - memory=12GB    给 WSL（剩 4GB 给 Windows + Edge + IDE）
+#   - processors=4   榨干 i7-6500U 的 2C/4T
+#   - swap=24GB      HDD swap，专门用于 Chromium 链接阶段单进程 25-30GB 虚拟内存
+#   - swapFile=D:\\... 把 swap 文件放 D: 盘而非 C:（C: 只有 92GB 空闲，会爆）
+#
+# ⚠️ 警告：HDD 上 24GB swap 在链接阶段可能耗时 8-12 小时单步。这是预期行为不是 bug。
+# ⚠️ 如果链接仍 OOM，把 memory 降到 10GB / swap 增到 32GB（D: 还有 ~250GB 空闲）。
+
+[wsl2]
+memory=12GB
+processors=4
+swap=24GB
+swapFile=D:\\WSL\\swap.vhdx
+localhostForwarding=true
+
+# 默认 vmIdleTimeout=60000ms 即 1 分钟空闲会休眠 VM，导致下次进入 WSL 慢启动。
+# Chromium build 期间不希望 VM 被休眠（即使 IDE 切走焦点）。
+vmIdleTimeout=-1
+
+# 启用稀疏 vhdx，避免 ext4 文件系统未用空间也占 D: 盘
+sparseVhd=true
+
+# Linux 内核命令行参数：
+#   sysctl.vm.overcommit_memory=1 让 link.exe 等大进程能成功 mmap 即使物理 RAM 不够
+#   sysctl.vm.swappiness=10 减少不必要的 swap（HDD swap 是性能毒药）
+kernelCommandLine=sysctl.vm.overcommit_memory=1 sysctl.vm.swappiness=10
+
+[experimental]
+# 自动回收 Linux page cache，避免长时间 build 后 vhdx 不断膨胀
+autoMemoryReclaim=gradual
+# vhdx 实际可用空间不到分配空间时（如 D: 盘快满），让 WSL 主动收缩
+sparseVhd=true
