@@ -162,3 +162,29 @@ describe('navigator.permissions notifications', () => {
     expect(result.state).toBe('prompt');
   });
 });
+
+describe('worker scope spoof (Phase 1.5)', () => {
+  it('Worker constructor is replaced on globalThis but still named "Worker"', () => {
+    if (typeof Worker === 'undefined') return; // happy-dom 无 Worker，跳过
+    // Worker.prototype.constructor.name 必须保持 'Worker'，否则 CreepJS
+    // `hasConstructor(workerInstance, 'Worker')` 直接判负，导致 SW/Shared/
+    // Dedicated 三条 fallback 路径全部短路、worker 数据采集失败。
+    expect(Worker.prototype.constructor.name).toBe('Worker');
+    // toString 透明（受全局 Function.prototype.toString hook 兜底）—— 不能
+    // 暴露 "[function: Object]" 之类的 Proxy 源码字符串。
+    expect(Function.prototype.toString.call(Worker)).toContain('[native code]');
+  });
+
+  it('navigator.serviceWorker.register is replaced (instance-level own override)', () => {
+    const sw = (navigator as Navigator & { serviceWorker?: ServiceWorkerContainer })
+      .serviceWorker;
+    if (!sw || typeof sw.register !== 'function') return;
+    // 实例 own 属性应该是我们替换上去的 wrappedRegister，而不是原型链上的
+    // 原生 register。检查 own desc 存在即可。
+    const desc = Object.getOwnPropertyDescriptor(sw, 'register');
+    expect(desc).toBeDefined();
+    expect(typeof desc?.value).toBe('function');
+    // toString 仍是 native code（全局 hook 把 Proxy 包装伪装成原生）
+    expect(Function.prototype.toString.call(sw.register)).toContain('[native code]');
+  });
+});

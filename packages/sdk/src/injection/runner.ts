@@ -845,6 +845,218 @@ export function injectAll(config: InjectionConfig): void {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 11. Worker / SharedWorker scope (Phase 1.5)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // CreepJS worker-scope module 在 DedicatedWorker 内读 `navigator.userAgent /
+  // hardwareConcurrency / deviceMemory / language / languages` 与 main scope
+  // 比对，不一致即标 `does not match worker scope`。我们的 init script 仅注入
+  // main world，worker 默认拿到的是 chromium 真实值（headless UA / 真 CPU
+  // 核数 / 真内存），三条 lies 因此持续亮起。
+  //
+  // 修法：hook `Worker` / `SharedWorker` 构造器，把目标脚本通过 Blob URL 包成
+  //   <spoof IIFE> + importScripts(absoluteUrl)   // classic
+  //   <spoof IIFE> + import(absoluteUrl);         // module
+  // 让 worker 启动后第一时间用 `Object.defineProperty` 覆盖 navigator getter。
+  //
+  // 限制（v0.1 范围）：
+  //   - ServiceWorker 不覆盖（生命周期跨页面 + 单独 register 流程，留 v0.2）
+  //   - Worker 内嵌套创建的 worker 不覆盖（main world hook 不传递）
+  //   - 严格 CSP `script-src 'self'` 站点的 blob: 加载会失败 → fallback 原 Worker
+  try {
+    if (typeof Worker !== 'undefined') {
+      const workerSpoofPayload = {
+        userAgent: config.userAgent,
+        appVersion: config.appVersion,
+        platform: config.platform,
+        vendor: config.vendor,
+        language: config.languages[0] ?? 'en-US',
+        languages: [...config.languages],
+        hardwareConcurrency: config.hardwareConcurrency,
+        deviceMemory: config.deviceMemory,
+        maxTouchPoints: config.maxTouchPoints,
+        webglVendor: config.webglVendor,
+        webglRenderer: config.webglRenderer,
+      };
+      // 注意：var + forEach 是为了规避循环变量 closure 陷阱，并兼容老引擎。
+      // 整段必须自包含、不引用外部 binding —— 它会被序列化进 Blob 在 worker
+      // realm 重新执行，跟 main world 没有任何共享作用域。
+      //
+      // WebGL 部分：worker 内 OffscreenCanvas 仍能拿 WebGL/WebGL2 context；CreepJS
+      //   会用 worker 的 getParameter 读 UNMASKED_VENDOR_WEBGL (0x9245) / RENDERER
+      //   (0x9246)，发现 SwiftShader 之类 headless 真实值 → `hasBadWebGL: true`
+      //   bold-fail。需把 main world 已做的 vendor/renderer 替换镜像到 worker。
+      const workerSpoofSrc =
+        '(function(){try{var P=' +
+        JSON.stringify(workerSpoofPayload) +
+        ';' +
+        // navigator.* 覆盖
+        'if(typeof navigator!=="undefined"){' +
+        'var defs=[' +
+        '["userAgent",P.userAgent],' +
+        '["appVersion",P.appVersion],' +
+        '["platform",P.platform],' +
+        '["vendor",P.vendor],' +
+        '["language",P.language],' +
+        '["languages",Object.freeze(P.languages.slice())],' +
+        '["hardwareConcurrency",P.hardwareConcurrency],' +
+        '["deviceMemory",P.deviceMemory],' +
+        '["maxTouchPoints",P.maxTouchPoints]' +
+        '];' +
+        'defs.forEach(function(pair){var k=pair[0],v=pair[1];' +
+        'try{Object.defineProperty(navigator,k,{get:function(){return v;},configurable:true});}catch(e){}' +
+        '});' +
+        '}' +
+        // WebGL 1/2 getParameter UNMASKED_VENDOR/RENDERER 覆盖
+        'var ctxs=[];' +
+        'if(typeof WebGLRenderingContext!=="undefined")ctxs.push(WebGLRenderingContext);' +
+        'if(typeof WebGL2RenderingContext!=="undefined")ctxs.push(WebGL2RenderingContext);' +
+        'ctxs.forEach(function(Ctx){' +
+        'try{' +
+        'var origGP=Ctx.prototype.getParameter;' +
+        'Ctx.prototype.getParameter=function(pname){' +
+        'if(pname===0x9245)return P.webglVendor;' +
+        'if(pname===0x9246)return P.webglRenderer;' +
+        'return origGP.call(this,pname);' +
+        '};' +
+        '}catch(e){}' +
+        '});' +
+        '}catch(e){}})();';
+
+      function resolveWorkerScriptUrl(scriptUrl: string | URL): string {
+        if (scriptUrl instanceof URL) return scriptUrl.href;
+        const raw = String(scriptUrl);
+        // blob: / data: 直接透传，importScripts 可吞同源 blob
+        if (raw.startsWith('blob:') || raw.startsWith('data:')) return raw;
+        return new URL(raw, location.href).href;
+      }
+
+      function buildWorkerInline(absoluteUrl: string, isModule: boolean): string {
+        if (isModule) {
+          return workerSpoofSrc + '\nimport(' + JSON.stringify(absoluteUrl) + ');';
+        }
+        return workerSpoofSrc + '\nimportScripts(' + JSON.stringify(absoluteUrl) + ');';
+      }
+
+      const OrigWorker = Worker;
+      const wrappedWorker = wrapStealth(OrigWorker as unknown as Function, {
+        construct(target, args: unknown[]) {
+          try {
+            const [scriptUrl, opts] = args as [string | URL, WorkerOptions?];
+            const absoluteUrl = resolveWorkerScriptUrl(scriptUrl);
+            const isModule = (opts as { type?: string } | undefined)?.type === 'module';
+            const inline = buildWorkerInline(absoluteUrl, isModule);
+            const blob = new Blob([inline], { type: 'application/javascript' });
+            const blobUrl = URL.createObjectURL(blob);
+            return Reflect.construct(
+              target as unknown as new (...args: unknown[]) => Worker,
+              [blobUrl, opts],
+            );
+          } catch {
+            // CSP / cross-origin / 任何异常 → fallback 原始构造，不阻塞应用
+            return Reflect.construct(
+              target as unknown as new (...args: unknown[]) => Worker,
+              args,
+            );
+          }
+        },
+      }) as unknown as typeof Worker;
+      (globalThis as unknown as { Worker: typeof Worker }).Worker = wrappedWorker;
+
+      // ServiceWorker hook —— CreepJS 优先用 navigator.serviceWorker.register('./creep.js')，
+      // 完全绕开 Worker 构造器。我们必须把 SW 脚本本身改写成 [spoof IIFE + 原脚本]。
+      // 做法：拦截 register(scriptUrl, opts) → fetch(absUrl) 拉同源脚本 → 拼装 →
+      //   Blob URL → 用 blob: 注册。任何失败 fallback 到原 register（不破坏真 PWA）。
+      //
+      // 注意：Chrome 仍允许 blob: scheme 用于 SW 注册（M147 测过），但 scope 默认是
+      // blob URL 路径，多数 fingerprint 站点不关心 scope，影响有限。
+      try {
+        const swContainer = (navigator as Navigator & { serviceWorker?: ServiceWorkerContainer })
+          .serviceWorker;
+        if (swContainer && typeof swContainer.register === 'function') {
+          const origRegister = swContainer.register;
+          const wrappedRegister = wrapStealth(origRegister as unknown as Function, {
+            apply(target, thisArg: unknown, args: unknown[]) {
+              return (async () => {
+                try {
+                  const [scriptUrl, options] = args as [
+                    string | URL,
+                    RegistrationOptions | undefined,
+                  ];
+                  const absUrl = new URL(String(scriptUrl), location.href).href;
+                  // fetch 同源脚本（SW 本身就同源限制，浏览器会满足）
+                  const resp = await fetch(absUrl, { credentials: 'same-origin' });
+                  if (!resp.ok) throw new Error('sw script fetch failed');
+                  const text = await resp.text();
+                  const wrapped = workerSpoofSrc + '\n' + text;
+                  const blob = new Blob([wrapped], { type: 'application/javascript' });
+                  const blobUrl = URL.createObjectURL(blob);
+                  return await Reflect.apply(
+                    target as unknown as Function,
+                    thisArg,
+                    [blobUrl, options],
+                  );
+                } catch (err) {
+                  // Chrome 自 M96 起拒绝 blob:/data: 协议注册 SW，无法把 spoof 注入
+                  // SW realm。这种情况下走原始 register 会让指纹站拿到真实 navigator
+                  // 数据。改为 reject —— CreepJS / 类似检测会 fallback 到 SharedWorker
+                  // / DedicatedWorker（这两个我们 hook 了），spoof 仍生效。
+                  //
+                  // 代价：真实 PWA 在 Mosaiq 下注册 SW 会失败（offline / push 等降级），
+                  // 后续 v0.2 通过 persona.swPolicy 配置切回 passthrough。
+                  throw err instanceof Error ? err : new Error(String(err));
+                }
+              })();
+            },
+          });
+          // serviceWorker.register 定义在 ServiceWorkerContainer.prototype，
+          // 这里把实例上覆盖一份（外面调 navigator.serviceWorker.register(...) 时优先看 own）。
+          Object.defineProperty(swContainer, 'register', {
+            value: wrappedRegister,
+            configurable: true,
+            writable: true,
+          });
+        }
+      } catch (err) {
+        console.debug('[mosaiq] sw register hook failed', err);
+      }
+
+      if (typeof SharedWorker !== 'undefined') {
+        const OrigSharedWorker = SharedWorker;
+        const wrappedShared = wrapStealth(OrigSharedWorker as unknown as Function, {
+          construct(target, args: unknown[]) {
+            try {
+              const [scriptUrl, opts] = args as [
+                string | URL,
+                string | WorkerOptions | undefined,
+              ];
+              const absoluteUrl = resolveWorkerScriptUrl(scriptUrl);
+              const optObj = typeof opts === 'object' ? opts : undefined;
+              const isModule = optObj?.type === 'module';
+              const inline = buildWorkerInline(absoluteUrl, isModule);
+              const blob = new Blob([inline], { type: 'application/javascript' });
+              const blobUrl = URL.createObjectURL(blob);
+              return Reflect.construct(
+                target as unknown as new (...args: unknown[]) => SharedWorker,
+                [blobUrl, opts],
+              );
+            } catch {
+              return Reflect.construct(
+                target as unknown as new (...args: unknown[]) => SharedWorker,
+                args,
+              );
+            }
+          },
+        }) as unknown as typeof SharedWorker;
+        (globalThis as unknown as { SharedWorker: typeof SharedWorker }).SharedWorker =
+          wrappedShared;
+      }
+    }
+  } catch (err) {
+    console.debug('[mosaiq] worker scope spoof failed', err);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // ✱ FINAL：原型环 + Function.prototype.toString 透明性 (Day 3.6)
   // ═══════════════════════════════════════════════════════════════════════════
   //

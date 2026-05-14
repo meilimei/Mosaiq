@@ -595,6 +595,96 @@ CreepJS 的 `Worker` section 显示 GPU + UA 在 Worker 内泄露真实值。run
 
 ---
 
+## 5.5 Day 4 — Phase 1.5 Worker scope spoof（2026-05-15 完成）
+
+### TL;DR
+
+之前 baseline 有 2 项 hit：`Canvas（故意 pixel noise）`+`Navigator（worker-scope 不一致）`。今天补齐 worker-scope 后剩 1 lies + 1 bold-fail，且都是 Canvas 噪声策略的**下游成本**（CreepJS `LowerEntropy.CANVAS=true` 自动给 WebGL section 同时打 bold-fail）。**Navigator worker-scope 彻底清零**。
+
+### 调研：CreepJS 怎么读 worker
+
+读 `creep.js` bundle 发现 worker section 走三级 fallback：
+
+```js
+// line 2007: 先试 ServiceWorker（最快也最隐蔽）
+let workerScope = await getServiceWorker({ scriptSource: './creep.js' }).catch(...);
+
+// line 2015: SW 失败 → SharedWorker
+if (!workerScope?.userAgent) workerScope = await getSharedWorker({...});
+
+// line 2024: 还是失败 → DedicatedWorker
+if (!workerScope?.userAgent) workerScope = await getDedicatedWorker({...});
+```
+
+每个 worker 在 worker realm 里读 `navigator.userAgent / hardwareConcurrency / deviceMemory / language / languages / platform / userAgentData / webglRenderer / webglVendor` post 回 main scope，CreepJS 拿这些跟 main scope 比对，不一致 → `does not match worker scope` lies。
+
+### 修法：三 hook 联合
+
+`@d:\projects\Mosaiq\packages\sdk\src\injection\runner.ts` §11 新增：
+
+1. **`Worker` 构造器 hook**：`new Worker(src, opts)` → 把 src 包成 Blob URL，blob 内容是 `[spoof IIFE] + importScripts(absoluteSrc)`（classic）或 `+ import(absoluteSrc)`（module）。spoof IIFE 用 `Object.defineProperty(navigator, key, {get})` 覆盖 9 个 navigator 字段 + WebGL `getParameter(0x9245/0x9246)` UNMASKED vendor/renderer。
+2. **`SharedWorker` 构造器 hook**：同上策略。
+3. **`navigator.serviceWorker.register(url)` hook**：fetch 同源脚本 → 拼装 → 用 blob: 注册。**Chrome M96+ 拒绝 blob: 协议作为 SW 脚本**（实测 `TypeError: The URL protocol of the script ('blob:...') is not supported`），所以这条路必然在 v0.1 失败。
+   - 关键设计：**失败时 reject**（不 fallback 到原始 register），让 CreepJS 跌到 SharedWorker 路径（被 hook 1+2 拦下）。
+   - 代价：真实 PWA 注册 SW 也会失败（offline / push 降级）。
+   - v0.2 计划：加 `persona.swPolicy: 'spoof' | 'passthrough' | 'block'` 选项可配置。
+
+### 验证
+
+```text
+bench/probe-worker-scope.ts:
+  field                  main                                               worker
+  userAgent            "Chrome/147..."                                     "Chrome/147..."        ✓
+  appVersion           "5.0 (Win NT 10.0..."                               "5.0 (Win NT 10.0..."  ✓
+  platform             "Win32"                                              "Win32"                ✓
+  vendor               "Google Inc."                                        "Google Inc."          ✓
+  language             "en-US"                                              "en-US"                ✓
+  languages            ["en-US","en"]                                       ["en-US","en"]         ✓
+  hardwareConcurrency  8                                                    8                      ✓
+  deviceMemory         8                                                    8                      ✓
+  maxTouchPoints       0                                                    0                      ✓
+  ✅ ALL MATCH — worker scope spoof works
+```
+
+CreepJS Worker section 显示 `gpu: Google Inc. (Intel) / ANGLE (Intel UHD 730 D3D11)` + `cores: 8, ram: 8` + `userAgent: Chrome/147`（无 HeadlessChrome）。`hasBadWebGL: false`。
+
+### 战果对比
+
+| 指标 | Day 3.5 末 | Day 4 末 |
+|---|---|---|
+| Lies surfaces | 2（Canvas + Navigator） | 1（Canvas，故意） |
+| Bold-fail | 1（WebGL，源自 Canvas） | 1（WebGL，源自 Canvas） |
+| report.ts hits | 3 | 2 |
+| 已消除 | Timezone/WebGL/Screen/Fonts/DOMRect/SVGRect/Audio/Math | ＋ Navigator worker-scope |
+| 剩余 | Canvas（故意）、Navigator（worker） | **Canvas（故意）+ 下游 WebGL bold-fail** |
+
+### 残余分析：为什么 WebGL 还在 bold-fail
+
+`creep.js:8812`：
+```js
+<span class="${lied ? 'lies ' : (LowerEntropy.CANVAS || LowerEntropy.WEBGL) ? 'bold-fail ' : ''}hash">
+```
+
+WebGL bold-fail = `LowerEntropy.CANVAS || LowerEntropy.WEBGL`。我们的 Canvas pixel-noise 让 `imageDataLowEntropy` 不在 `KnownImageData.BLINK` 白名单 → `LowerEntropy.CANVAS = true` → WebGL section 跟着染色。**这不是 WebGL spoof 失效，是 Canvas 噪声策略的 CreepJS 下游成本**。
+
+要清掉：要么放弃 Canvas 噪声（pixel hash 可被跨站追踪，product 不接受），要么让噪声 deterministic 到匹配 BLINK 白名单（深度 reverse engineering，ROI 低）。
+
+**结论**：当前 1 lies + 1 bold-fail 都标记在 Canvas/WebGL，是策略性接受的成本，不再细抠。
+
+### 回归保护
+
+- `@d:\projects\Mosaiq\packages\sdk\src\injection\runner.test.ts:166-189`：2 条新测试守住 `Worker.prototype.constructor.name === 'Worker'` 和 `navigator.serviceWorker.register` instance-own 覆盖。
+- `@d:\projects\Mosaiq\packages\sdk\bench\probe-worker-scope.ts`：可重跑的 9 字段 main↔worker parity 验证脚本。
+- 总测试：151 → **153 通过**（+2）。
+
+### v0.2 待补
+
+- [ ] `persona.swPolicy: 'spoof' | 'passthrough' | 'block'` —— 让 PWA 用户选择是放弃 spoof 还是放弃 SW。
+- [ ] `userAgentData` 在 worker scope 仍泄露 `HeadlessChrome 147`（CreepJS 没把它判 lies 但是潜在 surface）。等 chromium fork 阶段直接改 source。
+- [ ] ServiceWorker realm 自身的 fetch interception（用 CDP `Network.requestIntercepted` + `Fetch.fulfillRequest` 在网络层改写 SW 脚本）。这是 Chrome blob 拒绝后唯一能让 SW 自己也 spoof 的路径，复杂度高。
+
+---
+
 ## 6. 启动 Day 1 的命令
 
 ```bash
