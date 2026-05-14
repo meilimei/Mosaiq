@@ -1,8 +1,19 @@
 # Mosaiq Chromium Fork
 
-> **当前里程碑**：Phase A.0 — 环境准备阶段。Chromium 源码尚未拉取，patch 尚未实施。
+> 🧊 **冷藏（Cold Storage）— 2026-05-13 起**  
+> 详见 [`STATUS.md`](./STATUS.md)。本目录所有内容**完整保留**作为 Phase 3 的素材库（**不要删除任何文件**）。  
+> Mosaiq 主线已进入 **Phase 1: SDK 注入** 路径，见 `packages/sdk/` 与 `C:\Users\ifly\.windsurf\plans\chromium-fork-pivot-d715ea.md`。
+
+---
+
+<details>
+<summary>📦 历史里程碑（点击展开）</summary>
+
+> **历史里程碑（已冷藏）**：Phase A.0 — 环境准备阶段。Chromium 源码 27 GB 已部分 sync，patch 尚未实施。
 
 这是 Mosaiq 长期愿景中**真正的 fork** 工作目录。配套设计：[`docs/CHROMIUM-FORK-GUIDE.md`](../docs/CHROMIUM-FORK-GUIDE.md) 已写完整 460+ 行规划，本目录是其执行落地。
+
+</details>
 
 ---
 

@@ -27,6 +27,9 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "demo:humanize": "tsx examples/humanize-demo.ts",
+    "bench": "tsx bench/baseline-detection.ts",
+    "bench:report": "tsx bench/report.ts",
+    "bench:all": "pnpm bench && pnpm bench:report",
     "clean": "rimraf dist"
   },
   "dependencies": {

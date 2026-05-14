@@ -1,9 +1,14 @@
 /**
  * Mosaiq 注入脚本 Runner — 浏览器端执行的反检测核心。
  *
- * 通过 Playwright `context.addInitScript(injectAll, config)` 在每个页面
- * 加载前执行。这是 v0.1 的主要反检测手段。未来 Chromium fork 会替换
- * 为 C++ patch，但脚本在 fork 完成前作为回退。
+ * 通过 Playwright `context.addInitScript({ content: <string> })` 在每个页面
+ * 加载前执行。launcher.ts 在前面 prepend `__name` polyfill 后再拼接 IIFE
+ * 调用本函数 — 必须 string 形式，不能用 callback `addInitScript(injectAll, ...)`，
+ * 否则被 esbuild keepNames 注入的 `__name(fn, "name")` 在 chromium 里抛
+ * ReferenceError 让整个反检测静默死亡。详见 DEVELOPMENT.md §7。
+ *
+ * 这是 v0.1 的主要反检测手段。未来 Chromium fork 会替换为 C++ patch，
+ * 但脚本在 fork 完成前作为回退。
  *
  * 覆盖面（按检测优先级排序）：
  *   1. navigator.userAgent / platform / language / hardwareConcurrency / deviceMemory
@@ -36,6 +41,112 @@ export function injectAll(config: InjectionConfig): void {
       t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+  }
+
+  // ── Stealth Function.toString registry (Day 3.6) ──
+  //
+  // CreepJS lies/index.ts §getPrototypeLies 用
+  //   `Function.prototype.toString.call(apiFunction)` 检查函数是否暴露 JS 源码或丢失 name。
+  //
+  // V8 行为：`Function.prototype.toString.call(new Proxy(nativeFn, {}))` 返回
+  //   `"function () { [native code] }"` —— 含 `[native code]` 但**丢了原 name**。
+  // 这让 CreepJS 的 `hasKnownToString` 白名单匹配失败 → 标 lies。
+  //
+  // 修复：在所有 spoof block 收尾后 hook `Function.prototype.toString`，对注册过的
+  // proxy 返回**预先捕获的 native toString 字符串**（含正确 name）。
+  // 普通调用走 `Reflect.apply` forward 到原 toString。
+  //
+  // 注册时机：每次创建 Proxy 包装 native 函数前用 `wrapStealth(orig, handler)`，
+  // 它会先捕获 `origStr = Function.prototype.toString.call(orig)` 再创建 Proxy 并入册。
+  // 全局 toString hook 在 injectAll 末尾安装（在所有 spoof 注册完毕后）。
+  type MosaiqStealthState = {
+    registry: WeakMap<Function, string>;
+    nativeFunctionToString: typeof Function.prototype.toString;
+    nativeObjectSetPrototypeOf: typeof Object.setPrototypeOf;
+    nativeReflectSetPrototypeOf: typeof Reflect.setPrototypeOf;
+    functionToStringProxy?: typeof Function.prototype.toString;
+    objectSetPrototypeOfProxy?: typeof Object.setPrototypeOf;
+    reflectSetPrototypeOfProxy?: typeof Reflect.setPrototypeOf;
+  };
+  const stealthGlobal = globalThis as typeof globalThis & {
+    __mosaiqStealthState__?: MosaiqStealthState;
+  };
+  const stealthState =
+    stealthGlobal.__mosaiqStealthState__ ??
+    (stealthGlobal.__mosaiqStealthState__ = {
+      registry: new WeakMap<Function, string>(),
+      nativeFunctionToString: Function.prototype.toString,
+      nativeObjectSetPrototypeOf: Object.setPrototypeOf,
+      nativeReflectSetPrototypeOf: Reflect.setPrototypeOf,
+    });
+  const stealthRegistry = stealthState.registry;
+  function wrapStealth<T extends Function>(orig: T, handler: ProxyHandler<T>): T {
+    const origFunction = orig as unknown as Function;
+    const origStr =
+      stealthRegistry.get(origFunction) ??
+      (Reflect.apply(stealthState.nativeFunctionToString, orig, []) as string);
+    // 注入默认 setPrototypeOf trap，复刻 V8 原生 [[SetPrototypeOf]] 的循环检测：
+    //
+    // CreepJS 'failed at too much recursion error' 测试做：
+    //   Object.setPrototypeOf(apiFunction, Object.create(apiFunction)).toString()
+    // 对原生函数，V8 在 setPrototypeOf 阶段就检出 newProto.proto === target → throw
+    // TypeError "Cyclic __proto__ value"。如果 apiFunction 是我们 wrap 的 Proxy，
+    // V8 看的 target 是 native 函数，但 newProto.proto = 我们的 Proxy（不直接等于
+    // native target），V8 检测不到循环 → 写入成功 → 后续 toString 链查时才 RangeError。
+    // 那样会被 CreepJS 当作 lie。修法：proxy 自己的 setPrototypeOf trap 检测
+    // newProto 链上是否出现"该 proxy 自身"，是则同样抛 TypeError，模拟 V8 native 行为。
+    let proxyRef: T | null = null;
+    const mergedHandler: ProxyHandler<T> = handler.setPrototypeOf
+      ? handler
+      : {
+          ...handler,
+          setPrototypeOf(target, newProto) {
+            if (newProto === null) {
+              return Reflect.setPrototypeOf(target, null);
+            }
+            if (typeof newProto !== 'object') {
+              return Reflect.setPrototypeOf(target, newProto);
+            }
+            // 模拟 V8 在直接传 raw target 时的循环检测：newProto 链含 target → throw。
+            if (hasPrototypeCycle(target as unknown as object, newProto)) {
+              throw new TypeError("Cyclic __proto__ value");
+            }
+            // 同时，调用方常常拿到的是 proxy 而非 raw target；对 V8 来说，proxy 的
+            //   [[GetPrototypeOf]] 默认 forward 到 target，所以 newProto 链中出现
+            // proxyRef 时也等价于一个会立刻形成的循环。我们也要抛 TypeError。
+            if (proxyRef && hasPrototypeCycle(proxyRef as unknown as object, newProto)) {
+              throw new TypeError("Cyclic __proto__ value");
+            }
+            return Reflect.setPrototypeOf(target, newProto);
+          },
+        };
+    const proxy = new Proxy(orig, mergedHandler);
+    proxyRef = proxy as T;
+    stealthRegistry.set(proxy as unknown as Function, origStr);
+    return proxy as T;
+  }
+
+  function hasPrototypeCycle(target: object, proto: object | null): boolean {
+    let curr = proto;
+    while (curr) {
+      if (curr === target) return true;
+      curr = Object.getPrototypeOf(curr);
+    }
+    return false;
+  }
+
+  function throwFunctionToStringTypeError(frameOwner: 'Function' | 'Object'): never {
+    const message = "Function.prototype.toString requires that 'this' be a Function";
+    const err = new TypeError(message);
+    try {
+      Object.defineProperty(err, 'stack', {
+        value: `TypeError: ${message}\n    at ${frameOwner}.toString (<anonymous>)`,
+        configurable: true,
+      });
+    } catch {
+      // noop
+    }
+    throw err;
   }
 
   function defineReadOnly<T>(obj: object, key: string, value: T): void {
@@ -80,6 +191,13 @@ export function injectAll(config: InjectionConfig): void {
    */
   function defineProtoGetter(rootObj: object, key: string, value: unknown): void {
     try {
+      // 0. rootObj 自身是否已有 own accessor？
+      //    Chromium 的 [Replaceable] IDL 属性（典型例：window.outerWidth /
+      //    outerHeight / innerWidth / innerHeight）会被实例化成一个挂在
+      //    window 实例上的 own getter，shadow Window.prototype 上的同名
+      //    getter。如果只改 prototype，own getter 仍是原生值，spoof 失效。
+      const ownDesc = Object.getOwnPropertyDescriptor(rootObj, key);
+
       // 1. walk prototype 链找属性所在的 proto
       let definingProto: object | null = null;
       let curr: object | null = Object.getPrototypeOf(rootObj);
@@ -91,28 +209,59 @@ export function injectAll(config: InjectionConfig): void {
         curr = Object.getPrototypeOf(curr);
       }
 
-      if (definingProto) {
-        const desc = Object.getOwnPropertyDescriptor(definingProto, key);
-        if (desc?.get) {
-          // 在原始定义点用 Proxy 包装原生 getter，apply 时返回 fake 值
-          const proxiedGetter = new Proxy(desc.get, {
-            apply() {
-              return value;
-            },
-          });
-          Object.defineProperty(definingProto, key, {
-            get: proxiedGetter,
-            set: desc.set,
-            enumerable: desc.enumerable ?? true,
-            configurable: true,
-          });
-          return;
+      const protoDesc = definingProto
+        ? Object.getOwnPropertyDescriptor(definingProto, key)
+        : undefined;
+      const origGetter = ownDesc?.get ?? protoDesc?.get;
+
+      if (origGetter) {
+        // 用 wrapStealth(Proxy) 包装原生 getter，apply 时返回 fake 值；
+        // 同时注册 toString → 让 Function.prototype.toString.call(getter) 返回
+        // 原 getter 的 "function get xxx() { [native code] }" 字符串。
+        const proxiedGetter = wrapStealth(origGetter, {
+          apply(target, thisArg, args) {
+            Reflect.apply(target, thisArg, args);
+            return value;
+          },
+        });
+
+        // 1a. 替换 proto 上的 getter（保持 Window.prototype.outerWidth 等
+        //     descriptor 一致性，CreepJS 也会查 prototype 上的 getter）。
+        if (definingProto && protoDesc?.get) {
+          try {
+            Object.defineProperty(definingProto, key, {
+              get: proxiedGetter,
+              set: protoDesc.set,
+              enumerable: protoDesc.enumerable ?? true,
+              configurable: true,
+            });
+          } catch {
+            // 某些 host 不允许改 IDL 属性，吞掉
+          }
         }
-        // desc 是 data property（少见），直接覆盖值
-        Object.defineProperty(definingProto, key, {
+
+        // 1b. 如果 rootObj 自身有 own accessor，也用同一个 proxy 覆盖。
+        if (ownDesc) {
+          try {
+            Object.defineProperty(rootObj, key, {
+              get: proxiedGetter,
+              set: ownDesc.set,
+              enumerable: ownDesc.enumerable ?? true,
+              configurable: true,
+            });
+          } catch {
+            // 同上，吞掉
+          }
+        }
+        return;
+      }
+
+      if (protoDesc) {
+        // proto 上是 data property（少见），直接覆盖值
+        Object.defineProperty(definingProto as object, key, {
           value,
           writable: false,
-          enumerable: desc?.enumerable ?? true,
+          enumerable: protoDesc.enumerable ?? true,
           configurable: true,
         });
         return;
@@ -121,8 +270,17 @@ export function injectAll(config: InjectionConfig): void {
       // 2. 链上完全没有这个属性 —— 在 immediate prototype 上 shadow 一份
       const immediateProto = Object.getPrototypeOf(rootObj) as object | null;
       if (immediateProto) {
+        const synthetic = {
+          get [key]() {
+            if (this !== rootObj) throw new TypeError('Illegal invocation');
+            return value;
+          },
+        };
+        const syntheticGetter = Object.getOwnPropertyDescriptor(synthetic, key)?.get;
+        if (!syntheticGetter) return;
+        stealthRegistry.set(syntheticGetter, `function get ${key}() { [native code] }`);
         Object.defineProperty(immediateProto, key, {
-          get: () => value,
+          get: syntheticGetter,
           enumerable: true,
           configurable: true,
         });
@@ -189,13 +347,92 @@ export function injectAll(config: InjectionConfig): void {
   // ═══════════════════════════════════════════════════════════════════════════
 
   try {
-    defineReadOnly(screen, 'width', config.screen.width);
-    defineReadOnly(screen, 'height', config.screen.height);
-    defineReadOnly(screen, 'availWidth', config.screen.availWidth);
-    defineReadOnly(screen, 'availHeight', config.screen.availHeight);
-    defineReadOnly(screen, 'colorDepth', config.screen.colorDepth);
-    defineReadOnly(screen, 'pixelDepth', config.screen.pixelDepth);
+    const defineScreenValue = (key: string, value: number) => {
+      if (Object.prototype.hasOwnProperty.call(screen, key)) defineReadOnly(screen, key, value);
+      else defineProtoGetter(screen, key, value);
+    };
+    defineScreenValue('width', config.screen.width);
+    defineScreenValue('height', config.screen.height);
+    defineScreenValue('availWidth', config.screen.availWidth);
+    defineScreenValue('availHeight', config.screen.availHeight);
+    defineScreenValue('colorDepth', config.screen.colorDepth);
+    defineScreenValue('pixelDepth', config.screen.pixelDepth);
+    defineProtoGetter(window, 'outerWidth', config.screen.width);
+    defineProtoGetter(window, 'outerHeight', config.screen.height);
+    defineProtoGetter(window, 'innerWidth', config.screen.width);
+    defineProtoGetter(window, 'innerHeight', config.screen.height);
     defineReadOnlyGetter(window, 'devicePixelRatio', () => config.screen.devicePixelRatio);
+    if (window.visualViewport) {
+      defineProtoGetter(window.visualViewport, 'width', config.screen.width);
+      defineProtoGetter(window.visualViewport, 'height', config.screen.height);
+      defineProtoGetter(window.visualViewport, 'scale', 1);
+    }
+
+    // matchMedia 劫持 ── CreepJS 的 src/screen/index.ts 用
+    //   matchMedia('(device-width: WIDTHpx) and (device-height: HEIGHTpx)').matches
+    // 来反查 screen.width/height 是否被 spoof（matchMedia 走浏览器层、绕过 JS getter）。
+    // 同样还有 (resolution: Ndppx) 用于反查 devicePixelRatio。
+    // 我们 hook MediaQueryList.prototype.matches 的 getter，对包含
+    //   device-width / device-height / resolution 的 query 用 spoofed 值评估，
+    // 其余 query 仍 forward 给 native。
+    if (typeof MediaQueryList !== 'undefined') {
+      const mqlProto = MediaQueryList.prototype;
+      const matchesDesc = Object.getOwnPropertyDescriptor(mqlProto, 'matches');
+      if (matchesDesc?.get) {
+        const evalSpoofedQuery = (query: string): boolean | null => {
+          // 切分 `(...) and (...) and (...)`，每段用我们识别的 axes 评估；
+          // 任一段含未知 axis（如 hover、orientation、color）→ 返回 null（fallback to native）。
+          const parts = query.trim().split(/\s+and\s+/i);
+          if (parts.length === 0) return null;
+          for (const partRaw of parts) {
+            const m = /^\(\s*(min-|max-)?(device-width|device-height|resolution|width|height):\s*([\d.]+)\s*(px|dppx|dpi|dpcm)?\s*\)$/i.exec(
+              partRaw.trim(),
+            );
+            if (!m) return null;
+            const prefix = (m[1] ?? '').toLowerCase();
+            const axis = (m[2] ?? '').toLowerCase();
+            const num = Number.parseFloat(m[3] ?? 'NaN');
+            const unit = (m[4] ?? '').toLowerCase();
+            if (!Number.isFinite(num)) return null;
+            let actual: number;
+            if (axis === 'device-width' || axis === 'width') actual = config.screen.width;
+            else if (axis === 'device-height' || axis === 'height') actual = config.screen.height;
+            else if (axis === 'resolution') {
+              if (unit === 'dppx') actual = config.screen.devicePixelRatio;
+              else if (unit === 'dpi') actual = config.screen.devicePixelRatio * 96;
+              else if (unit === 'dpcm') actual = config.screen.devicePixelRatio * 96 * 2.54;
+              else return null;
+            } else return null;
+            if (prefix === 'min-') {
+              if (!(actual >= num)) return false;
+            } else if (prefix === 'max-') {
+              if (!(actual <= num)) return false;
+            } else {
+              if (actual !== num) return false;
+            }
+          }
+          return true;
+        };
+        const proxiedMatchesGetter = wrapStealth(matchesDesc.get, {
+          apply(target, thisArg, args) {
+            try {
+              const media = (thisArg as MediaQueryList).media;
+              const spoofed = evalSpoofedQuery(media);
+              if (spoofed !== null) return spoofed;
+            } catch {
+              // fall through to native
+            }
+            return Reflect.apply(target, thisArg, args);
+          },
+        });
+        Object.defineProperty(mqlProto, 'matches', {
+          get: proxiedMatchesGetter,
+          set: matchesDesc.set,
+          enumerable: matchesDesc.enumerable ?? true,
+          configurable: true,
+        });
+      }
+    }
   } catch (err) {
     console.debug('[mosaiq] screen spoof failed', err);
   }
@@ -206,49 +443,132 @@ export function injectAll(config: InjectionConfig): void {
 
   try {
     const OrigDateTimeFormat = Intl.DateTimeFormat;
-    const patchedDTF: typeof Intl.DateTimeFormat = function (
-      ...args: ConstructorParameters<typeof Intl.DateTimeFormat>
-    ) {
-      const [locales, options] = args;
-      const merged = { timeZone: config.timezone, ...options };
-      return new OrigDateTimeFormat(locales, merged);
-    } as unknown as typeof Intl.DateTimeFormat;
 
-    Object.setPrototypeOf(patchedDTF, OrigDateTimeFormat);
-    Object.defineProperty(patchedDTF, 'prototype', {
-      value: OrigDateTimeFormat.prototype,
-      writable: false,
+    // ── Intl.DateTimeFormat constructor 用 Proxy 重写 ──
+    //
+    // Day 3.3 修复：旧实现用 `function (...args) { ... }` 替换 + 手动 setPrototypeOf +
+    // defineProperty('prototype') —— 这导致 CreepJS lies/index.ts 的多个 detector
+    // 全部 trigger:
+    //   - Function.prototype.toString.call(patchedDTF) 返回 JS 源码 → failed toString
+    //   - Object.getOwnPropertyDescriptors(patchedDTF) 含 prototype 字段 → failed descriptor keys
+    //   - patchedDTF.hasOwnProperty('prototype') === true → failed own property
+    //
+    // Proxy 默认 forward 这些内省到 target（原 native DateTimeFormat），看起来像原生。
+    // 详见 `bench/PHASE-1-NEXT-STEPS.md` §0.6 + Day 3 诊断脚本 `bench/diagnose-creepjs.ts`。
+    const proxiedDTF = wrapStealth(OrigDateTimeFormat, {
+      construct(target, args: ConstructorParameters<typeof Intl.DateTimeFormat>, newTarget) {
+        const [locales, options] = args;
+        const merged = { timeZone: config.timezone, ...options };
+        return Reflect.construct(target, [locales, merged], newTarget);
+      },
+      apply(target, _thisArg, args: ConstructorParameters<typeof Intl.DateTimeFormat>) {
+        // Intl.DateTimeFormat(...) 不带 new 时按 ECMA-402 等同于 new DateTimeFormat(...)
+        const [locales, options] = args;
+        const merged = { timeZone: config.timezone, ...options };
+        return Reflect.construct(target, [locales, merged]);
+      },
     });
-    (Intl as unknown as { DateTimeFormat: typeof Intl.DateTimeFormat }).DateTimeFormat = patchedDTF;
+    (Intl as unknown as { DateTimeFormat: typeof Intl.DateTimeFormat }).DateTimeFormat =
+      proxiedDTF as unknown as typeof Intl.DateTimeFormat;
 
-    // Date.prototype.getTimezoneOffset 需要与 timezone 自洽
-    // 简化实现：使用 Intl 派生 offset
+    // ── Date.prototype.getTimezoneOffset 用 Proxy 重写 ──
+    //
+    // 同样的 lies hidden 模式 —— 不能用普通 function 替换。
+    // 注意：Proxy 的 apply trap 接收 thisArg，需要 forward 给 spoof 逻辑当作 Date 实例。
     const origGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-    Date.prototype.getTimezoneOffset = function (): number {
-      try {
-        const dt = new (OrigDateTimeFormat as unknown as typeof Intl.DateTimeFormat)('en-US', {
-          timeZone: config.timezone,
-          timeZoneName: 'shortOffset',
-        });
-        const parts = dt.formatToParts(this);
-        const offsetPart = parts.find((p) => p.type === 'timeZoneName');
-        if (offsetPart) {
-          const m = offsetPart.value.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-          if (m) {
-            const sign = m[1] === '-' ? 1 : -1;
-            const hours = Number.parseInt(m[2] ?? '0', 10);
-            const minutes = Number.parseInt(m[3] ?? '0', 10);
-            return sign * (hours * 60 + minutes);
+    const proxiedGTO = wrapStealth(origGetTimezoneOffset, {
+      apply(target, thisArg: Date) {
+        try {
+          const dt = new OrigDateTimeFormat('en-US', {
+            timeZone: config.timezone,
+            timeZoneName: 'shortOffset',
+          });
+          const parts = dt.formatToParts(thisArg);
+          const offsetPart = parts.find((p) => p.type === 'timeZoneName');
+          if (offsetPart) {
+            const m = offsetPart.value.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+            if (m) {
+              const sign = m[1] === '-' ? 1 : -1;
+              const hours = Number.parseInt(m[2] ?? '0', 10);
+              const minutes = Number.parseInt(m[3] ?? '0', 10);
+              return sign * (hours * 60 + minutes);
+            }
           }
+        } catch {
+          // fall through
         }
-      } catch {
-        // fall through
-      }
-      return origGetTimezoneOffset.call(this);
-    };
+        return Reflect.apply(target, thisArg, []);
+      },
+    });
+    Date.prototype.getTimezoneOffset = proxiedGTO;
   } catch (err) {
     console.debug('[mosaiq] timezone spoof failed', err);
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3.5. SpeechSynthesis — TTS voices 暴露 OS 语言
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // Windows / macOS TTS 暴露真实系统 voices（如中文系统给出 Microsoft Huihui [zh-CN]），
+  // CreepJS speech detector：
+  //   if (defaultVoiceLang.split('-')[0] !== Intl.locale.split('-')[0])
+  //     LowerEntropy.TIME_ZONE = true  // → Intl `bold-fail`
+  //
+  // 修复：spoof speechSynthesis.getVoices() 返回 persona-consistent voices。
+  // 详见 `bench/PHASE-1-NEXT-STEPS.md` §0.6 Day 3.5。
+  if (typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisVoice !== 'undefined')
+    try {
+      const lang0 = config.languages[0] ?? 'en-US';
+      const langPrefix = lang0.split('-')[0] ?? 'en';
+
+      // 派生 voice 集合 —— 基于 persona locale。覆盖常见 OS TTS:
+      //  - Windows: Microsoft <Name> Desktop - <Lang>
+      //  - macOS:   <Name> (en-US)
+      //  - Chromium 共通: Google <locale>
+      const voiceTemplates: Record<string, Array<{ name: string; lang: string }>> = {
+        en: [
+          { name: 'Microsoft David Desktop - English (United States)', lang: 'en-US' },
+          { name: 'Microsoft Zira Desktop - English (United States)', lang: 'en-US' },
+          { name: 'Google US English', lang: 'en-US' },
+        ],
+        zh: [
+          { name: 'Microsoft Huihui Desktop - Chinese (Simplified)', lang: 'zh-CN' },
+          { name: 'Google 普通话（中国大陆）', lang: 'zh-CN' },
+        ],
+        ja: [{ name: 'Microsoft Haruka Desktop - Japanese', lang: 'ja-JP' }],
+        ko: [{ name: 'Microsoft Heami Desktop - Korean', lang: 'ko-KR' }],
+        fr: [{ name: 'Microsoft Hortense Desktop - French', lang: 'fr-FR' }],
+        de: [{ name: 'Microsoft Hedda Desktop - German', lang: 'de-DE' }],
+      };
+
+      const tpl = voiceTemplates[langPrefix] ??
+        voiceTemplates.en ?? [
+          { name: 'Microsoft David Desktop - English (United States)', lang: 'en-US' },
+        ];
+
+      // 构造伪 SpeechSynthesisVoice 对象，挂上原生 prototype 让 instanceof 检查通过
+      const fakeVoices = tpl.map((v, i) => {
+        const obj = Object.create(SpeechSynthesisVoice.prototype) as SpeechSynthesisVoice;
+        Object.defineProperties(obj, {
+          name: { value: v.name, enumerable: true },
+          lang: { value: v.lang, enumerable: true },
+          voiceURI: { value: v.name, enumerable: true },
+          localService: { value: true, enumerable: true },
+          default: { value: i === 0, enumerable: true }, // 第一个是 default
+        });
+        return obj;
+      });
+
+      const origGetVoices = SpeechSynthesis.prototype.getVoices;
+      const proxiedGetVoices = wrapStealth(origGetVoices, {
+        apply() {
+          return fakeVoices;
+        },
+      });
+      SpeechSynthesis.prototype.getVoices = proxiedGetVoices;
+    } catch (err) {
+      console.debug('[mosaiq] speech spoof failed', err);
+    }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 4. WebGL
@@ -261,55 +581,63 @@ export function injectAll(config: InjectionConfig): void {
       const WEBGL_UNMASKED_VENDOR = 0x9245;
       const WEBGL_UNMASKED_RENDERER = 0x9246;
 
-      const origGetParameter = WebGLRenderingContext.prototype.getParameter;
-      WebGLRenderingContext.prototype.getParameter = function (
-        this: WebGLRenderingContext,
-        pname: number,
-      ) {
-        if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
-        if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
-        return origGetParameter.call(this, pname);
-      };
+      // 用 Proxy 替换 getParameter — 关键点：Proxy 不重写 `toString`，所以
+      //   `WebGLRenderingContext.prototype.getParameter.toString()`
+      // 会 forward 到 target.toString() 返回 `function getParameter() { [native code] }`，
+      // 而不是暴露我们的 JS 源码。这是 BrowserLeaks `! ` hook detection 的修复方案。
+      // 详见 `bench/PHASE-1-NEXT-STEPS.md` §0.5 与 `DEVELOPMENT.md` §7。
+      const makeGetParameterProxy = (orig: WebGLRenderingContext['getParameter']) =>
+        wrapStealth(orig, {
+          apply(target, thisArg, args: [number]) {
+            const [pname] = args;
+            if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
+            if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
+            return Reflect.apply(target, thisArg, args);
+          },
+        });
 
+      WebGLRenderingContext.prototype.getParameter = makeGetParameterProxy(
+        WebGLRenderingContext.prototype.getParameter,
+      );
+
+      // WebGL2RenderingContext.prototype.getParameter 在 chromium 里通常**继承自** WebGL1
+      // （同一个函数对象），但 spec 允许独立实现，所以保险起见两个都包一层 Proxy。
+      // 注意：如果两者是同一函数对象，上面那一行已经替换了 WebGL1 的 prototype slot，
+      // WebGL2 仍 inherit 那个 proxied 版本 — 但 `WebGL2.prototype.getParameter` 这个
+      // own property（如果存在）需要单独处理。
       if (typeof WebGL2RenderingContext !== 'undefined') {
-        const orig2 = WebGL2RenderingContext.prototype.getParameter;
-        WebGL2RenderingContext.prototype.getParameter = function (
-          this: WebGL2RenderingContext,
-          pname: number,
-        ) {
-          if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
-          if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
-          return orig2.call(this, pname);
-        };
+        const desc = Object.getOwnPropertyDescriptor(
+          WebGL2RenderingContext.prototype,
+          'getParameter',
+        );
+        if (desc && typeof desc.value === 'function') {
+          WebGL2RenderingContext.prototype.getParameter = makeGetParameterProxy(
+            desc.value as WebGL2RenderingContext['getParameter'],
+          );
+        }
       }
 
-      // readPixels 扰动
+      // readPixels 扰动 — 同样用 wrapStealth Proxy 保持 toString 透明
       if (config.webglPerturbReadPixels) {
-        const origReadPixels = WebGLRenderingContext.prototype.readPixels;
         const prng = makePrng(config.webglNoiseSeed);
-        WebGLRenderingContext.prototype.readPixels = function (
-          this: WebGLRenderingContext,
-          x: number,
-          y: number,
-          width: number,
-          height: number,
-          format: number,
-          type: number,
-          pixels: ArrayBufferView | null,
-        ): void {
-          origReadPixels.call(this, x, y, width, height, format, type, pixels);
-          if (pixels && pixels.byteLength > 0) {
-            const view = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
-            // 仅扰动 1% 像素，幅度 ±1。视觉不可察觉但 hash 改变
-            const sampleCount = Math.max(1, Math.floor(view.length * 0.01));
-            for (let i = 0; i < sampleCount; i++) {
-              const idx = Math.floor(prng() * view.length);
-              const delta = prng() < 0.5 ? -1 : 1;
-              const current = view[idx] ?? 0;
-              view[idx] = Math.max(0, Math.min(255, current + delta));
+        const proxiedReadPixels = wrapStealth(WebGLRenderingContext.prototype.readPixels, {
+          apply(target, thisArg, args) {
+            Reflect.apply(target, thisArg, args);
+            const pixels = args[6] as ArrayBufferView | null;
+            if (pixels && pixels.byteLength > 0) {
+              const view = new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+              // 仅扰动 1% 像素，幅度 ±1。视觉不可察觉但 hash 改变
+              const sampleCount = Math.max(1, Math.floor(view.length * 0.01));
+              for (let i = 0; i < sampleCount; i++) {
+                const idx = Math.floor(prng() * view.length);
+                const delta = prng() < 0.5 ? -1 : 1;
+                const current = view[idx] ?? 0;
+                view[idx] = Math.max(0, Math.min(255, current + delta));
+              }
             }
-          }
-        };
+          },
+        });
+        WebGLRenderingContext.prototype.readPixels = proxiedReadPixels;
       }
     } catch (err) {
       console.debug('[mosaiq] webgl spoof failed', err);
@@ -341,36 +669,34 @@ export function injectAll(config: InjectionConfig): void {
         }
 
         const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-        HTMLCanvasElement.prototype.toDataURL = function (
-          this: HTMLCanvasElement,
-          type?: string,
-          quality?: number,
-        ): string {
-          const ctx = this.getContext('2d');
-          if (ctx && this.width > 0 && this.height > 0) {
-            try {
-              const imageData = ctx.getImageData(0, 0, this.width, this.height);
-              perturbImageData(imageData);
-              ctx.putImageData(imageData, 0, 0);
-            } catch {
-              // tainted canvas 或 CORS，跳过
+        HTMLCanvasElement.prototype.toDataURL = wrapStealth(origToDataURL, {
+          apply(target, thisArg: HTMLCanvasElement, args: [string?, number?]) {
+            const [type, quality] = args;
+            const ctx = thisArg.getContext('2d');
+            if (ctx && thisArg.width > 0 && thisArg.height > 0) {
+              try {
+                const imageData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
+                perturbImageData(imageData);
+                ctx.putImageData(imageData, 0, 0);
+              } catch {
+                // tainted canvas 或 CORS，跳过
+              }
             }
-          }
-          return origToDataURL.call(this, type as string, quality);
-        };
+            return Reflect.apply(target, thisArg, [type as string, quality]) as string;
+          },
+        });
 
         const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-        CanvasRenderingContext2D.prototype.getImageData = function (
-          this: CanvasRenderingContext2D,
-          sx: number,
-          sy: number,
-          sw: number,
-          sh: number,
-          settings?: ImageDataSettings,
-        ): ImageData {
-          const imageData = origGetImageData.call(this, sx, sy, sw, sh, settings);
-          return perturbImageData(imageData);
-        };
+        CanvasRenderingContext2D.prototype.getImageData = wrapStealth(origGetImageData, {
+          apply(
+            target,
+            thisArg: CanvasRenderingContext2D,
+            args: [number, number, number, number, ImageDataSettings?],
+          ) {
+            const imageData = Reflect.apply(target, thisArg, args) as ImageData;
+            return perturbImageData(imageData);
+          },
+        });
       }
     } catch (err) {
       console.debug('[mosaiq] canvas spoof failed', err);
@@ -386,16 +712,15 @@ export function injectAll(config: InjectionConfig): void {
 
     if (typeof AnalyserNode !== 'undefined') {
       const origGetFloat = AnalyserNode.prototype.getFloatFrequencyData;
-      AnalyserNode.prototype.getFloatFrequencyData = function (
-        this: AnalyserNode,
-        array: Float32Array,
-      ): void {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (origGetFloat as any).call(this, array);
-        for (let i = 0; i < array.length; i++) {
-          array[i] = (array[i] ?? 0) + (audioPrng() - 0.5) * amplitude;
-        }
-      };
+      AnalyserNode.prototype.getFloatFrequencyData = wrapStealth(origGetFloat, {
+        apply(target, thisArg: AnalyserNode, args: [Float32Array]) {
+          Reflect.apply(target, thisArg, args);
+          const [array] = args;
+          for (let i = 0; i < array.length; i++) {
+            array[i] = (array[i] ?? 0) + (audioPrng() - 0.5) * amplitude;
+          }
+        },
+      });
     }
 
     // AudioContext sampleRate 一致性
@@ -413,21 +738,24 @@ export function injectAll(config: InjectionConfig): void {
   try {
     const fontSet = new Set(config.fontList.map((f) => f.toLowerCase()));
     if (typeof document !== 'undefined' && document.fonts) {
-      const origCheck = document.fonts.check.bind(document.fonts);
-      document.fonts.check = (font: string, text?: string): boolean => {
-        // 提取字体名：从 'bold 16px "Comic Sans MS"' 中取 "Comic Sans MS"
-        const match = font.match(/(?:"([^"]+)"|'([^']+)'|([^\s,]+))(?:\s*,.*)?$/);
-        const family = (match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim().toLowerCase();
-        if (!family) return origCheck(font, text);
-        // 系统通用字体总是返回 true
-        if (
-          ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'].includes(family)
-        ) {
-          return origCheck(font, text);
-        }
-        // 只有白名单内的字体返回 true
-        return fontSet.has(family);
-      };
+      const origCheck = (document.fonts as FontFaceSet).check;
+      (document.fonts as FontFaceSet).check = wrapStealth(origCheck, {
+        apply(target, thisArg: FontFaceSet, args: [string, string?]) {
+          const [font, text] = args;
+          // 提取字体名：从 'bold 16px "Comic Sans MS"' 中取 "Comic Sans MS"
+          const match = font.match(/(?:"([^"]+)"|'([^']+)'|([^\s,]+))(?:\s*,.*)?$/);
+          const family = (match?.[1] ?? match?.[2] ?? match?.[3] ?? '').trim().toLowerCase();
+          if (!family) return Reflect.apply(target, thisArg, [font, text]) as boolean;
+          // 系统通用字体总是返回 true
+          if (
+            ['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui'].includes(family)
+          ) {
+            return Reflect.apply(target, thisArg, [font, text]) as boolean;
+          }
+          // 只有白名单内的字体返回 true
+          return fontSet.has(family);
+        },
+      });
     }
   } catch (err) {
     console.debug('[mosaiq] fonts spoof failed', err);
@@ -471,10 +799,18 @@ export function injectAll(config: InjectionConfig): void {
   // ═══════════════════════════════════════════════════════════════════════════
 
   try {
-    if (navigator.permissions?.query) {
-      const origQuery = navigator.permissions.query.bind(navigator.permissions);
-      navigator.permissions.query = (desc: PermissionDescriptor): Promise<PermissionStatus> => {
-        if (desc.name === 'notifications') {
+    // Permissions.prototype.query 必须用 wrapStealth Proxy 包装在 prototype 上。
+    // 直接 navigator.permissions.query = fn 会让 CreepJS lies/index.ts 触发：
+    //   - failed toString（暴露 JS 源码）
+    //   - failed "prototype" in function（普通函数有 prototype，native 没有）
+    //   - failed descriptor / own property（own keys 不是 ['length','name']）
+    // → lieProps['Permissions.query'] = true
+    // → CreepJS line 261 detectProxies = true → 全 API 升级到 advanced Proxy detection
+    // → Timezone / WebGL / Screen / Navigator / DOMRect / Canvas 全部级联标 lies
+    const handler: ProxyHandler<Permissions['query']> = {
+      apply(target, thisArg: Permissions, args: [PermissionDescriptor]) {
+        const [desc] = args;
+        if (desc?.name === 'notifications') {
           return Promise.resolve({
             state: 'prompt',
             name: 'notifications',
@@ -484,10 +820,80 @@ export function injectAll(config: InjectionConfig): void {
             dispatchEvent: () => false,
           } as unknown as PermissionStatus);
         }
-        return origQuery(desc);
-      };
+        return Reflect.apply(target, thisArg, args);
+      },
+    };
+    const PermsProto = (globalThis as unknown as { Permissions?: { prototype: Permissions } })
+      .Permissions?.prototype;
+    let proxiedFromProto: Permissions['query'] | null = null;
+    if (PermsProto && typeof PermsProto.query === 'function') {
+      // 优先 hook prototype —— 这是 CreepJS getPrototypeLies 实际扫描位置
+      proxiedFromProto = wrapStealth(PermsProto.query, handler);
+      PermsProto.query = proxiedFromProto;
+    }
+    // 验证 prototype hook 是否真生效。happy-dom / 部分实现把 query 内部 bind 到
+    // instance 或走 C++ 直接调用，prototype 改了不会被走到 —— 此时需要 instance 兜底。
+    if (
+      typeof navigator.permissions?.query === 'function' &&
+      navigator.permissions.query !== proxiedFromProto
+    ) {
+      const orig = navigator.permissions.query.bind(navigator.permissions);
+      navigator.permissions.query = wrapStealth(orig, handler);
     }
   } catch (err) {
     console.debug('[mosaiq] permissions spoof failed', err);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ✱ FINAL：原型环 + Function.prototype.toString 透明性 (Day 3.6)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // 在所有 spoof block 完成后，把 `Function.prototype.toString` 替换为
+  // wrapStealth Proxy —— 对 stealthRegistry 中注册过的函数返回**原生 toString 字符串**
+  // （在 wrap 时已捕获，含正确 name），骗过 CreepJS `hasKnownToString` 白名单匹配。
+  //
+  // 关键：这里的 Proxy 也通过 wrapStealth 自注册，让
+  //   `Function.prototype.toString.call(Function.prototype.toString)`
+  // 也返回原 native 字符串（防止 `lieProps['Function.toString']` 检测）。
+  try {
+    // 早期版本曾在此处全局 wrap Object.setPrototypeOf / Reflect.setPrototypeOf，
+    // 试图在循环时静默 no-op 或抛 TypeError。但这两种策略都被 CreepJS 抓到：
+    //   - no-op + 不抛 → 'failed at too much recursion error' 预期 TypeError；
+    //   - 主动 throw TypeError → 'failed at chain cycle error'（升级路径）期待 RangeError 而非
+    //     TypeError，会立刻命中 lie。
+    // 正确做法是让 per-proxy setPrototypeOf trap 模拟 V8 在直接 raw target
+    // 上的同步循环检测（throw TypeError），其它场景（CreepJS 自己再包一层 proxy）
+    // 让 V8 默认行为接管：先写入成功，后续 toString 链查时由 V8 抛 RangeError。
+    // 因此这里不再覆盖全局 setPrototypeOf。
+
+    if (!stealthState.functionToStringProxy) {
+      // 走 wrapStealth：除了 apply trap，自动获得 stealthRegistry 注册 +
+      // setPrototypeOf 循环检测 trap（与所有 spoof proxy 一致）。
+      stealthState.functionToStringProxy = wrapStealth(stealthState.nativeFunctionToString, {
+        apply(target, thisArg: unknown, args: unknown[]) {
+          // 注册过的函数 → 返回 wrap 时捕获的 native 字符串
+          if (typeof thisArg === 'function') {
+            const cached = stealthRegistry.get(thisArg);
+            if (cached !== undefined) return cached;
+            return Reflect.apply(target, thisArg, args);
+          }
+          if (thisArg == null) throwFunctionToStringTypeError('Function');
+          const proto = Object.getPrototypeOf(thisArg as object);
+          let frameOwner: 'Function' | 'Object' = 'Function';
+          if (typeof proto === 'function' && !stealthRegistry.has(proto)) {
+            try {
+              const source = Reflect.apply(stealthState.nativeFunctionToString, proto, []) as string;
+              if (source === 'function () { [native code] }') frameOwner = 'Object';
+            } catch {
+              frameOwner = 'Object';
+            }
+          }
+          throwFunctionToStringTypeError(frameOwner);
+        },
+      });
+    }
+    Function.prototype.toString = stealthState.functionToStringProxy;
+  } catch (err) {
+    console.debug('[mosaiq] toString stealth failed', err);
   }
 }

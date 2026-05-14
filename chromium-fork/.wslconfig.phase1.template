@@ -1,0 +1,26 @@
+# Mosaiq WSL2 配置 — Phase 1（SDK 注入开发期）
+#
+# Phase 1 (now → 2-4 周) 不本地 build chromium，只跑 SDK 单测 + baseline 检测，
+# 资源给小一些让 Windows / IDE 流畅，电脑日常可用。
+#
+# 当 Phase 3 解冻 fork（PMF 后）时改回 12GB/4CPU/24GB swap，
+# 模板见 .wslconfig.template（注意是不带 .phase1 后缀的版本）。
+#
+# 用法：复制到 C:\Users\<你>\.wslconfig，然后 `wsl --shutdown` 让配置生效。
+
+[wsl2]
+memory=4GB
+processors=2
+swap=8GB
+swapFile=D:\\WSL\\swap.vhdx
+localhostForwarding=true
+
+# 默认 1 分钟空闲休眠（省电；Phase 3 build 时改 -1 防休眠）
+# vmIdleTimeout=60000
+
+# 稀疏 vhdx，避免占 D: 盘
+sparseVhd=true
+
+[experimental]
+autoMemoryReclaim=gradual
+sparseVhd=true

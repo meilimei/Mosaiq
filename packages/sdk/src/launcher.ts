@@ -68,6 +68,7 @@ export async function launchPersona(
     '--disable-blink-features=AutomationControlled',
     '--disable-features=IsolateOrigins,site-per-process',
     `--lang=${persona.system.languages[0] ?? 'en-US'}`,
+    `--window-size=${persona.system.screen.width},${persona.system.screen.height}`,
     // WebRTC 策略
     ...(persona.fingerprint.webrtc.mode === 'proxy_only'
       ? ['--force-webrtc-ip-handling-policy=default_public_interface_only']
@@ -111,8 +112,24 @@ export async function launchPersona(
     colorScheme: 'no-preference',
   });
 
-  // 在每个 page / iframe 加载前注入反检测脚本
-  await context.addInitScript(injectAll, injectionConfig);
+  // 在每个 page / iframe 加载前注入反检测脚本。
+  //
+  // ⚠️ 关键：tsx/esbuild 编译 runner.ts 时（keepNames 默认开），会把内部
+  //   `function makePrng() {}` / `const foo = function() {}` 这样的命名 / 匿名
+  //   函数都包装成 `__name(fn, "name")` 调用以保留 `Function.prototype.name`。
+  //   但 chromium init-script world 不自动暴露 esbuild 的 `__name` helper，
+  //   导致整个 injectAll 在第一个 `__name(...)` 调用处抛 ReferenceError —
+  //   这是 0.1 baseline 中 WebGL/Canvas/Audio 等块全部失效的根因。
+  //
+  // 必须用 string 形式 addInitScript（callback 形式会让 Playwright 跳过 prepend）
+  // 在 injectAll 之前 polyfill `__name = (f) => f`（identity 函数即可，只用于保留 name）。
+  const initialPages = context.pages();
+  const namePolyfill =
+    'globalThis.__name=globalThis.__name||function(f){return f};';
+  const script = `${namePolyfill}(${injectAll.toString()})(${JSON.stringify(injectionConfig)});`;
+  await context.addInitScript({ content: script });
+  await context.newPage();
+  await Promise.all(initialPages.map((page) => page.close().catch(() => undefined)));
 
   return new BrowserSession(context, persona);
 }

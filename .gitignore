@@ -124,5 +124,11 @@ runtime/cache/
 .biome-cache/
 .eslintcache
 
+# ────────────────────────────────────────
+# SDK baseline detection bench 输出
+# ────────────────────────────────────────
+# 每次跑会生成几 MB 截图 + HTML，不入库
+packages/sdk/bench/results/
+
 # tshy 临时输出
 .tshy-build-tmp/
