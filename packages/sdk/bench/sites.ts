@@ -38,12 +38,27 @@ export interface SiteSpec {
   url: string;
   /** 等页面 settle 的额外秒数（CreepJS 计算 trust score 要 5-10s） */
   settleMs: number;
+  /**
+   * page.goto 的 waitUntil 策略。默认 'domcontentloaded'。Cloudflare/Turnstile 拦阻
+   * 的站（pixelscan）需要 'commit'：只要导航请求被服务器接受（headers 已收）就继续，
+   * 不再等 DOM 解析完毕；否则会被反 bot 系统挂在 60s 后超时。
+   */
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
   /** 站点特异提取器，可选 */
   extract?: (page: Page) => Promise<Record<string, unknown>>;
 }
 
 /**
- * 6 个目标站。按反指纹检测严苛程度从低到高排序。
+ * 9 个目标站。按反指纹检测严苛程度从低到高排序。
+ *
+ * 加 3 个站的动机（Phase 1 收尾，扩展防御面）：
+ *   - **dbi-bot** (deviceandbrowserinfo) ：暴露**最直接的布尔信号**（`isPlaywright`、
+ *     `hasInconsistentClientHints`、`hasInconsistentWorkerValues`、`isWebGLInconsistent` 等），
+ *     这些恰好对应我们 v0.1 已实施的 spoof 面，是最快的 sanity check。
+ *   - **amiunique** ：给出每个属性的**全球独特性百分比**——能识别"我们 spoof 出的某个值
+ *     在其数据库中过于罕见"的 outlier，提示需要再贴近常见 persona。
+ *   - **pixelscan** ：商业反检测圈最常用的 mask check 站之一，给出整体 mask/bot
+ *     verdict + 分类指标。SPA 加载较慢，settle 给足。
  */
 export const SITES: SiteSpec[] = [
   {
@@ -80,6 +95,32 @@ export const SITES: SiteSpec[] = [
     url: 'https://iphey.com/',
     settleMs: 6_000,
     extract: extractIphey,
+  },
+  {
+    id: 'dbi-bot',
+    name: 'deviceandbrowserinfo Bot Check',
+    url: 'https://deviceandbrowserinfo.com/are_you_a_bot',
+    // 客户端跑完 BotD-style 检测 + 上送回服务器渲染结果；首屏要 6-10s settle。
+    settleMs: 9_000,
+    extract: extractDbiBot,
+  },
+  {
+    id: 'amiunique',
+    name: 'amiunique.org/fingerprint',
+    url: 'https://amiunique.org/fingerprint',
+    // amiunique 要回服务器查每属性 uniqueness，渲染表格异步；给足 settle。
+    settleMs: 8_000,
+    extract: extractAmIUnique,
+  },
+  {
+    id: 'pixelscan',
+    name: 'pixelscan.net/fingerprint-check',
+    url: 'https://pixelscan.net/fingerprint-check',
+    // SPA + Cloudflare gating —— 'commit' 让我们绕过 domcontentloaded 永不到达的卡死，
+    // 然后 settleMs (15s) 内 Cloudflare 处理完 challenge 后 SPA 才有机会渲染。
+    settleMs: 15_000,
+    waitUntil: 'commit',
+    extract: extractPixelscan,
   },
   {
     id: 'creepjs',
@@ -279,6 +320,261 @@ async function extractCreepjs(page: Page): Promise<Record<string, unknown>> {
       if (title) sections.push({ title, subtitle });
     });
     result.sections = sections;
+
+    return result;
+  });
+}
+
+/**
+ * deviceandbrowserinfo.com/are_you_a_bot — 暴露布尔信号最多的站。
+ *
+ * 页面渲染一组形如 `hasInconsistentClientHints: true|false` 的键值对（在 .raw-detection-details
+ * 或 `<pre>`/`<code>` 块里输出 JSON / 表格）。我们做两件事：
+ *   1. 优先抓 JSON-style block —— 服务器会先把 detection result JSON 嵌入到 `<pre>` / `<code>`
+ *      / `<script type="application/json">` 节点里。
+ *   2. fallback：解析正文里所有 `\bkey:\s*(true|false)\b` 模式的对，构造布尔 map。
+ *
+ * 关心的 16 个 key 已在站点 doc 里列出，命中任何 true 都意味着 spoof 失败。
+ */
+async function extractDbiBot(page: Page): Promise<Record<string, unknown>> {
+  return await page.evaluate(() => {
+    const result: Record<string, unknown> = {};
+    const knownKeys = [
+      'hasBotUserAgent',
+      'hasWebdriverTrue',
+      'hasWebdriverInFrameTrue',
+      'isPlaywright',
+      'hasInconsistentChromeObject',
+      'isPhantom',
+      'isNightmare',
+      'isSequentum',
+      'isSeleniumChromeDefault',
+      'isHeadlessChrome',
+      'isWebGLInconsistent',
+      'isAutomatedWithCDP',
+      'isAutomatedWithCDPInWebWorker',
+      'hasInconsistentClientHints',
+      'hasInconsistentGPUFeatures',
+      'isIframeOverridden',
+      'hasInconsistentWorkerValues',
+      'hasHighHardwareConcurrency',
+      'hasHeadlessChromeDefaultScreenResolution',
+      'hasSuspiciousWeakSignals',
+    ] as const;
+
+    // ── 1) 优先解析嵌入的 JSON ──
+    let parsedFromJson: Record<string, unknown> | null = null;
+    const jsonNodes = Array.from(
+      document.querySelectorAll('pre, code, script[type="application/json"]'),
+    );
+    for (const node of jsonNodes) {
+      const text = (node.textContent ?? '').trim();
+      if (!text || text.length > 50_000) continue;
+      // 一个 quick heuristic：含有 `hasWebdriverTrue` 或 `isPlaywright` 关键字
+      if (!/\bisPlaywright\b|\bhasWebdriverTrue\b|\bhasInconsistentClientHints\b/.test(text)) continue;
+      try {
+        parsedFromJson = JSON.parse(text);
+        break;
+      } catch {
+        // 非纯 JSON，继续 fallback
+      }
+    }
+
+    // ── 2) 文本 fallback：扫描 body 全文里 `\bkey: true|false\b` 对 ──
+    const flags: Record<string, boolean> = {};
+    if (parsedFromJson && typeof parsedFromJson === 'object') {
+      for (const k of knownKeys) {
+        const v = (parsedFromJson as Record<string, unknown>)[k];
+        if (typeof v === 'boolean') flags[k] = v;
+      }
+    }
+    if (Object.keys(flags).length === 0) {
+      const body = document.body?.textContent ?? '';
+      for (const k of knownKeys) {
+        // tolerate "key": true 或 key: true 或 key = true
+        const re = new RegExp(`["']?${k}["']?\\s*[:=]\\s*(true|false)\\b`, 'i');
+        const m = body.match(re);
+        if (m && m[1]) flags[k] = m[1].toLowerCase() === 'true';
+      }
+    }
+
+    result.flags = flags;
+    result.flagsTotal = Object.keys(flags).length;
+    result.flagsTrue = Object.values(flags).filter((v) => v === true).length;
+    result.flagsTriggered = Object.entries(flags)
+      .filter(([, v]) => v === true)
+      .map(([k]) => k);
+
+    // 抓页面底部的 verdict / summary（如果有）
+    const verdictEl = document.querySelector('[class*="verdict"], [class*="result"], h1, h2');
+    result.verdict = verdictEl?.textContent?.trim().slice(0, 200) ?? null;
+
+    return result;
+  });
+}
+
+/**
+ * amiunique.org/fingerprint — 给每个属性的全球独特性百分比。
+ *
+ * 页面结构：两个表（HTTP headers + JavaScript attributes），每行 `[Attribute, Similarity, Value]`。
+ * Similarity 列形如 `0.04 %` 或 `12.3 %` —— 越大越普通，越小越独特。我们抓所有属性 → 标记
+ * "outlier"（< 0.5%，即仅极少访客有此值，强烈提示 spoof 出了陌生组合）。
+ *
+ * 顶部 verdict 形如 `Yes! You are unique among the 4,081,246 fingerprints` 或
+ * `Almost! Only 50 browsers ... have exactly the same fingerprint as yours`。
+ */
+async function extractAmIUnique(page: Page): Promise<Record<string, unknown>> {
+  return await page.evaluate(() => {
+    const result: Record<string, unknown> = {};
+
+    // ── verdict ──
+    const verdictTexts: string[] = [];
+    document.querySelectorAll('h1, h2, h3, .uniquenessText, [class*="unique"]').forEach((el) => {
+      const t = (el.textContent ?? '').trim();
+      if (t.length > 0 && t.length < 400) verdictTexts.push(t);
+    });
+    const verdict =
+      verdictTexts.find((t) => /unique|fingerprint|same fingerprint/i.test(t)) ??
+      verdictTexts[0] ??
+      null;
+    result.verdict = verdict;
+
+    // ── 属性表 ──
+    interface AmIUniqueAttr {
+      name: string;
+      similarityPct: number | null;
+      similarityRaw: string;
+      value: string;
+    }
+    const attrs: AmIUniqueAttr[] = [];
+    document.querySelectorAll('table tr').forEach((tr) => {
+      const cells = Array.from(tr.querySelectorAll('th, td')) as HTMLTableCellElement[];
+      // amiunique 的属性表通常是 3 列：name / similarity / value
+      if (cells.length < 3) return;
+      const nameCell = cells[0];
+      const simCell = cells[1];
+      const valCell = cells[2];
+      if (!nameCell || !simCell || !valCell) return;
+      const name = (nameCell.textContent ?? '').trim();
+      const simRaw = (simCell.textContent ?? '').trim();
+      // 跳过表头
+      if (!name || /attribute/i.test(name)) return;
+      // 解析百分比
+      const m = simRaw.match(/([\d.]+)\s*%/);
+      const pct = m && m[1] ? Number.parseFloat(m[1]) : null;
+      const value = (valCell.textContent ?? '').trim().slice(0, 300);
+      attrs.push({ name, similarityPct: pct, similarityRaw: simRaw, value });
+    });
+
+    result.attrs = attrs;
+    result.attrsTotal = attrs.length;
+    // outlier = similarity 小于 0.5%（极罕见，提示 spoof 值组合脱离主流）
+    const outliers = attrs.filter(
+      (a) => a.similarityPct !== null && a.similarityPct < 0.5,
+    );
+    result.outliers = outliers;
+    result.outlierCount = outliers.length;
+    return result;
+  });
+}
+
+/**
+ * pixelscan.net/fingerprint-check — SPA，所有结果通过 React 客户端渲染。
+ *
+ * 页面有 5 个主分类卡片：Browser / Location / Proxy / Fingerprint / Bot check。
+ * 每卡片渲染时会从 "Collecting Data…" 切到具体值；DOM class 通常含 status (`.success`,
+ * `.warning`, `.danger`)。
+ *
+ * 实战教训（2026-05-15）：headless + Cloudflare gating 下 SPA 永远卡在 "Collecting Data…"，
+ * 因此我们重点抓三件事：
+ *   1. **stillLoading** —— 看正文是否还在 "Collecting Data…" 状态（这本身就说明 site
+ *      被 Cloudflare 拦住了，结果不可信）。
+ *   2. **challengeDetected** —— Turnstile / "Just a moment" 文本。
+ *   3. **白名单 card titles** —— 只信任 5 个核心模块名（Browser/Location/Proxy/
+ *      Fingerprint/Bot check），跳过 FAQ / 营销文案，避免误把 FAQ 里的 "detect" 当成
+ *      danger 信号。
+ *
+ * 真要拿到可信结果需要 HEADED=1 + 干净 IP；headless 下默认输出 "still loading" 警告。
+ */
+async function extractPixelscan(page: Page): Promise<Record<string, unknown>> {
+  return await page.evaluate(() => {
+    const result: Record<string, unknown> = {};
+
+    // ── 全文信号 ──
+    const allText = document.body?.textContent ?? '';
+    const maskMatch = allText.match(/mask\s+(?:is\s+)?(detected|not detected|consistent|inconsistent)/i);
+    result.maskVerdict = maskMatch ? maskMatch[0] : null;
+    result.challengeDetected = /just a moment|verify you are human|cf-mitigated|turnstile/i.test(
+      allText.slice(0, 5_000),
+    );
+    // 还在收集数据 = SPA 被 Cloudflare/反爬卡住，没拿到真正结果。
+    result.stillLoading = /collecting\s+data/i.test(allText.slice(0, 5_000));
+
+    // ── 只关心 5 个核心检测模块（白名单），其他文案直接跳过避免 FAQ 误判 ──
+    const TRUSTED_TITLES = [
+      'Browser',
+      'Location',
+      'Proxy',
+      'Fingerprint',
+      'Bot check',
+      'Bot Verification',
+    ];
+    const isTrustedTitle = (title: string): boolean =>
+      TRUSTED_TITLES.some((t) => new RegExp(`^${t}\\s*$`, 'i').test(title));
+
+    interface PsCard {
+      title: string;
+      status: 'success' | 'warning' | 'danger' | 'unknown';
+      summary: string;
+    }
+    const cards: PsCard[] = [];
+    const seen = new Set<string>();
+    document
+      .querySelectorAll(
+        '[class*="card"], [class*="Card"], section, [class*="status"], [class*="result"]',
+      )
+      .forEach((el) => {
+        const titleEl = el.querySelector('h1, h2, h3, h4, [class*="title"], [class*="Title"]');
+        const title = (titleEl?.textContent ?? '').trim().slice(0, 80);
+        if (!title || title.length < 3 || seen.has(title)) return;
+        // 只信白名单标题；其它（FAQ、Frequently Asked Questions、Tools list 等）跳过
+        if (!isTrustedTitle(title)) return;
+        seen.add(title);
+
+        // SVG 元素的 className 是 SVGAnimatedString 而非 string，要兜底
+        const rawCls = el.className;
+        const cls = (typeof rawCls === 'string' ? rawCls : (rawCls as SVGAnimatedString).baseVal ?? '').toLowerCase();
+        let status: PsCard['status'] = 'unknown';
+        if (/success|consistent|valid|good/.test(cls)) status = 'success';
+        else if (/warning|warn/.test(cls)) status = 'warning';
+        else if (/danger|error|fail|inconsistent/.test(cls)) status = 'danger';
+        // 文本 fallback —— 只在白名单卡片里找显式状态字样
+        const innerText = (el.textContent ?? '').toLowerCase();
+        if (status === 'unknown') {
+          if (/collecting\s+data/.test(innerText)) {
+            status = 'unknown'; // 仍在加载，明确不算 danger
+          } else if (/(mask\s+detected|inconsistent|mismatch|fingerprint\s+detected)/.test(innerText) &&
+                     !/not detected/.test(innerText)) {
+            status = 'danger';
+          } else if (/(warning|attention|review)/.test(innerText)) {
+            status = 'warning';
+          } else if (/(consistent|all good|verified|natural)/.test(innerText)) {
+            status = 'success';
+          }
+        }
+        const summary = (el.textContent ?? '')
+          .slice(0, 240)
+          .replace(/\s+/g, ' ')
+          .trim();
+        cards.push({ title, status, summary });
+      });
+    result.cards = cards;
+
+    // ── 计数 ──
+    result.dangerCards = cards.filter((c) => c.status === 'danger').length;
+    result.warningCards = cards.filter((c) => c.status === 'warning').length;
+    result.successCards = cards.filter((c) => c.status === 'success').length;
+    result.unknownCards = cards.filter((c) => c.status === 'unknown').length;
 
     return result;
   });

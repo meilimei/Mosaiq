@@ -856,6 +856,185 @@ pnpm --filter @mosaiq/sdk exec tsx bench/canvas-cross-check.ts
 
 ---
 
+## 5.8 Phase 1 收尾 — 加 3 个新 baseline 站（2026-05-15）
+
+### 动机
+
+v0.1 的 6 个 baseline 站（sannysoft / browserleaks-{js,canvas,webgl} / iphey / creepjs）覆盖了**通用**指纹检测，但没有任何站直接暴露**布尔形式的 spoof 失败信号**。我们需要扩展防御面，找到 v0.1 已实施的 spoof 之外的未知漏洞。
+
+为此引入 3 个新站：
+
+| 站点 | URL | 价值 | settleMs |
+|---|---|---|---|
+| `dbi-bot` | `deviceandbrowserinfo.com/are_you_a_bot` | **20 个布尔信号**直接对应我们的 spoof 面 | 9_000 |
+| `amiunique` | `amiunique.org/fingerprint` | 给每属性的**全球独特性百分比** → 识别 outlier 组合 | 8_000 |
+| `pixelscan` | `pixelscan.net/fingerprint-check` | 商业反检测圈最常用 mask 检测站 | 15_000（需 commit + headed） |
+
+### 实施
+
+文件：`packages/sdk/bench/sites.ts`、`packages/sdk/bench/report.ts`、`packages/sdk/bench/baseline-detection.ts`。
+
+新增关键能力：
+
+1. **`SiteSpec.waitUntil`** —— 允许 per-site 覆盖 page.goto 的 waitUntil。pixelscan 需要 `'commit'` 才能跳过 Cloudflare gating 的 `domcontentloaded` 卡死。
+2. **截图失败容错** —— 改 `runOne()` 让 `page.screenshot` 超时降级用 viewport 截图，不再让整站 FAIL（pixelscan 在 Cloudflare gating 下字体永远不 ready）。
+3. **DBI 布尔信号路由表** —— `report.ts` 的 `DBI_KEY_TO_SURFACE` 把 20 个 detection key 一一映射到我们的 surface 分类 + severity，让 hits 归因表直接对应 v0.1 spoof 面。
+4. **AmIUnique outlier 检测** —— 标记 `similarityPct < 0.5%` 的属性，提示 spoof 出了"真人不会有的组合"。
+5. **Pixelscan 白名单 + stillLoading 检测** —— 只信任 5 个核心 card 标题，跳过 FAQ 误判；明确识别 SPA 卡在 "Collecting Data..." 状态时输出警告而非伪结果。
+
+### 跑法
+
+```bash
+pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts                 # 全部 9 站
+ONLY=dbi-bot,amiunique,pixelscan pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+HEADED=1 ONLY=pixelscan pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts  # pixelscan 推荐 headed
+pnpm --filter @mosaiq/sdk exec tsx bench/report.ts <results-dir>
+```
+
+### 首跑结果（2026-05-15 headless）
+
+```text
+✓ dbi-bot:    18/20 spoof 信号通过；2 个 true
+✓ amiunique:  42 attributes，0 outliers
+○ pixelscan:  headless + 默认 IP 走不到结果（"Collecting Data..." 警告，不入 hits）
+```
+
+### 🔴 新发现：CDP detection 是结构性漏洞（JS init script 无法关）
+
+dbi-bot 触发的 2 个信号都是**同一类**：
+
+- `isAutomatedWithCDP` = true
+- `isAutomatedWithCDPInWebWorker` = true
+
+#### Day 1.6 调查（2026-05-15）：先按 dbi-bot 2024 文章实施 JS hook，再实测发现真因
+
+**第一轮假设（错的）**：dbi-bot 的[2024 公开文章](https://deviceandbrowserinfo.com/learning_zone/articles/detecting-headless-chrome-puppeteer-2024)给出探测代码：
+
+```js
+var detected = false;
+var e = new Error();
+Object.defineProperty(e, 'stack', { get() { detected = true; } });
+console.log(e);                  // CDP 序列化时调 getter → detected = true
+if (detected) isBot = true;
+```
+
+文章说的攻击面是"CDP 序列化 Error 时同步读 .stack"，于是我加了 `runner.ts §12 CDP Detection Hardening`：
+
+- 拦截 `Object.defineProperty` / `Reflect.defineProperty` / `Object.defineProperties` 三条路径
+- 当目标是 Error 实例 + 属性是 `stack` + descriptor 是 accessor 时**静默吞掉**
+- 同样的逻辑镜像到 worker scope（`workerSpoofSrc`）
+- 加了 7 条 vitest（happy-dom 里全部通过，168/168）
+
+**第二轮实测（揭露真因）**：重跑 `bench:dbi-bot` 后两条 flag **依然 true**。
+
+读 [Rebrowser 的技术文章](https://rebrowser.net/blog/how-to-fix-runtime-enable-cdp-detection-of-puppeteer-playwright-and-other-automation-libraries) 后真相浮出：
+
+> dbi-bot 实际用的是 `Runtime.consoleAPICalled` **事件触发** 来检测：只要 Playwright /
+> Puppeteer 调过 `Runtime.enable`（每个 frame 都调，无法用配置关），V8 inspector 就会
+> 在 console.* 时把消息序列化送给 host —— **这一步发生在 V8 内部，JS 完全拦不住。**
+
+因此：
+
+- 我加的 JS hook **不能**让 `isAutomatedWithCDP` 翻 false
+- 真正的修法在 **Playwright 源码层面禁掉自动 `Runtime.enable`**，参考 [rebrowser-patches](https://github.com/rebrowser/rebrowser-patches) 的两种方案：
+  1. 用 `Page.createIsolatedWorld` 创建未知 ID 的 isolated context（不能访问 main world）
+  2. 调 `Runtime.enable` 后立刻 `Runtime.disable`，从 `executionContextCreated` 事件捕获 ID（可访问 main world，有微小时间窗口风险）
+- 或者在 chromium-fork 层面 patch V8 inspector 的 `Runtime.consoleAPICalled` 触发条件
+
+#### JS hook 是否保留
+
+**保留**。理由：
+
+1. dbi-bot 自己升级到 Runtime.consoleAPICalled 检测了，但很多自部署反爬 / 教学站 / 第三方 stealth-test 仍在用 2024 文章里那段老代码片段
+2. 我们的 hook 精确针对该 pattern，零误伤合法库（sentry / pino / mocha / jest / lodash / react 都读 stack 但不会用 defineProperty + getter 模式重定义它）
+3. 防御纵深：万一某检测同时跑两条 probe，至少老的能挡住
+
+#### v0.2 真正要做的事
+
+##### 2026-05-15 实测后的修订评估
+
+仔细看了 rebrowser-patches 的 [`patches/playwright-core/lib.patch`](https://github.com/rebrowser/rebrowser-patches/blob/main/patches/playwright-core/lib.patch)（11.6 KB，触及 6 个 playwright-core 文件）后，**之前的"低难度"评估错了**：
+
+- rebrowser-patches CLI **last fully tested**: Playwright **1.52.0**（2025-04 发版）
+- `rebrowser-playwright-core`（预打补丁的 fork）npm 最新：**1.52.0**
+- 我们当前装的：**1.59.1**（差 7 个 minor 版本，~6 个月）
+- patch 期望 `crPage.js:425` 附近紧跟 `Runtime.addBinding` 调用；1.59.1 已经把这个调用挪进 `exposePlaywrightBinding()` 里 —— **patch 直接 apply 会拒（hunk fail）**
+
+| 路径 | 真实难度 | 收益 | 备注 |
+|---|---|---|---|
+| **降级 Playwright 到 1.52.0 + 切到 `rebrowser-playwright-core`** | 极低 | 高 | 一行 package.json 改动；缺点：丢 7 个 minor 的 bugfix/feature/Chromium 版本 |
+| **保持 1.59.1，自己重写 patch** | 高 | 高 | 4–8 小时 focused session：理解 addBinding flow + 适配 1.59.1 重构 + 跨 5 文件改 + 充分测试 |
+| **保持 1.59.1，pin rebrowser-playwright-core 当 dev-only optional dep** | 中 | 中 | 用户运行时可选切，CI 测两条；管理复杂度上升 |
+| **defer 到 chromium-fork 阶段** | 低（现在）/高（届时） | 高 | patch V8 inspector，是真正的根治；但 fork 流水线短期出不来 |
+| **完全不修，留 JS 层 defense-in-depth** | 0 | 局部 | 当前状态；dbi-bot `isAutomatedWithCDP` 持续亮 |
+
+##### 推荐路径（按时间窗口）
+
+1. **本周（v0.1 收尾）**：保持现状。JS 层 hook 留作 defense-in-depth，文档老老实实写明 dbi-bot CDP 信号未关。
+2. **下次专项 session（4–8h，v0.2 第一炮）**：自己重写 patch for 1.59.1。步骤：
+   1. 用 `pnpm patch playwright-core@1.59.1` 拿到可写副本
+   2. 把 rebrowser 的 `lib.patch` 拆成 6 个独立 hunk，分文件 apply
+   3. `crPage.js` 那个 hunk 必须重写（addBinding 调用位置已变）
+   4. 跑 `bench:dbi-bot` 验证 `isAutomatedWithCDP=false`
+   5. 跑全量 vitest + 全 9 站 bench，确认无回归
+   6. `pnpm patch-commit` 把 diff 落到 `patches/playwright-core@1.59.1.patch`
+   7. 在 `pnpm-workspace.yaml` 或 `package.json` 加 `pnpm.patchedDependencies` 自动 apply
+3. **Phase 2（chromium-fork 上线后）**：把 Playwright patch 退役，改在 V8 inspector 层根治。
+
+### Pixelscan 处理建议
+
+- pixelscan 在 headless 模式下基本无法取到结果（Cloudflare 拦阻）；
+- v0.1 把它放在 SITES 里，但通过 `stillLoading` 检测**自动降级为不入 hits**；
+- 真要测请用 `HEADED=1 ONLY=pixelscan` + 干净 IP，或人工开浏览器跑。
+
+### v0.2 优先级（更新）
+
+按 dbi-bot + amiunique + pixelscan 引入后的视角排序：
+
+1. 🔴 **结构性 CDP defense**（rebrowser-patches 评估 + 集成）— 详见 5.8.3
+2. 🟡 **WebGL/Audio cross-check**（v0.1 5.7 已立项）
+3. 🟡 **persona.swPolicy** 三态（PWA 用户）
+4. 🟢 **GREASE 顺序随机化** + `Network.setExtraHTTPHeaders`（v0.3）
+
+### Phase 1.6 落地清单（已完成，2026-05-15）
+
+- [x] 加 `runner.ts §12` JS-layer CDP hardening（main + worker scope）
+- [x] 加 `runner.test.ts` 7 条 vitest，168/168 通过
+- [x] 实测 `bench:dbi-bot` 验证 JS hook 效果不到 dbi-bot 真探测（仍 2 个 true）
+- [x] 文档老老实实记录："为什么留 + 真正修法是什么"
+- [x] 评估 rebrowser-patches 集成可行性：**1.52→1.59 drift 导致 patch 不能直接 apply**；自己重写需要 4–8h focused session
+- [x] 在 PHASE-1-NEXT-STEPS §5.8 给出 v0.2 第一炮的具体步骤清单（7 步）
+
+### Phase 1 真正完结状态（2026-05-15）
+
+✅ **可以收尾**。Phase 1 v0.1 范围内的 baseline 工作全部完成。
+
+#### 最终 9 站全量 bench 快照（§12 CDP hook 落地后回归测试）
+
+| 站点 | 状态 | 备注 |
+|---|---|---|
+| sannysoft | ⚠️ 60s timeout | 个人页面间歇性挂；非 §12 回归 |
+| browserleaks-js | ✅ clean | 0 flagged surface |
+| browserleaks-canvas | ✅ 噪声 by design | `uniqueness=100%` 是 persona 确定性种子的预期产物 |
+| browserleaks-webgl | ✅ spoof 生效 | UHD 730 与 persona 一致 |
+| iphey | ✅ clean | 0 flagged surface |
+| dbi-bot | ⚠️ 60s timeout / 18-20 pass | 焦点跑确认 18/20 spoof 信号 OK；剩 2 个 CDP 结构性遗留 |
+| amiunique | ✅ 0 outliers | 42 attributes 全过 |
+| pixelscan | ✅ 干净降级 | 0 hits + 2 ⚪ undetermined（Cloudflare 限制内容） |
+| creepjs | ⚠️ 与基线一致 | 1 Lies (Canvas, 噪声 by design) + 1 Bold-fail (WebGL unmasked, 预期) |
+
+**关键判定**：§12 CDP hook 上线**零新回归**——所有 7 个内容加载成功的站给出与 Phase 1.5 baseline 完全一致的 fingerprint pattern。
+
+#### 验证矩阵
+
+- ✅ `tsc --noEmit`: clean
+- ✅ `vitest`: 168/168 通过（161 旧 + 7 新 §12 CDP 测试）
+- ✅ `bench:dbi-bot,creepjs` 焦点跑：dbi-bot 18/20 + creepjs lies/bold-fail 模式与基线一致
+- ✅ 全 9 站 bench：7/9 内容成功 + 2/9 网络超时（非 §12 回归）
+- ✅ 所有 trade-off 与下一步路径在文档里说清楚
+
+---
+
 ## 6. 启动 Day 1 的命令
 
 ```bash

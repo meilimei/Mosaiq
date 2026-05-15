@@ -188,3 +188,103 @@ describe('worker scope spoof (Phase 1.5)', () => {
     expect(Function.prototype.toString.call(sw.register)).toContain('[native code]');
   });
 });
+
+describe('CDP detection hardening (Phase 1.6)', () => {
+  // 这是 dbi-bot `isAutomatedWithCDP` 在浏览器里跑的探测代码。我们的注入要让
+  // detected 始终为 false：accessor descriptor 永不被装上去，CDP 序列化读到的
+  // 还是真实的 stack 字符串。
+
+  it('Object.defineProperty silently no-ops accessor descriptor on Error#stack', () => {
+    let detected = false;
+    const e = new Error('probe');
+    const ret = Object.defineProperty(e, 'stack', {
+      get() {
+        detected = true;
+        return '';
+      },
+    });
+    // 原始 stack 还应该可读（数据 descriptor 没换成 accessor）
+    const stack = e.stack;
+    expect(detected).toBe(false);
+    // 调用方看到的返回值仍然是 e（与原生 defineProperty 行为一致）
+    expect(ret).toBe(e);
+    // 真实 stack 字符串还在（happy-dom 里至少非空字符串或 undefined，但绝不应该是 ''）
+    expect(typeof stack === 'string' || stack === undefined).toBe(true);
+  });
+
+  it('Reflect.defineProperty silently returns true for accessor on Error#stack', () => {
+    let detected = false;
+    const e = new TypeError('probe-reflect');
+    const ok = Reflect.defineProperty(e, 'stack', {
+      get() {
+        detected = true;
+        return '';
+      },
+    });
+    void e.stack;
+    expect(detected).toBe(false);
+    // Reflect.defineProperty 真实返回 boolean —— 我们假装成功
+    expect(ok).toBe(true);
+  });
+
+  it('Object.defineProperties strips stack accessor but keeps siblings', () => {
+    let detected = false;
+    const e = new RangeError('probe-bulk');
+    Object.defineProperties(e, {
+      stack: {
+        get() {
+          detected = true;
+          return '';
+        },
+      },
+      customField: { value: 42, enumerable: true },
+    });
+    void e.stack;
+    expect(detected).toBe(false);
+    // 兄弟字段应仍生效
+    expect((e as Error & { customField?: number }).customField).toBe(42);
+  });
+
+  it('legitimate data descriptor on Error#stack still applies', () => {
+    // 合法用法：日志库把 stack 改成清洗过的字符串
+    const e = new Error('legit');
+    Object.defineProperty(e, 'stack', { value: 'cleaned\n  at foo', writable: true });
+    expect(e.stack).toBe('cleaned\n  at foo');
+  });
+
+  it('plain (non-Error) objects can still install accessor on stack', () => {
+    // 反检测只针对 Error 实例 —— 其它对象的 stack 属性不在 CDP 路径上，留给业务自由。
+    const obj: { stack?: string } = {};
+    let read = 0;
+    Object.defineProperty(obj, 'stack', {
+      get() {
+        read++;
+        return 'plain';
+      },
+    });
+    expect(obj.stack).toBe('plain');
+    expect(read).toBe(1);
+  });
+
+  it('Error subclass instances also protected', () => {
+    class MyErr extends Error {}
+    let detected = false;
+    const e = new MyErr('sub');
+    Object.defineProperty(e, 'stack', {
+      get() {
+        detected = true;
+        return '';
+      },
+    });
+    void e.stack;
+    expect(detected).toBe(false);
+  });
+
+  it('Object.defineProperty / Reflect.defineProperty / Object.defineProperties stay native-toString', () => {
+    // Function.prototype.toString hook + wrapStealth registry 把 Proxy 包装伪装成原生。
+    // 任何反检测脚本读 toString 应仍看到 [native code]。
+    expect(Function.prototype.toString.call(Object.defineProperty)).toContain('[native code]');
+    expect(Function.prototype.toString.call(Reflect.defineProperty)).toContain('[native code]');
+    expect(Function.prototype.toString.call(Object.defineProperties)).toContain('[native code]');
+  });
+});

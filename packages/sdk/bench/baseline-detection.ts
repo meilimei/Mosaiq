@@ -70,7 +70,10 @@ async function runOne(
 
   try {
     console.log(`[bench] → ${spec.id}: ${spec.url}`);
-    await page.goto(spec.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await page.goto(spec.url, {
+      waitUntil: spec.waitUntil ?? 'domcontentloaded',
+      timeout: timeoutMs,
+    });
     // 等额外 settle 时间，让 JS 计算（如 CreepJS）有时间出 trust score
     await page.waitForTimeout(spec.settleMs);
     // 尝试 networkidle，最多等 5s
@@ -91,12 +94,28 @@ async function runOne(
     result.html = htmlPath;
 
     const screenshotPath = `${spec.id}.png`;
-    await page.screenshot({
-      path: join(resultsDir, screenshotPath),
-      fullPage: true,
-      timeout: 10_000,
-    });
-    result.screenshot = screenshotPath;
+    // 截图失败不应该让整站 FAIL —— Cloudflare 拦阻的 SPA 字体永远不 ready，
+    // 但 HTML / extracted 仍然有用。screenshot 超时设宽 + 失败时降级用 viewport 截图。
+    try {
+      await page.screenshot({
+        path: join(resultsDir, screenshotPath),
+        fullPage: true,
+        timeout: 12_000,
+      });
+      result.screenshot = screenshotPath;
+    } catch (err) {
+      console.log(`[bench]   screenshot failed (${(err as Error).message}); falling back to viewport`);
+      try {
+        await page.screenshot({
+          path: join(resultsDir, screenshotPath),
+          fullPage: false,
+          timeout: 5_000,
+        });
+        result.screenshot = screenshotPath;
+      } catch {
+        // 完全跳过截图，不阻断 extract
+      }
+    }
 
     if (spec.extract) {
       try {

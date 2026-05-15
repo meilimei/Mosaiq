@@ -1056,6 +1056,38 @@ export function injectAll(config: InjectionConfig): void {
         '};' +
         '}catch(e){}' +
         '});' +
+        // ── CDP detection hardening (mirror of main scope §12) ──
+        // dbi-bot `isAutomatedWithCDPInWebWorker` 会在 worker 内复刻同一探测：
+        //   var e=new Error();Object.defineProperty(e,"stack",{get:...});console.log(e);
+        // 把 Object.defineProperty / Reflect.defineProperty / Object.defineProperties
+        // 三条路径都拦截：当目标是 Error 实例且要在 stack 上装 accessor 时静默吞掉。
+        'try{' +
+        'var _isErrInst=function(o){if(o==null||typeof o!=="object")return false;try{return o instanceof Error;}catch(e){return false;}};' +
+        'var _hasAcc=function(d){return d!=null&&typeof d==="object"&&(typeof d.get==="function"||typeof d.set==="function");};' +
+        'var _origDP=Object.defineProperty;' +
+        'Object.defineProperty=function(obj,prop,desc){' +
+        'if(prop==="stack"&&_isErrInst(obj)&&_hasAcc(desc))return obj;' +
+        'return _origDP.call(Object,obj,prop,desc);' +
+        '};' +
+        'var _origRDP=Reflect.defineProperty;' +
+        'Reflect.defineProperty=function(obj,prop,desc){' +
+        'if(prop==="stack"&&_isErrInst(obj)&&_hasAcc(desc))return true;' +
+        'return _origRDP.call(Reflect,obj,prop,desc);' +
+        '};' +
+        'var _origDPs=Object.defineProperties;' +
+        'Object.defineProperties=function(obj,descs){' +
+        'if(_isErrInst(obj)&&descs!=null&&typeof descs==="object"){' +
+        'var f={};' +
+        'var ks=Object.keys(descs);' +
+        'for(var i=0;i<ks.length;i++){var k=ks[i];var d=descs[k];' +
+        'if(k==="stack"&&_hasAcc(d))continue;' +
+        'if(d!==undefined)f[k]=d;' +
+        '}' +
+        'return _origDPs.call(Object,obj,f);' +
+        '}' +
+        'return _origDPs.call(Object,obj,descs);' +
+        '};' +
+        '}catch(e){}' +
         '}catch(e){}})();';
 
       function resolveWorkerScriptUrl(scriptUrl: string | URL): string {
@@ -1189,6 +1221,117 @@ export function injectAll(config: InjectionConfig): void {
     }
   } catch (err) {
     console.debug('[mosaiq] worker scope spoof failed', err);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 12. CDP Detection Hardening — JS Layer (Phase 1.6, 2026-05-15)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // ⚠️ 重要范围澄清（2026-05-15 实测后写）：
+  //   本 JS 层 hook **不能**让 dbi-bot 的 `isAutomatedWithCDP` 翻 false。
+  //   dbi-bot 实际使用的是 `Runtime.consoleAPICalled` 事件检测——只要 Playwright /
+  //   Puppeteer 调过 `Runtime.enable`（默认每个 frame 都调），任何 console.* 都会
+  //   触发 V8 inspector 把消息序列化送给 host，**这一步发生在 V8 内部，JS 拦不住**。
+  //   真正的修复需要在 Playwright 源码或 chromium-fork 层面禁掉 `Runtime.enable` 自动调用
+  //   （参 rebrowser-patches 的做法）。这条留给 v0.2 / chromium-fork 阶段。
+  //
+  // 那为什么还保留这段？因为它**并不冗余**：
+  //   1. dbi-bot 的[2024 公开文章](https://deviceandbrowserinfo.com/learning_zone/articles/detecting-headless-chrome-puppeteer-2024)
+  //      给出了**老式探测**写法：
+  //        var e = new Error();
+  //        Object.defineProperty(e, 'stack', { get() { detected = true; } });
+  //        console.log(e);  // CDP 序列化时调 getter → detected = true
+  //      （注：dbi-bot 自己**已经升级**到 Runtime.consoleAPICalled 事件检测，但很多
+  //      自部署反爬、教学站、第三方 stealth-test 仍用上述老式探测代码片段。）
+  //   2. 把 `Object.defineProperty` 等三条路径上对 Error.stack 装 accessor 的尝试
+  //      静默吞掉，**精确**关掉那条路径，零误伤合法库（sentry / pino / mocha / jest
+  //      / lodash / react 都读 .stack 但**不会**用 defineProperty + getter 模式
+  //      重定义它，这个 pattern 几乎是 CDP 探测专用）。
+  //   3. 防御纵深：哪天哪个反爬同时跑两条 probe，至少老的我们能挡住。
+  //
+  // 修法：拦截 `Object.defineProperty` / `Reflect.defineProperty` /
+  // `Object.defineProperties` 三条路径，当调用方试图给 Error 实例的 `stack` 属性
+  // 安装 accessor descriptor (getter/setter) 时**静默吞掉**——返回成功值但不实际
+  // 安装。后续 console.log 走到 CDP 序列化时读到的还是原始 stack 字符串，
+  // detection getter 永不触发。
+  //
+  // 同样的逻辑镜像到 worker scope。见上方 workerSpoofSrc 内嵌入的对应字符串。
+  try {
+    function isErrorInstance(obj: unknown): boolean {
+      if (obj == null || typeof obj !== 'object') return false;
+      try {
+        return obj instanceof Error;
+      } catch {
+        return false;
+      }
+    }
+    function hasAccessor(desc: unknown): desc is PropertyDescriptor {
+      if (desc == null || typeof desc !== 'object') return false;
+      const d = desc as PropertyDescriptor;
+      return typeof d.get === 'function' || typeof d.set === 'function';
+    }
+    function shouldBlockStackHook(
+      obj: unknown,
+      prop: PropertyKey,
+      desc: unknown,
+    ): boolean {
+      return prop === 'stack' && isErrorInstance(obj) && hasAccessor(desc);
+    }
+
+    const origDefineProperty = Object.defineProperty;
+    Object.defineProperty = wrapStealth(origDefineProperty, {
+      apply(target, thisArg: unknown, args: unknown[]) {
+        if (args.length >= 3) {
+          const [obj, prop, desc] = args as [unknown, PropertyKey, unknown];
+          if (shouldBlockStackHook(obj, prop, desc)) {
+            // 返回原 obj 假装成功（Object.defineProperty 真实返回值就是第一参）。
+            return obj as object;
+          }
+        }
+        return Reflect.apply(target, thisArg, args);
+      },
+    }) as typeof Object.defineProperty;
+
+    const origReflectDefineProperty = Reflect.defineProperty;
+    Reflect.defineProperty = wrapStealth(origReflectDefineProperty, {
+      apply(target, thisArg: unknown, args: unknown[]) {
+        if (args.length >= 3) {
+          const [obj, prop, desc] = args as [unknown, PropertyKey, unknown];
+          if (shouldBlockStackHook(obj, prop, desc)) {
+            // Reflect.defineProperty 真实返回 boolean (success)。
+            return true;
+          }
+        }
+        return Reflect.apply(target, thisArg, args);
+      },
+    }) as typeof Reflect.defineProperty;
+
+    const origDefineProperties = Object.defineProperties;
+    Object.defineProperties = wrapStealth(origDefineProperties, {
+      apply(target, thisArg: unknown, args: unknown[]) {
+        if (args.length >= 2) {
+          const [obj, descs] = args as [unknown, unknown];
+          if (
+            isErrorInstance(obj) &&
+            descs != null &&
+            typeof descs === 'object'
+          ) {
+            // 过滤掉 stack 上的 accessor descriptor，其它正常透传。
+            const filtered: PropertyDescriptorMap = {};
+            const src = descs as Record<string, unknown>;
+            for (const k of Object.keys(src)) {
+              const d = src[k];
+              if (k === 'stack' && hasAccessor(d)) continue;
+              if (d !== undefined) filtered[k] = d as PropertyDescriptor;
+            }
+            return Reflect.apply(target, thisArg, [obj, filtered]) as object;
+          }
+        }
+        return Reflect.apply(target, thisArg, args);
+      },
+    }) as typeof Object.defineProperties;
+  } catch (err) {
+    console.debug('[mosaiq] cdp hardening failed', err);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

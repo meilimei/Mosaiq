@@ -306,6 +306,192 @@ function parseUniquenessPct(s: string | undefined): number | null {
   return m && m[1] ? Number.parseFloat(m[1]) : null;
 }
 
+/**
+ * deviceandbrowserinfo Bot Check —— 把每个布尔信号映射回我们的 surface 分类。
+ *
+ * 任何 `true` 都意味着 spoof 失败；high severity（直接揭穿自动化的）vs
+ * medium（弱信号 / 软可疑）按 detector 名分类。
+ */
+const DBI_KEY_TO_SURFACE: Readonly<
+  Record<string, { surface: Surface; severity: 'high' | 'medium' | 'low' }>
+> = {
+  hasBotUserAgent: { surface: 'navigator', severity: 'high' },
+  hasWebdriverTrue: { surface: 'webdriver', severity: 'high' },
+  hasWebdriverInFrameTrue: { surface: 'webdriver', severity: 'high' },
+  isPlaywright: { surface: 'webdriver', severity: 'high' },
+  hasInconsistentChromeObject: { surface: 'navigator', severity: 'medium' },
+  isPhantom: { surface: 'webdriver', severity: 'high' },
+  isNightmare: { surface: 'webdriver', severity: 'high' },
+  isSequentum: { surface: 'webdriver', severity: 'high' },
+  isSeleniumChromeDefault: { surface: 'webdriver', severity: 'high' },
+  isHeadlessChrome: { surface: 'navigator', severity: 'high' },
+  isWebGLInconsistent: { surface: 'webgl', severity: 'high' },
+  isAutomatedWithCDP: { surface: 'webdriver', severity: 'high' },
+  isAutomatedWithCDPInWebWorker: { surface: 'webdriver', severity: 'high' },
+  hasInconsistentClientHints: { surface: 'navigator', severity: 'high' },
+  hasInconsistentGPUFeatures: { surface: 'webgl', severity: 'medium' },
+  isIframeOverridden: { surface: 'other', severity: 'medium' },
+  hasInconsistentWorkerValues: { surface: 'navigator', severity: 'high' },
+  hasHighHardwareConcurrency: { surface: 'navigator', severity: 'low' },
+  hasHeadlessChromeDefaultScreenResolution: { surface: 'screen', severity: 'high' },
+  hasSuspiciousWeakSignals: { surface: 'other', severity: 'low' },
+};
+
+function analyzeDbiBot(extracted: Record<string, unknown>, hits: SurfaceHit[]): string {
+  const flags = (extracted.flags as Record<string, boolean> | undefined) ?? {};
+  const triggered = (extracted.flagsTriggered as string[] | undefined) ?? [];
+  const total = (extracted.flagsTotal as number | undefined) ?? Object.keys(flags).length;
+  const trueCount = (extracted.flagsTrue as number | undefined) ?? triggered.length;
+  const verdict = extracted.verdict as string | null | undefined;
+
+  let md = `**Verdict**：${verdict ?? 'N/A'}\n\n`;
+  md += `**布尔信号**：${trueCount}/${total} 触发\n\n`;
+
+  if (trueCount === 0 && total > 0) {
+    md += `_全部 ${total} 个 bot 信号均未触发 — spoof 通过_ ✅\n`;
+  } else if (total === 0) {
+    md += `_⚠️ 未解析到任何 \`hasXxx/isXxx\` 布尔字段；可能页面 DOM 已变化 / Turnstile 拦截 — 看截图_\n`;
+  } else {
+    md += `**触发的信号**：\n\n`;
+    for (const key of triggered) {
+      const route = DBI_KEY_TO_SURFACE[key] ?? {
+        surface: 'other' as Surface,
+        severity: 'medium' as const,
+      };
+      const icon =
+        route.severity === 'high' ? '🔴' : route.severity === 'medium' ? '🟡' : '⚪';
+      md += `- ${icon} **\`${key}\`** → surface: \`${route.surface}\`\n`;
+      hits.push({
+        surface: route.surface,
+        site: 'dbi-bot',
+        detector: key,
+        evidence: 'true',
+        severity: route.severity,
+      });
+    }
+  }
+  return md;
+}
+
+/**
+ * AmIUnique —— 关心两个事情：(a) 整体 verdict (unique vs not)；(b) outlier 属性数。
+ *
+ * outlier = similarity < 0.5%。出现 outlier 通常意味着 spoof 出了"真人不会有的组合"
+ * （例如 WebGL renderer = "NVIDIA GTX 1080" 但 platform = "MacIntel"）。
+ *
+ * 我们不直接 push high hit（amiunique 不是真在指控 bot），而是把每个 outlier 当作
+ * medium 提示，帮助挑下一个调优 surface。
+ */
+function analyzeAmIUnique(extracted: Record<string, unknown>, hits: SurfaceHit[]): string {
+  const verdict = extracted.verdict as string | null | undefined;
+  const attrs =
+    (extracted.attrs as
+      | Array<{ name: string; similarityPct: number | null; similarityRaw: string; value: string }>
+      | undefined) ?? [];
+  const outliers =
+    (extracted.outliers as
+      | Array<{ name: string; similarityPct: number | null; similarityRaw: string; value: string }>
+      | undefined) ?? [];
+  const total = (extracted.attrsTotal as number | undefined) ?? attrs.length;
+
+  let md = `**Verdict**：${verdict ?? 'N/A'}\n\n`;
+  md += `**抓到属性**：${total} 项\n\n`;
+  md += `**Outlier 属性（< 0.5% similarity）**：${outliers.length} 项\n\n`;
+
+  if (outliers.length === 0 && total > 0) {
+    md += `_所有属性都在合理常见区间 — 无 outlier 提示_\n`;
+  } else if (outliers.length > 0) {
+    md += `<details><summary>展开 Outlier 详情</summary>\n\n`;
+    for (const o of outliers.slice(0, 30)) {
+      md += `- 🟡 **${o.name}** \`${o.similarityRaw}\` → \`${o.value.slice(0, 80)}\`\n`;
+      const { surface } = attributeSurface(o.name, o.value);
+      hits.push({
+        surface,
+        site: 'amiunique',
+        detector: `amiunique outlier: ${o.name}`,
+        evidence: `similarity=${o.similarityRaw} value=${o.value.slice(0, 100)}`,
+        severity: 'medium',
+      });
+    }
+    md += `\n</details>\n`;
+  }
+
+  if (total === 0) {
+    md += `_⚠️ 未解析到属性表；amiunique DOM 结构可能已变化 — 看截图_\n`;
+  }
+  return md;
+}
+
+/**
+ * Pixelscan —— SPA，可能被 Cloudflare 卡住。我们做：
+ *   - 若 challenge 触发 → 输出警告 + 不 hit（站点未真正完成检测，结果不可信）。
+ *   - 否则按卡片状态出 high (danger) / medium (warning) hit。
+ */
+function analyzePixelscan(extracted: Record<string, unknown>, hits: SurfaceHit[]): string {
+  const cards =
+    (extracted.cards as
+      | Array<{ title: string; status: string; summary: string }>
+      | undefined) ?? [];
+  const danger = (extracted.dangerCards as number | undefined) ?? 0;
+  const warning = (extracted.warningCards as number | undefined) ?? 0;
+  const success = (extracted.successCards as number | undefined) ?? 0;
+  const unknown = (extracted.unknownCards as number | undefined) ?? 0;
+  const challengeDetected = extracted.challengeDetected as boolean | undefined;
+  const stillLoading = extracted.stillLoading as boolean | undefined;
+  const maskVerdict = extracted.maskVerdict as string | null | undefined;
+
+  let md = `**Mask Verdict**：${maskVerdict ?? 'N/A'}\n\n`;
+  md += `**核心卡片**：✅ ${success} / 🟡 ${warning} / 🔴 ${danger} / ⚪ ${unknown}\n\n`;
+
+  if (challengeDetected) {
+    md += `_⚠️ 检测到 Cloudflare / Turnstile 挑战 — pixelscan 未完成扫描，结果不可信。请用 \`HEADED=1\` 或换干净 IP 重跑。_\n`;
+    return md;
+  }
+  if (stillLoading) {
+    md += `_⚠️ SPA 仍处于 "Collecting Data..." 状态 — 反爬墙未让 fetch 出 result。请用 \`HEADED=1\` 或换干净 IP 重跑。本次结果跳过 hits 归因。_\n`;
+    // 不入 hits：因为根本没拿到检测结果
+    if (cards.length > 0) {
+      md += `\n<details><summary>展开 ${cards.length} 个白名单卡片（仅观察）</summary>\n\n`;
+      for (const c of cards) {
+        const icon =
+          c.status === 'danger' ? '🔴' : c.status === 'warning' ? '🟡' : c.status === 'success' ? '✅' : '⚪';
+        md += `- ${icon} **${c.title}** _(status: ${c.status})_\n`;
+      }
+      md += `\n</details>\n`;
+    }
+    return md;
+  }
+
+  if (cards.length === 0) {
+    md += `_⚠️ 未解析到任何核心检测卡片 — SPA 还未渲染完毕或选择器需要更新_\n`;
+    return md;
+  }
+
+  // 把 danger/warning 卡片入 hits
+  for (const c of cards) {
+    if (c.status !== 'danger' && c.status !== 'warning') continue;
+    const { surface, severity: attrSev } = attributeSurface(c.title, c.summary);
+    const sev: 'high' | 'medium' | 'low' =
+      c.status === 'danger' ? 'high' : c.status === 'warning' ? 'medium' : attrSev;
+    hits.push({
+      surface,
+      site: 'pixelscan',
+      detector: `pixelscan ${c.status}: ${c.title}`,
+      evidence: c.summary.slice(0, 200),
+      severity: sev,
+    });
+  }
+
+  md += `<details><summary>展开 ${cards.length} 个核心卡片详情</summary>\n\n`;
+  for (const c of cards) {
+    const icon =
+      c.status === 'danger' ? '🔴' : c.status === 'warning' ? '🟡' : c.status === 'success' ? '✅' : '⚪';
+    md += `- ${icon} **${c.title}** _(status: ${c.status})_\n`;
+  }
+  md += `\n</details>\n`;
+  return md;
+}
+
 function analyzeBrowserleaksWebgl(
   extracted: Record<string, unknown>,
   hits: SurfaceHit[],
@@ -501,6 +687,15 @@ function generate(rawPath: string, outDir: string): void {
           break;
         case 'browserleaks-webgl':
           md += analyzeBrowserleaksWebgl(r.extracted, hits, summary.persona);
+          break;
+        case 'dbi-bot':
+          md += analyzeDbiBot(r.extracted, hits);
+          break;
+        case 'amiunique':
+          md += analyzeAmIUnique(r.extracted, hits);
+          break;
+        case 'pixelscan':
+          md += analyzePixelscan(r.extracted, hits);
           break;
         case 'browserleaks-js':
         default:
