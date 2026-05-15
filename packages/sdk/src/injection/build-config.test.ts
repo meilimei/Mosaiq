@@ -205,6 +205,50 @@ describe('buildInjectionConfig', () => {
     });
   });
 
+  describe('webglProfile (Phase 1.9)', () => {
+    /**
+     * Phase 1.9：build-config 按 persona.gpu.webglRenderer 匹配 GL 参数 profile，
+     * 序列化（typed array → number[]，map key → hex 字符串）后送进 runner.ts。
+     */
+    it('Win11 persona (Intel UHD 730) 派生 INTEL_UHD_730_D3D11 profile', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-glp-w11', displayName: 'X' });
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.webglProfile).not.toBeNull();
+      expect(cfg.webglProfile?.name).toContain('UHD Graphics 730');
+      // 关键参数：MAX_TEXTURE_SIZE = 0x0d33 = 16384
+      expect(cfg.webglProfile?.webgl1['0xd33']).toBe(16384);
+      // MAX_VIEWPORT_DIMS = 0x0d3a = [16384, 16384]
+      expect(cfg.webglProfile?.webgl1['0xd3a']).toEqual([16384, 16384]);
+    });
+
+    it('Win10 / macOS / Ubuntu persona 暂未匹配（保留 null → runner 跳过 spoof）', () => {
+      // Win10 用 UHD 630（不在 KNOWN_PROFILES 内）
+      expect(
+        buildInjectionConfig(createWin10ChromeUsPersona({ id: 'inj-glp-w10', displayName: 'X' }))
+          .webglProfile,
+      ).toBeNull();
+      // macOS 用 Apple M2
+      expect(
+        buildInjectionConfig(
+          createMacosSonomaChromeUsPersona({ id: 'inj-glp-mac', displayName: 'X' }),
+        ).webglProfile,
+      ).toBeNull();
+      // Ubuntu 用 Mesa
+      expect(
+        buildInjectionConfig(
+          createUbuntu2204ChromeUsPersona({ id: 'inj-glp-ubt', displayName: 'X' }),
+        ).webglProfile,
+      ).toBeNull();
+    });
+
+    it('webglProfile JSON 往返不变（序列化进 page context 必须 stable）', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-glp-rt', displayName: 'X' });
+      const cfg = buildInjectionConfig(persona);
+      const roundTrip = JSON.parse(JSON.stringify(cfg.webglProfile));
+      expect(roundTrip).toEqual(cfg.webglProfile);
+    });
+  });
+
   describe('uaCh (UA-CH 派生)', () => {
     it('derives Chrome triple brand list with Not.A/Brand v8 + Chromium', () => {
       const persona = createWin11ChromeUsPersona({ id: 'inj-uach-w', displayName: 'W' });

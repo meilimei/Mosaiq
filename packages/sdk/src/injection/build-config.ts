@@ -7,6 +7,7 @@ import { seedToUint32 } from '@mosaiq/persona-schema';
 
 import { buildUserAgent } from '../ua.js';
 import type { InjectionConfig } from './types.js';
+import { selectWebglProfile, serializeProfile } from './webgl-profiles.js';
 
 /**
  * 把 persona.browser + persona.system.os 翻译成 NavigatorUAData 表面字段。
@@ -136,6 +137,13 @@ export function buildInjectionConfig(persona: Persona): InjectionConfig {
     // GPU
     webglVendor: persona.hardware.gpu.webglVendor,
     webglRenderer: persona.hardware.gpu.webglRenderer,
+    // GL capability 参数表（按 webglRenderer 字符串匹配选 profile；无匹配 → null
+    // → runner.ts §4 跳过 GL param spoof，保留 v0.1 的 UNMASKED_VENDOR/RENDERER
+    // 字符串 spoof，行为向后兼容）
+    webglProfile: (() => {
+      const profile = selectWebglProfile(persona.hardware.gpu.webglRenderer);
+      return profile ? serializeProfile(profile) : null;
+    })(),
 
     // Audio
     audioSampleRate: persona.hardware.audio.sampleRate,

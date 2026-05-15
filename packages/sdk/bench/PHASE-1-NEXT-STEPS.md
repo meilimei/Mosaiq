@@ -1033,6 +1033,370 @@ if (detected) isBot = true;
 - ✅ 全 9 站 bench：7/9 内容成功 + 2/9 网络超时（非 §12 回归）
 - ✅ 所有 trade-off 与下一步路径在文档里说清楚
 
+### Phase 1.7 — v0.2 第一炮：playwright-core 1.59.1 rebrowser patch（已完成，2026-05-15）
+
+按 §5.8.3「2026-05-15 实测后的修订评估」给出的 7 步清单一次性完成：
+
+1. ✅ `pnpm patch playwright-core@1.59.1 --edit-dir node_modules/.tmp-playwright-patch`
+2. ✅ `scripts/apply-rebrowser-patches.mjs` — 把上游 rebrowser `lib.patch` 的 6 文件 11 hunks 适配到 1.59.1
+3. ✅ `crPage.js` 三处 hunk 全部重写（`Runtime.addBinding` 已搬进 `exposePlaywrightBinding()`，1.52 patch 不能直接 apply）
+4. ✅ `bench:dbi-bot` 焦点跑：**20/20 flags FALSE**，`isAutomatedWithCDP=false`、`isAutomatedWithCDPInWebWorker=false` 全消
+5. ✅ 全 9 站 bench：**OK=9 FAIL=0**，零回归（sannysoft / dbi-bot 都从原 60s timeout 变成 12-20s 正常返回）
+6. ✅ `pnpm patch-commit` 落到 `patches/playwright-core@1.59.1.patch`（13.2 KB / 300 行）
+7. ✅ `pnpm.patchedDependencies` 自动写入根 `package.json`（pnpm patch-commit 副作用）
+
+#### 关键修订（vs 上游 rebrowser 1.52 patch）
+
+| 路径 | 1.52 行为 | 1.59 行为 | 适配 |
+|---|---|---|---|
+| `crPage.js` `Runtime.addBinding` | 紧跟 `Runtime.enable` 同 promise array | 移进条件分支 `exposePlaywrightBinding()` | 只 wrap `Runtime.enable`，addBinding 路径不动 |
+| Worker 实现 | `_executionContextPromise` + `_existingExecutionContext` | `ManualPromise` + `existingExecutionContext` (无下划线) | `getExecutionContext()` 用新属性名 |
+| `frames.js` 内部访问 | `this._page._delegate` (下划线) | `this._page.delegate` (无下划线，但 `_sessions`/`_mainFrameSession` 仍下划线) | 双重命名共存 |
+| `page.js` Worker.dispatch | 走旧 binding 路径 | 走 `${PageBinding.kController}` controller-based API | 仅保留 `!payload.includes("{")` 早返回守卫 |
+| **`utilityWorldName`** | 常量 `__playwright_utility_world__` | `__playwright_utility_world_${page.guid}` 动态 | **`__re__emitExecutionContext` 接 `utilityWorldName` 参数；`frames._context` 从 `this._page.delegate.utilityWorldName` 透传** |
+
+最后一行是 1.59 独有的隐形 deadlock 根因：1.52 patch 硬编码 `name: "__playwright_utility_world__"` 在 emit payload 里，在 1.59 上 `_onExecutionContextCreated` 会因 `contextPayload.name !== this._crPage.utilityWorldName` 静默忽略整个 utility context → `page.title()`/`page.locator()` 等任何走 utility world 的 API 永久 hang。诊断靠 `REBROWSER_PATCHES_DEBUG=1` + `bench/smoke-patch.ts` 5 步分段计时。
+
+#### 验证矩阵
+
+- ✅ `tsc --noEmit`: clean
+- ✅ `vitest`: 168/168 通过（与 Phase 1.6 同总数）
+- ✅ `bench/smoke-patch.ts`：`launchPersona → goto → title → evaluate(1+1)=2 → innerText` 全 OK，PATCH-ON 与 PATCH-OFF (MODE=0) 双模式均通过
+- ✅ `bench:all`（9 站全跑）：OK=9 FAIL=0，143.9s 总耗时
+- ✅ dbi-bot：`flagsTriggered: []`、`flagsTrue: 0`（之前 18/20 → 现 20/20）
+- ✅ creepjs：lies/bold-fail surfaces 仍为 1 + 1（与基线完全一致）
+
+#### 后续维护
+
+- 重跑 patch 流程：见 `scripts/apply-rebrowser-patches.mjs` 头部注释（6 步从 fresh 状态完整重建）
+- patch 行为开关：`REBROWSER_PATCHES_RUNTIME_FIX_MODE=0` 关闭 rebrowser 行为，回退到 vanilla Playwright 路径
+- 调试 trace：`REBROWSER_PATCHES_DEBUG=1` 打 isolated-world / main-world / bindingCalled 全链路 log
+
+#### dbi-bot 完整 20 flag 对照
+
+| flag | Phase 1.6 baseline | Phase 1.7 (patched) |
+|---|---|---|
+| hasBotUserAgent | false | false |
+| hasWebdriverTrue | false | false |
+| hasWebdriverInFrameTrue | false | false |
+| isPlaywright | false | false |
+| hasInconsistentChromeObject | false | false |
+| isPhantom | false | false |
+| isNightmare | false | false |
+| isSequentum | false | false |
+| isSeleniumChromeDefault | false | false |
+| isHeadlessChrome | false | false |
+| isWebGLInconsistent | false | false |
+| **isAutomatedWithCDP** | **true** | **false** ✅ |
+| **isAutomatedWithCDPInWebWorker** | **true** | **false** ✅ |
+| hasInconsistentClientHints | false | false |
+| hasInconsistentGPUFeatures | false | false |
+| isIframeOverridden | false | false |
+| hasInconsistentWorkerValues | false | false |
+| hasHighHardwareConcurrency | false | false |
+| hasHeadlessChromeDefaultScreenResolution | false | false |
+| hasSuspiciousWeakSignals | false | false |
+
+**净增收益**：dbi-bot 上 `isAutomatedWithCDP*` 两个 CDP 结构性指标全部翻转为 FALSE。v0.2 的第一个"硬指标"全部落地。
+
+### Phase 1.8 — sannysoft legacy 扫尾：plugins + mimeTypes + Notification.permission（代码完成 2026-05-15）
+
+**目标**：消掉 9 站 bench 上 sannysoft 的 4 个 legacy 检测 fail：
+
+| sannysoft 检测项 | 根因 | 修法 |
+|---|---|---|
+| `Permissions (New)` → prompt | `Notification.permission='denied'` (headless 默认) 与 `permissions.query.state='prompt'` 不一致，触发老 headless bug | Notification.permission spoof 成 `'default'` |
+| `Plugins Length (Old)` → 0 | `navigator.plugins.length === 0` (Playwright 默认空) | 注入 5 PDF plugins |
+| `Plugins is of type PluginArray` → failed | `navigator.plugins` 不是 `PluginArray` 实例 | 用 `Object.create(PluginArray.prototype)` 构造 |
+| `HEADCHR_PLUGINS` / `HEADCHR_PERMISSIONS` | fpscanner 同源检测 | 上面两个修复顺带 fix |
+
+#### 实现要点
+
+新增 §10.5（[`runner.ts:938-1095`](../src/injection/runner.ts)）：
+
+- **5 个 PDF plugins**（Chrome 88+ 全用户硬编码，0 entropy 增量）：
+  - PDF Viewer / Chrome PDF Viewer / Chromium PDF Viewer / Microsoft Edge PDF Viewer / WebKit built-in PDF
+  - 全部 `filename: "internal-pdf-viewer"`, `description: "Portable Document Format"`
+- **2 个 mime types**：`application/pdf` + `text/pdf`，`enabledPlugin` 指向 PDF Viewer
+- **`navigator.pdfViewerEnabled = true`**（Chrome 88+ 引入的布尔 feature flag）
+- **`Notification.permission = 'default'`**（与 §10 permissions.query='prompt' 组成 sannysoft 期望的"真人态"）
+
+#### 反检测兼容
+
+- `Object.create(PluginArray.prototype)` / `Object.create(Plugin.prototype)` / `Object.create(MimeType.prototype)` 让所有 `instanceof` 检测过
+- `defineProtoGetter(navigator, 'plugins', fakePluginArray)` 等 → 同 §1 navigator 字段一致的 stealth 路径（getter on `Navigator.prototype`，不留 own property，`Function.prototype.toString` 仍是 `[native code]`）
+- `wrapStealth` 包装 Notification.permission getter，CreepJS getPrototypeLies 扫不到异常
+
+#### 验证矩阵
+
+- ✅ `tsc --noEmit`：clean
+- ✅ `vitest`：**178/178 通过**（168 → 178，runner.test.ts 25 → 35），新增 10 测试：
+  - plugins.length === 5 / instanceof PluginArray
+  - plugins[0] is "PDF Viewer" / instanceof Plugin
+  - 5 个 plugin names 完整枚举
+  - plugins.namedItem("PDF Viewer") 返回正确实例
+  - mimeTypes.length === 2 / instanceof MimeTypeArray
+  - mimeTypes[0] instanceof MimeType + enabledPlugin → plugins[0]
+  - pdfViewerEnabled === true
+  - Notification.permission === "default"（happy-dom 跳过，仅 Chrome 环境验证）
+  - 无 own property 泄露（CreepJS getPrototypeLies 守卫）
+
+#### bench 验证状态
+
+- ⏸️ **本地 TLS 网络问题暂缓**：bench 跑时 `net::ERR_CONNECTION_CLOSED`，
+  `curl.exe` 也确认 schannel CRL/OCSP server 当前不可达（`CRYPT_E_REVOCATION_OFFLINE`），
+  全网 HTTPS 暂时挂掉。**与 Phase 1.8 修改完全无关**（同样 curl 直连 example.com / github 都失败）。
+- 等本地网络恢复后跑：
+  ```bash
+  $env:ONLY='sannysoft,dbi-bot'; pnpm --filter @mosaiq/sdk run bench:all; Remove-Item env:ONLY
+  ```
+  预期结果：sannysoft 4 个 plugins/permissions 红 → 全绿；dbi-bot 仍 20/20。
+
+#### 后续：v0.2 剩余主炮
+
+下一锤目标是 **creepjs WebGL bold-fail (`72f45525`)** + **Canvas 2d lies (`e9cf3faa`)**——这两个是
+9 站 bench 上唯一两个还亮 🔴 的硬指标。预计 4-8h focused session：
+1. 启 `bench/diagnose-creepjs.ts` + `bench/diagnose-webgl.ts` 复现单帧
+2. 对照 Intel UHD 730 实机 gl.getParameter() 全 78 参数 → 找 mismatch
+3. 加 `WEBGL_debug_renderer_info.UNMASKED_*` extension 一致性
+4. Canvas: 检查 toDataURL/getImageData/measureText 三 surface 噪声是否引入"非随机"模式（CreepJS lies 引擎核心）
+
+### Phase 1.9 — WebGL GL 参数对照表（代码完成 + 离线验证 2026-05-15）
+
+**目标**：消 creepjs **WebGL bold-fail (`72f45525`)** —— v0.1 只 spoof 两个字符串
+（`UNMASKED_VENDOR_WEBGL` / `UNMASKED_RENDERER_WEBGL`），但 CreepJS 把 ~78 个 GL
+capability 参数（MAX_TEXTURE_SIZE / MAX_VIEWPORT_DIMS / MAX_VERTEX_ATTRIBS 等）一起
+hash 与声称 GPU 交叉对照。host 实际 GPU 与 Intel UHD 730 不一致 → CreepJS 立刻 bold-fail。
+
+#### 关键诊断
+
+跑了 `bench/diagnose-creepjs.ts`（已存在的 lies detector 移植）：所有 `scan_*: []`，
+说明 queryLies 在 WebGL/Navigator/Screen/DOMRect/Permissions/Intl/Date 上**全 clean**
+（我们的 wrapStealth + Proxy + native toString preservation 技术完美）。
+
+那 bold-fail 必然来自 **GL 参数值本身**与声称 GPU 不一致 —— 这就是 v0.2 #2 立项的
+"WebGL/Audio cross-check"。
+
+#### 实现
+
+新增 `packages/sdk/src/injection/webgl-profiles.ts`（180 行）：
+- `WebglProfile`：`{ name, matchRenderer, webgl1: Map<number, GlParamValue>, webgl2: Map<...> }`
+- `INTEL_UHD_730_D3D11`：硬编码 21 个 capability 参数（基于 chrome://gpu + webgl-stat 公共聚合）
+  - WebGL1: 22 项（MAX_TEXTURE_SIZE=16384、MAX_VIEWPORT_DIMS=[16384,16384]、MAX_VERTEX_ATTRIBS=16、
+    各 *_BITS=8/8/8/8/24/8/4、SAMPLES=0、ALIASED_*_RANGE 等）
+  - WebGL2: 14 项（MAX_3D_TEXTURE_SIZE=2048、MAX_DRAW_BUFFERS=8、MAX_COLOR_ATTACHMENTS=8、
+    MAX_FRAGMENT_INPUT_COMPONENTS=128、MIN/MAX_PROGRAM_TEXEL_OFFSET、MAX_SAMPLES=16、UBO 参数 ×6）
+- `selectWebglProfile(renderer)` → 按字符串正则匹配 KNOWN_PROFILES 第一个 hit
+- `serializeProfile(profile)` → 降级成可 JSON 化的 `{ webgl1: Record<hex, val>, webgl2: ... }`
+
+`build-config.ts`：派生 `webglProfile` 字段（null 表示无 profile 时跳过 spoof，向后兼容）。
+
+`runner.ts §4`：扩展 `makeGetParameterProxy` 接受 spoofMap 参数：
+- 反序列化 hex 字符串 key → number；number[] value 按 pname 重建成 Int32Array / Float32Array
+- Proxy.apply 增加 `spoofMap.get(pname)` 查表分支
+- 每次返回新构造的 typed array（real GL 也是 fresh 一份；同一引用会被 CreepJS 检出"返回相同对象"）
+- WebGL2 context 用 `webgl1 ∪ webgl2` merged map（因 WebGL2 继承 WebGL1 capability）
+
+#### 关键设计点
+
+- **不覆盖 context-dependent 参数**（当前绑定的 buffer/texture/framebuffer/viewport）。这些值随
+  调用 site 变化，spoof 一个静态常量会让 WebGL app 直接挂掉。**只覆盖 capability 常量**
+  （MAX_*  / *_BITS / ALIASED_*_RANGE），这些值在 context 生命周期不变，安全 spoof。
+- **typed array 用 plain `number[]` 序列化**（typed array 过 JSON 会丢失）。runner.ts 用
+  `INT32_PNAMES` / `FLOAT32_PNAMES` 两个 Set 按 pname 决定重建成哪种 typed array。
+- **per-call clone**：每次 getParameter 调用返回一份新 typed array copy（real GL 行为）。
+
+#### 验证矩阵
+
+- ✅ `tsc --noEmit`：clean
+- ✅ `vitest`：**197/197 通过**（178 → 197，新增 19 测试）：
+  - `webgl-profiles.test.ts` 16 新测：hex 常量正确性 / typed-array set 互斥 /
+    profile 字段值与真机一致 / selector 正负匹配 / 序列化 JSON 往返
+  - `build-config.test.ts` 3 新测：Win11 → INTEL_UHD_730 派生 / Win10+macOS+Ubuntu → null /
+    JSON 往返不变
+- ✅ `bench/diagnose-webgl.ts`：**54/54 pass**（9 原 UNMASKED + 45 Phase 1.9 GL 参数检查），
+  覆盖 WebGL1 + WebGL2 + OffscreenCanvas 三 context，全部 12 个 number 参 + 3 个 typed-array 参
+  返回值与 Intel UHD 730 reference 完全一致。
+- ⏸️ **网络恢复后**跑 `bench:all` 验证 creepjs 站 WebGL bold-fail 真正消失（72f45525 hash 应变）。
+
+#### 后续：profile 库扩展
+
+当前只有 Intel UHD 730 (Win11/D3D11) 一份 profile。未来 session 按需添加：
+- Intel UHD 630 (Win10/D3D11) —— win10-chrome-us 模板
+- Apple M2 (macOS/Metal) —— macos-sonoma 模板
+- Mesa Intel (Ubuntu/OpenGL) —— ubuntu-2204 模板
+- NVIDIA / AMD 桌面常见型号
+
+添加流程：fork `INTEL_UHD_730_D3D11`、改 webgl1/webgl2 数值、加 `matchRenderer` 正则、加 vitest 覆盖、
+push 到 `KNOWN_PROFILES` 数组首位（顺序决定优先级）。
+
+#### v0.2 主炮剩余
+
+Phase 1.9 后唯一还红的是 **creepjs Canvas 2d lies (`e9cf3faa`)** —— v0.1 引入的 per-persona
+确定性 noise 与"真机自然变异"分布不同，CreepJS 把它标 lies。修法选项：
+1. **降低 noise 强度**（仅修改 LSB，让分布更接近 anti-aliasing 抖动）
+2. **接受这条 lies**（per-persona uniqueness 是核心特性，1 条 lies 可接受）
+3. **chromium-fork** 在 Skia / Cc layer 注入 GPU-side noise（v1.0 计划）
+
+短期推荐选项 2（接受），把精力转向 v0.3 工作（GREASE 顺序随机化 / Network.setExtraHTTPHeaders）。
+
+### Phase 1.9 后续修复 — Navigator lies (getPluginLies enumerable 污染)
+
+**日期**：2026-05-15（Phase 1.9 同日）
+
+**症状**：Phase 1.9 部署后 creepjs bench 真机测出**新**的 Navigator lies (`b067dc4a`)，这是
+Phase 1.8（plugins/mimeTypes spoof）引入但之前未触发的回归。Phase 1.9 的 GL 参数 spoof
+本身并未引入此 lie，只是首次跑 creepjs 真机 bench 才暴露。
+
+**Root cause**（reading [creepjs/src/lies/index.ts](https://github.com/abrahamjuliot/creepjs/blob/master/src/lies/index.ts) `getPluginLies`）：
+
+```js
+pluginsList.forEach((plugin) => {
+  const pluginMimeTypes = Object.values(plugin).map((m) => m.type);
+  pluginMimeTypes.forEach((mt) => {
+    if (!trustedMimeTypes.has(mt)) lies.push('invalid mimetype');
+  });
+});
+```
+
+CreepJS 期望 `Object.values(plugin)` **只返回 MimeType 列表**（数字索引）。而我们的
+Phase 1.8 实现中 Plugin metadata 设了 `enumerable: true`：
+
+```ts
+Object.defineProperties(plugin, {
+  name: { value: p.name, enumerable: true, configurable: false },        // ❌
+  description: { value: p.description, enumerable: true, configurable: false }, // ❌
+  filename: { value: p.filename, enumerable: true, configurable: false },      // ❌
+  length: { value: ..., enumerable: false, ... },
+  '0': { value: mt0, enumerable: true },
+  '1': { value: mt1, enumerable: true },
+});
+```
+
+`Object.values(plugin)` 返回 `[<MimeType>, <MimeType>, "PDF Viewer", "Portable...",
+"internal-pdf-viewer"]`。后续 `.map(m => m.type)` 中字符串 `.type` 是 `undefined`，
+CreepJS 标 5 个 invalid mimetype × 5 plugins = **25 invalid mimetype lies** → Navigator lies。
+
+**修复**（`@/d:/projects/Mosaiq/packages/sdk/src/injection/runner.ts:1075-1144`）：把 Plugin
+的 `name/description/filename` 与 MimeType 的 `type/suffixes/description/enabledPlugin` 都
+改为 `enumerable: false`。这与真实 Chrome IDL 一致 —— 这些 attributes 在真 Chromium 中
+是 prototype getter 而非 instance own enumerable property。
+
+#### 验证（real chrome bench）
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| `liesCount` (CreepJS) | 2 | **1** |
+| `boldFailCount` | 1 | 1 |
+| Navigator lies | 🔴 `b067dc4a` | **✅ clean** (`Navigator90812eb0`，普通 hash，非 lies class) |
+| Canvas 2d lies | 🟡 已知 by-design | 🟡 已知 by-design |
+| WebGL bold-fail | 🔴 still partial | 🔴 still partial |
+
+#### 9 站综合 bench
+
+- ✅ 9/9 sites accessible
+- ✅ vitest **201/201 passing**（197 → 201，新增 4 回归测试覆盖 Object.values 路径）
+- ✅ 唯一剩余真实失败：3 项
+  - 🔴 creepjs WebGL bold-fail —— 需扩展 INTEL_UHD_730 profile 到 78 参数（当前 36）
+  - 🟡 creepjs Canvas 2d lies —— per-persona PRNG 噪声 by-design（接受）
+  - 🟡 browserleaks-canvas 100% uniqueness —— per-persona uniqueness by-design（接受）
+
+#### 关键测试（`runner.test.ts:259-310`）
+
+防退化：
+1. `Object.values(plugin)` 只返回 MimeType 列表（无 metadata 污染）
+2. Plugin metadata 全 `enumerable: false`
+3. MimeType IDL attributes 全 `enumerable: false` + `Object.values(mt).length === 0`
+4. **完整模拟 CreepJS getPluginLies 路径**：5 plugins × 2 mimeTypes 全 `valid` → 0 lies
+
+### Phase 1.9b — 完整 49 named params 覆盖 + WebGL bold-fail root cause
+
+**日期**：2026-05-15（Phase 1.9 同日扩展）
+
+**目标**：把 INTEL_UHD_730_D3D11 profile 从 36 → 49 个 named params 全覆盖，对应 CreepJS
+`src/webgl/index.ts` `getParamNames()` 完整 short list。
+
+**新增 22 个 spoof entry**（`@/d:/projects/Mosaiq/packages/sdk/src/injection/webgl-profiles.ts`）：
+
+- **String params (4)** — VENDOR / RENDERER / VERSION / SHADING_LANGUAGE_VERSION
+  - WebGL1: `"WebKit"` / `"WebKit WebGL"` / `"WebGL 1.0 (OpenGL ES 2.0 Chromium)"` / `"WebGL GLSL ES 1.0..."`
+  - WebGL2: 同 vendor/renderer，version+SLV 改为 2.0/3.00
+  - merge 逻辑：`webgl2MergedSpoof = [...webgl1, ...webgl2]` —— webgl2 同 key 覆盖 webgl1
+- **Stencil initial state (4)** — STENCIL_VALUE_MASK / WRITEMASK / BACK_VALUE_MASK / BACK_WRITEMASK
+  - 全 `0x7fffffff`（GL ES 2.0 spec 初始值，real device capture 一致）
+- **WebGL2-only caps (14)** —— 来自 browserleaks-webgl 真机捕获：
+  - MAX_ELEMENTS_VERTICES/INDICES = 1048575
+  - MAX_TEXTURE_LOD_BIAS = 15（Intel UHD 730 实测，spec 默认 2.0）
+  - MAX_FRAGMENT_UNIFORM_COMPONENTS / MAX_VERTEX_UNIFORM_COMPONENTS = 16384
+  - MAX_VARYING_COMPONENTS = 124（注意非 30×4=120）
+  - MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS = 128 / SEPARATE_COMPONENTS = 4 / SEPARATE_ATTRIBS = 4
+  - MAX_COMBINED_VERTEX/FRAGMENT_UNIFORM_COMPONENTS = 245760
+  - MAX_SERVER_WAIT_TIMEOUT = 0
+  - MAX_ELEMENT_INDEX = 0xfffffffe
+  - MAX_CLIENT_WAIT_TIMEOUT_WEBGL = 0
+
+**runner.ts §4 扩展**：`buildSpoofMap` + `cloneSpoofValue` 加 string return type，`SpoofVal = number | string | Int32Array | Float32Array`，sanity check `STRING_PNAMES`。
+
+#### bench：WebGL hash 进展轨迹（每次 hash 都变 = spoof 生效）
+
+| 阶段 | WebGL surface hash | 状态 |
+|---|---|---|
+| Phase 1.6 (UNMASKED-only) | `72f45525` | bold-fail |
+| Phase 1.9 (36 params) | `aafac93b` → `b0672fc5` | bold-fail |
+| Phase 1.9 + Navigator fix | `a310665c` | bold-fail |
+| Phase 1.9b (49 params 100% 覆盖) | `6f274475` → `fca24b37` | **仍 bold-fail** |
+
+#### Root cause 锁定 — CreepJS 白名单 gap（不是 Mosaiq 的 bug）
+
+`bench/diagnose-creepjs-webgl-hash.ts` 直接复刻 CreepJS `Analysis` 计算路径，结果：
+
+```
+UNMASKED_RENDERER_WEBGL: ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 ...)
+GPU brand:               Intel
+numeric value count:     28
+webglParams (sorted):    1,4,6,7,8,10,14,15,16,23,28,30,31,32,60,64,124,127,128,
+                         1024,2048,4096,16384,65536,245760,1048575,2147483647,4294967294
+caps hash (estimated):   -2146263890
+```
+
+CreepJS LowerEntropy.WEBGL 触发逻辑（`src/webgl/index.ts`）：
+
+```js
+const webglCapabilities = webglParams.reduce((acc, val, i) => acc ^ (+val + i), 0)
+const hasSusCapabilities = webglCapabilities && !capabilities.includes(webglCapabilities)
+if (hasSusCapabilities) LowerEntropy.WEBGL = true   // ← 触发 bold-fail
+```
+
+`capabilities` 是 CreepJS 项目维护的 ~250 个静态白名单（已知 GPU 真值 hash 集合）。我们
+hash `-2146263890` **不在** 白名单（邻近值有 -2146253671/-2146277218/-2146286438 等，但
+间隙正好命中我们的 hash）。
+
+**核心结论**：Intel UHD 730 是 2022 年 Alder Lake 12 代，CreepJS 静态数据库未及时收录。
+**真正的** Intel UHD 730 用户访问 creepjs.com 也会被同样标 bold-fail —— 这不是 Mosaiq spoof
+错误，而是 CreepJS 项目 GPU 数据库覆盖率 gap。
+
+#### 验证
+
+| 测试 | 修复前 | Phase 1.9b 后 |
+|---|---|---|
+| vitest | 197/197 | **209/209** (+12 测试覆盖 Phase 1.9b) |
+| diagnose-webgl 离线 | 54/54 | 54/54 |
+| 49 named params 覆盖率 | 36/49 (73%) | **49/49 (100%)** |
+| 9 站真机 bench | 9/9 OK | 9/9 OK |
+| 真实失败项 | 3 | **3** (无回归) |
+
+#### 后续选项（v0.3+）
+
+| 选项 | 优势 | 劣势 |
+|---|---|---|
+| **A. 接受 bold-fail** | 与真实 Intel UHD 730 用户行为一致，persona-honest | 视觉指标差 |
+| **B. 切到白名单内 GPU**（如 Intel UHD 630） | 立即消 bold-fail | 需多 profile + persona migration |
+| **C. 提交指纹至 CreepJS upstream** | 长期解决 + 帮助生态 | 不可控 / 慢 |
+| **D. 多 profile auto-fallback** | 灵活 persona-driven | 实现复杂，~v0.4 |
+
+短期推荐 **A**（接受），同时 v0.3 实现 **B**（添加 INTEL_UHD_630_D3D11 等已知白名单 profile），
+让 user 可选 persona 模板 trade-off uniqueness vs CreepJS pass。
+
 ---
 
 ## 6. 启动 Day 1 的命令

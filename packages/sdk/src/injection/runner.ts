@@ -672,23 +672,112 @@ export function injectAll(config: InjectionConfig): void {
       const WEBGL_UNMASKED_VENDOR = 0x9245;
       const WEBGL_UNMASKED_RENDERER = 0x9246;
 
+      // ── GL capability 参数表（Phase 1.9） ──
+      //
+      // Profile 由 build-config.ts 按 persona.gpu.webglRenderer 选定；map 内的 key
+      // 是 hex 字符串（"0x0d33"），value 是 number 或 number[]。我们把它重建成
+      // pname → 值 的查找表，typed-array 值在重建时按 IDL 规定的 Int32Array /
+      // Float32Array 包回。这样 getParameter Proxy 能直接 O(1) 找替换值。
+      //
+      // 哪些 pname 需要 Int32Array vs Float32Array —— 与 webgl-profiles.ts 内
+      // INT32_ARRAY_PARAMS / FLOAT32_ARRAY_PARAMS 同步（这里复刻一份避免跨文件
+      // 依赖；runner 序列化进 page 后没有外部 import）。
+      const INT32_PNAMES = new Set<number>([
+        0x0d3a, // MAX_VIEWPORT_DIMS
+      ]);
+      const FLOAT32_PNAMES = new Set<number>([
+        0x846e, // ALIASED_LINE_WIDTH_RANGE
+        0x846d, // ALIASED_POINT_SIZE_RANGE
+      ]);
+
+      // string return type 的 GL pname（VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION）
+      // 对应 webgl-profiles.ts 内 STRING_PARAMS。runner 序列化进 page 后没有外部 import，
+      // 这里复刻一份。
+      const STRING_PNAMES = new Set<number>([
+        0x1f00, // VENDOR
+        0x1f01, // RENDERER
+        0x1f02, // VERSION
+        0x8b8c, // SHADING_LANGUAGE_VERSION
+      ]);
+
+      type SpoofVal = number | string | Int32Array | Float32Array;
+
+      const buildSpoofMap = (
+        serialized: Readonly<Record<string, number | readonly number[] | string>> | undefined,
+      ): Map<number, SpoofVal> => {
+        const out = new Map<number, SpoofVal>();
+        if (!serialized) return out;
+        for (const [hex, val] of Object.entries(serialized)) {
+          const pname = parseInt(hex, 16);
+          if (Array.isArray(val)) {
+            // CreepJS 等 hash typed array 的 BYTES_PER_ELEMENT + .length + .buffer
+            // 指纹，必须用真正的 Int32Array / Float32Array 而非普通 number[]。
+            // 否则 Array.isArray(value) === true 反而暴露 spoof。
+            if (INT32_PNAMES.has(pname)) {
+              out.set(pname, new Int32Array(val));
+            } else if (FLOAT32_PNAMES.has(pname)) {
+              out.set(pname, new Float32Array(val));
+            } else {
+              // 未知 pname 默认 Int32Array（GL 多数 array 参数是整数 limit）
+              out.set(pname, new Int32Array(val));
+            }
+          } else if (typeof val === 'number') {
+            out.set(pname, val);
+          } else if (typeof val === 'string') {
+            // sanity: string 仅允许在 VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION
+            if (!STRING_PNAMES.has(pname)) {
+              console.debug(`[mosaiq] webgl spoof: unexpected string for pname 0x${pname.toString(16)}`);
+            }
+            out.set(pname, val);
+          }
+        }
+        return out;
+      };
+
+      const webgl1Spoof = buildSpoofMap(config.webglProfile?.webgl1);
+      const webgl2Spoof = buildSpoofMap(config.webglProfile?.webgl2);
+      // WebGL2 context 也会读 WebGL1 参数（继承），所以 merge 两表给 WebGL2 用。
+      // **关键**：webgl2 优先 —— VERSION / SHADING_LANGUAGE_VERSION 在 WebGL1 是
+      // "WebGL 1.0..."，WebGL2 是 "WebGL 2.0..."，merge 时 webgl2 必须覆盖 webgl1 同 key。
+      // Map 构造按入参顺序后写覆盖前写，所以 [...webgl1Spoof, ...webgl2Spoof] 即正确顺序。
+      const webgl2MergedSpoof = new Map<number, SpoofVal>([
+        ...webgl1Spoof,
+        ...webgl2Spoof,
+      ]);
+
       // 用 Proxy 替换 getParameter — 关键点：Proxy 不重写 `toString`，所以
       //   `WebGLRenderingContext.prototype.getParameter.toString()`
       // 会 forward 到 target.toString() 返回 `function getParameter() { [native code] }`，
       // 而不是暴露我们的 JS 源码。这是 BrowserLeaks `! ` hook detection 的修复方案。
       // 详见 `bench/PHASE-1-NEXT-STEPS.md` §0.5 与 `DEVELOPMENT.md` §7。
-      const makeGetParameterProxy = (orig: WebGLRenderingContext['getParameter']) =>
+      //
+      // Phase 1.9：spoof 表查找 → typed array 每次返回一份新 copy（real GL 也是
+      // 每调用一次构造新 typed array，缓存同一引用会被 CreepJS 检出"返回相同对象"）。
+      // string / number 是 immutable primitive，直接返回即可（不需 clone）。
+      const cloneSpoofValue = (v: SpoofVal) => {
+        if (typeof v === 'number' || typeof v === 'string') return v;
+        if (v instanceof Int32Array) return new Int32Array(v);
+        return new Float32Array(v);
+      };
+
+      const makeGetParameterProxy = (
+        orig: WebGLRenderingContext['getParameter'],
+        spoofMap: ReadonlyMap<number, SpoofVal>,
+      ) =>
         wrapStealth(orig, {
           apply(target, thisArg, args: [number]) {
             const [pname] = args;
             if (pname === WEBGL_UNMASKED_VENDOR) return config.webglVendor;
             if (pname === WEBGL_UNMASKED_RENDERER) return config.webglRenderer;
+            const spoofed = spoofMap.get(pname);
+            if (spoofed !== undefined) return cloneSpoofValue(spoofed);
             return Reflect.apply(target, thisArg, args);
           },
         });
 
       WebGLRenderingContext.prototype.getParameter = makeGetParameterProxy(
         WebGLRenderingContext.prototype.getParameter,
+        webgl1Spoof,
       );
 
       // WebGL2RenderingContext.prototype.getParameter 在 chromium 里通常**继承自** WebGL1
@@ -696,6 +785,8 @@ export function injectAll(config: InjectionConfig): void {
       // 注意：如果两者是同一函数对象，上面那一行已经替换了 WebGL1 的 prototype slot，
       // WebGL2 仍 inherit 那个 proxied 版本 — 但 `WebGL2.prototype.getParameter` 这个
       // own property（如果存在）需要单独处理。
+      //
+      // Phase 1.9：WebGL2 用 merged spoof（包含 WebGL1 + WebGL2 全部参数）。
       if (typeof WebGL2RenderingContext !== 'undefined') {
         const desc = Object.getOwnPropertyDescriptor(
           WebGL2RenderingContext.prototype,
@@ -704,6 +795,7 @@ export function injectAll(config: InjectionConfig): void {
         if (desc && typeof desc.value === 'function') {
           WebGL2RenderingContext.prototype.getParameter = makeGetParameterProxy(
             desc.value as WebGL2RenderingContext['getParameter'],
+            webgl2MergedSpoof,
           );
         }
       }
@@ -933,6 +1025,192 @@ export function injectAll(config: InjectionConfig): void {
     }
   } catch (err) {
     console.debug('[mosaiq] permissions spoof failed', err);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 10.5. Notification.permission + navigator.plugins / mimeTypes / pdfViewerEnabled
+  //
+  // 这一块覆盖 sannysoft 上仍亮红的 4 个 legacy 检测器：
+  //   - Permissions (New)     ← Notification.permission='denied' + permissions.query='prompt' 不一致 → 老 headless bug
+  //   - Plugins Length (Old)  ← navigator.plugins.length === 0
+  //   - Plugins is of type PluginArray ← navigator.plugins 不是 PluginArray 实例
+  //   - HEADCHR_PLUGINS / HEADCHR_PERMISSIONS ← fpscanner 同款检测
+  //
+  // 实现策略：
+  //   - Chrome 88+ 给所有用户硬编码 5 个 PDF 插件（PDF Viewer / Chrome PDF Viewer /
+  //     Chromium PDF Viewer / Microsoft Edge PDF Viewer / WebKit built-in PDF），
+  //     全部映射到内部 `internal-pdf-viewer` filename。每个用户都拿到同一份 → 0 entropy。
+  //   - mimeTypes 跟着挂 application/pdf 与 text/pdf，enabledPlugin 指向 PDF Viewer。
+  //   - Notification.permission = 'default'（headless 默认 'denied'，real Chrome 'default'）。
+  //     与 §10 permissions.query='prompt' 配合，sannysoft "Permissions (New)" 通过。
+  //
+  // 反检测兼容：
+  //   - 所有 plugin / mimeType 用 Object.create(<原型>) 构造，保证 instanceof 通过。
+  //   - 用 defineProtoGetter 在 Navigator.prototype 上挂 plugins/mimeTypes/pdfViewerEnabled
+  //     的 [[Replaceable]] getter（不留 own property，getter.toString() 仍是 native）。
+  //   - 不引入新的 own keys，CreepJS getPrototypeLies 扫不到异常。
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // 10.5.a Notification.permission
+  try {
+    if (typeof Notification !== 'undefined') {
+      const desc = Object.getOwnPropertyDescriptor(Notification, 'permission');
+      if (desc?.get) {
+        const proxiedGetter = wrapStealth(desc.get, {
+          apply: () => 'default',
+        });
+        Object.defineProperty(Notification, 'permission', {
+          get: proxiedGetter,
+          configurable: true,
+        });
+      }
+    }
+  } catch (err) {
+    console.debug('[mosaiq] Notification.permission spoof failed', err);
+  }
+
+  // 10.5.b navigator.plugins / navigator.mimeTypes / navigator.pdfViewerEnabled
+  try {
+    if (
+      typeof PluginArray === 'undefined' ||
+      typeof Plugin === 'undefined' ||
+      typeof MimeType === 'undefined' ||
+      typeof MimeTypeArray === 'undefined'
+    ) {
+      // 极端 host（部分 worker / test 环境）没这些构造函数 —— 静默跳过
+      throw new Error('plugin/mime constructors unavailable');
+    }
+
+    // ---- 1. PDF plugins & mime metadata (Chrome 88+ 公开常量) ----
+    const pluginData = [
+      { name: 'PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+      { name: 'Chrome PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+      { name: 'Chromium PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+      { name: 'Microsoft Edge PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+      { name: 'WebKit built-in PDF', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+    ];
+    const mimeData = [
+      { type: 'application/pdf', suffixes: 'pdf', description: 'Portable Document Format' },
+      { type: 'text/pdf', suffixes: 'pdf', description: 'Portable Document Format' },
+    ];
+
+    // ---- 2. MimeType 实例（继承 MimeType.prototype 通过 instanceof） ----
+    //
+    // 真实 Chromium 的 MimeType IDL 属性（type/suffixes/description/enabledPlugin）都是
+    // **prototype getter**，不是 own enumerable property。Object.values(mimeType) 在
+    // real chrome 返回 `[]`。
+    //
+    // 我们把这些 metadata 设成 **enumerable: false**，与 real chrome 行为一致；CreepJS
+    // `getPluginLies` 内部的 `Object.values(plugin).map(m => m.type)` 不会被这些数据污染
+    // （参见 §10.5.b 末端的 `Object.values` 注释）。
+    const mimeInstances = mimeData.map((m) => {
+      const mt = Object.create(MimeType.prototype) as MimeType & { enabledPlugin?: Plugin };
+      Object.defineProperties(mt, {
+        type: { value: m.type, enumerable: false, configurable: false },
+        suffixes: { value: m.suffixes, enumerable: false, configurable: false },
+        description: { value: m.description, enumerable: false, configurable: false },
+      });
+      return mt;
+    });
+
+    // ---- 3. Plugin 实例（每个 plugin 内部嵌 mimeTypes，支持索引访问） ----
+    //
+    // **关键**：name / description / filename / length 必须 `enumerable: false`。
+    // 原因：CreepJS `getPluginLies()` 在 `src/lies/index.ts` 里这样取 plugin 的 mimeTypes:
+    //
+    //   pluginsList.forEach((plugin) => {
+    //     const pluginMimeTypes = Object.values(plugin).map((mt) => mt.type)
+    //     pluginMimeTypes.forEach((mt) => {
+    //       if (!trustedMimeTypes.has(mt)) lies.push('invalid mimetype');
+    //     })
+    //   })
+    //
+    // 即只期望 `Object.values(plugin)` 返回 MimeType 列表（numeric indices）。如果我们
+    // 把 metadata 也设成 enumerable，`Object.values` 会返回 `[<MimeType>×2, "PDF Viewer",
+    // "Portable...", "internal-pdf-viewer"]`，字符串 `.type === undefined`，CreepJS 标 5
+    // 个 invalid mimetype → Navigator lies 触发。Phase 1.9 真机 bench 即由此导致回归。
+    //
+    // 修复：metadata enumerable:false（与 real chrome IDL 一致 —— 这些都是 prototype
+    // attribute getter，不应作为 own property 出现在 instance 上）。
+    const pluginInstances = pluginData.map((p) => {
+      const plugin = Object.create(Plugin.prototype) as Plugin;
+      Object.defineProperties(plugin, {
+        name: { value: p.name, enumerable: false, configurable: false },
+        description: { value: p.description, enumerable: false, configurable: false },
+        filename: { value: p.filename, enumerable: false, configurable: false },
+        length: { value: mimeInstances.length, enumerable: false, configurable: false },
+      });
+      // plugin[0], plugin[1] → mimeType（数字索引保留 enumerable:true，与 real chrome 一致）
+      mimeInstances.forEach((mt, j) => {
+        Object.defineProperty(plugin, String(j), { value: mt, enumerable: true });
+      });
+      Object.defineProperty(plugin, 'item', {
+        value: (n: number) => mimeInstances[n] ?? null,
+        configurable: true,
+      });
+      Object.defineProperty(plugin, 'namedItem', {
+        value: (n: string) => mimeInstances.find((mt) => mt.type === n) ?? null,
+        configurable: true,
+      });
+      return plugin;
+    });
+
+    // 双向：mimeType.enabledPlugin → PDF Viewer（任选 plugins[0]）。同样 enumerable:false
+    // 与 real chrome IDL 一致。
+    mimeInstances.forEach((mt) => {
+      Object.defineProperty(mt, 'enabledPlugin', {
+        value: pluginInstances[0],
+        enumerable: false,
+        configurable: false,
+      });
+    });
+
+    // ---- 4. PluginArray ----
+    const fakePluginArray = Object.create(PluginArray.prototype) as PluginArray;
+    pluginInstances.forEach((p, i) => {
+      Object.defineProperty(fakePluginArray, String(i), { value: p, enumerable: true });
+      // 命名访问：navigator.plugins['PDF Viewer'] → plugin
+      Object.defineProperty(fakePluginArray, p.name, { value: p, enumerable: false });
+    });
+    Object.defineProperties(fakePluginArray, {
+      length: { value: pluginInstances.length, enumerable: false, configurable: false },
+      item: {
+        value: (n: number) => pluginInstances[n] ?? null,
+        configurable: true,
+      },
+      namedItem: {
+        value: (n: string) => pluginInstances.find((p) => p.name === n) ?? null,
+        configurable: true,
+      },
+      refresh: { value: () => {}, configurable: true },
+    });
+
+    // ---- 5. MimeTypeArray ----
+    const fakeMimeArray = Object.create(MimeTypeArray.prototype) as MimeTypeArray;
+    mimeInstances.forEach((mt, i) => {
+      Object.defineProperty(fakeMimeArray, String(i), { value: mt, enumerable: true });
+      Object.defineProperty(fakeMimeArray, mt.type, { value: mt, enumerable: false });
+    });
+    Object.defineProperties(fakeMimeArray, {
+      length: { value: mimeInstances.length, enumerable: false, configurable: false },
+      item: {
+        value: (n: number) => mimeInstances[n] ?? null,
+        configurable: true,
+      },
+      namedItem: {
+        value: (n: string) => mimeInstances.find((mt) => mt.type === n) ?? null,
+        configurable: true,
+      },
+    });
+
+    // ---- 6. 挂到 Navigator.prototype 上（与其他 navigator 字段同款 stealth 路径） ----
+    defineProtoGetter(navigator, 'plugins', fakePluginArray);
+    defineProtoGetter(navigator, 'mimeTypes', fakeMimeArray);
+    // pdfViewerEnabled 是 Chrome 88+ 引入的布尔，PDF 插件存在时为 true。
+    // 真实 Chrome 全局 true（统一硬编码，与 plugins 同样无 entropy）。
+    defineProtoGetter(navigator, 'pdfViewerEnabled', true);
+  } catch (err) {
+    console.debug('[mosaiq] plugins/mimeTypes spoof failed', err);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

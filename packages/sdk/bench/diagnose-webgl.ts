@@ -59,8 +59,65 @@ async function main() {
     await page.waitForLoadState('domcontentloaded');
 
     // 在 page context 里跑一组检查
-    const probe = await page.evaluate((expectedRenderer) => {
+    const probe = await page.evaluate((_expectedRenderer) => {
+      void _expectedRenderer;
       const out: Record<string, unknown> = {};
+
+      // Phase 1.9 — GL capability 参数 spoof（Intel UHD 730 reference values）
+      // 把每个我们认为 spoof 了的 pname 在 WebGL1 / WebGL2 / OffscreenCanvas 三个
+      // context 上都查一遍，全部应该返回 profile 内常量。
+      const PHASE_1_9_REFS: Record<string, { pname: number; expected: unknown }> = {
+        MAX_TEXTURE_SIZE: { pname: 0x0d33, expected: 16384 },
+        MAX_CUBE_MAP_TEXTURE_SIZE: { pname: 0x851c, expected: 16384 },
+        MAX_RENDERBUFFER_SIZE: { pname: 0x84e8, expected: 16384 },
+        MAX_VERTEX_ATTRIBS: { pname: 0x8869, expected: 16 },
+        MAX_VERTEX_UNIFORM_VECTORS: { pname: 0x8dfb, expected: 4096 },
+        MAX_VARYING_VECTORS: { pname: 0x8dfc, expected: 30 },
+        MAX_TEXTURE_IMAGE_UNITS: { pname: 0x8872, expected: 16 },
+        MAX_FRAGMENT_UNIFORM_VECTORS: { pname: 0x8dfd, expected: 1024 },
+        MAX_COMBINED_TEXTURE_IMAGE_UNITS: { pname: 0x8b4d, expected: 32 },
+        RED_BITS: { pname: 0x0d52, expected: 8 },
+        DEPTH_BITS: { pname: 0x0d56, expected: 24 },
+        STENCIL_BITS: { pname: 0x0d57, expected: 8 },
+      };
+      const probeContext = (
+        gl: WebGLRenderingContext | WebGL2RenderingContext,
+        label: string,
+      ) => {
+        const result: Record<string, unknown> = {};
+        for (const [name, ref] of Object.entries(PHASE_1_9_REFS)) {
+          result[name] = gl.getParameter(ref.pname);
+        }
+        // typed-array 类型保护：MAX_VIEWPORT_DIMS / ALIASED_*_RANGE
+        const viewportDims = gl.getParameter(0x0d3a);
+        result.MAX_VIEWPORT_DIMS = viewportDims instanceof Int32Array
+          ? [viewportDims[0], viewportDims[1]]
+          : `WRONG_TYPE:${Object.prototype.toString.call(viewportDims)}`;
+        const lineRange = gl.getParameter(0x846e);
+        result.ALIASED_LINE_WIDTH_RANGE = lineRange instanceof Float32Array
+          ? [lineRange[0], lineRange[1]]
+          : `WRONG_TYPE:${Object.prototype.toString.call(lineRange)}`;
+        const pointRange = gl.getParameter(0x846d);
+        result.ALIASED_POINT_SIZE_RANGE = pointRange instanceof Float32Array
+          ? [pointRange[0], pointRange[1]]
+          : `WRONG_TYPE:${Object.prototype.toString.call(pointRange)}`;
+        out[`phase19_${label}`] = result;
+      };
+      try {
+        const c1p = document.createElement('canvas');
+        const gl1p = c1p.getContext('webgl');
+        if (gl1p) probeContext(gl1p, 'webgl1');
+        const c2p = document.createElement('canvas');
+        const gl2p = c2p.getContext('webgl2');
+        if (gl2p) probeContext(gl2p, 'webgl2');
+        if (typeof OffscreenCanvas !== 'undefined') {
+          const ocp = new OffscreenCanvas(64, 64);
+          const oglp = ocp.getContext('webgl');
+          if (oglp) probeContext(oglp as WebGLRenderingContext, 'offscreen_webgl1');
+        }
+      } catch (e) {
+        out.phase19_error = (e as Error).message;
+      }
 
       // ── 1. Hook 痕迹检测 ─────────────────────────────────────────
       try {
@@ -258,6 +315,39 @@ async function main() {
         pass: probe.offscreen_webgl_direct_renderer === expectedRenderer,
       },
     ];
+
+    // ── Phase 1.9 GL 参数对照表验证 ────────────────────────────────
+    const phase19Refs: Array<{ name: string; expected: unknown }> = [
+      { name: 'MAX_TEXTURE_SIZE', expected: 16384 },
+      { name: 'MAX_CUBE_MAP_TEXTURE_SIZE', expected: 16384 },
+      { name: 'MAX_RENDERBUFFER_SIZE', expected: 16384 },
+      { name: 'MAX_VERTEX_ATTRIBS', expected: 16 },
+      { name: 'MAX_VERTEX_UNIFORM_VECTORS', expected: 4096 },
+      { name: 'MAX_VARYING_VECTORS', expected: 30 },
+      { name: 'MAX_TEXTURE_IMAGE_UNITS', expected: 16 },
+      { name: 'MAX_FRAGMENT_UNIFORM_VECTORS', expected: 1024 },
+      { name: 'MAX_COMBINED_TEXTURE_IMAGE_UNITS', expected: 32 },
+      { name: 'RED_BITS', expected: 8 },
+      { name: 'DEPTH_BITS', expected: 24 },
+      { name: 'STENCIL_BITS', expected: 8 },
+      { name: 'MAX_VIEWPORT_DIMS', expected: [16384, 16384] },
+      { name: 'ALIASED_LINE_WIDTH_RANGE', expected: [1, 1] },
+      { name: 'ALIASED_POINT_SIZE_RANGE', expected: [1, 1024] },
+    ];
+    for (const ctx of ['webgl1', 'webgl2', 'offscreen_webgl1'] as const) {
+      const ctxResult = probe[`phase19_${ctx}`] as Record<string, unknown> | undefined;
+      if (!ctxResult) continue;
+      for (const ref of phase19Refs) {
+        const actual = ctxResult[ref.name];
+        const pass = JSON.stringify(actual) === JSON.stringify(ref.expected);
+        checks.push({
+          name: `[Phase 1.9] ${ctx} ${ref.name}`,
+          expected: JSON.stringify(ref.expected),
+          actual: JSON.stringify(actual),
+          pass,
+        });
+      }
+    }
 
     console.log('\n[diag] check results:');
     console.log('─'.repeat(100));
