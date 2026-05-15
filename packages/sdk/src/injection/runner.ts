@@ -314,7 +314,16 @@ export function injectAll(config: InjectionConfig): void {
     // 控制时会自动把这个 getter 改成 return true；我们用 Proxy 包装强制 false。
     defineProtoGetter(navigator, 'webdriver', false);
 
-    // userAgentData（UA-CH）minimally override
+    // userAgentData（UA-CH）—— 完整覆盖 NavigatorUAData 表面。
+    //
+    // Chromium headless 模式默认 brand list 含 "HeadlessChrome"，跨 main / worker /
+    // service worker realm 都会泄露。我们用 persona 派生的 `config.uaCh` 把：
+    //   - 静态属性: brands / mobile / platform
+    //   - 异步方法: getHighEntropyValues(hints)
+    // 全部覆盖。任何调用方拿到的都是按 Chrome 105+ UA-CH reduction 政策格式化的值。
+    //
+    // 注意：每次访问 brands / 每次 getHighEntropyValues 都返回新对象（数组/对象
+    // 深拷贝），防止指纹脚本通过 mutation 在我们 spoof 之间注入污染。
     if ('userAgentData' in navigator) {
       const nav = navigator as Navigator & { userAgentData?: unknown };
       const uad = nav.userAgentData as
@@ -323,19 +332,101 @@ export function injectAll(config: InjectionConfig): void {
             mobile?: boolean;
             platform?: string;
             getHighEntropyValues?: (hints: string[]) => Promise<Record<string, unknown>>;
+            toJSON?: () => Record<string, unknown>;
           }
         | undefined;
       if (uad) {
-        defineReadOnlyGetter(uad, 'platform', () => {
-          switch (config.platform) {
-            case 'Win32':
-              return 'Windows';
-            case 'MacIntel':
-              return 'macOS';
-            default:
-              return 'Linux';
+        const uaCh = config.uaCh;
+        // 关键：NavigatorUAData 实例 own 属性的 defineProperty 会**静默失败**
+        // （Chromium WebIDL interface 实例不允许新增 own slot），但其 prototype
+        // 上的 brands / mobile / platform getter 是 `configurable: true` 的访问器，
+        // 可以原地替换。所以这里直接动 prototype。
+        // 该 prototype 仅给 navigator.userAgentData 这一个实例用，redefinition
+        // 副作用为 0（不会污染别的对象）。
+        const uadProto = Object.getPrototypeOf(uad);
+        if (uadProto) {
+          defineReadOnlyGetter(uadProto, 'brands', () => uaCh.brands.map((b) => ({ ...b })));
+          defineReadOnlyGetter(uadProto, 'mobile', () => uaCh.mobile);
+          defineReadOnlyGetter(uadProto, 'platform', () => uaCh.platform);
+        }
+
+        // getHighEntropyValues —— 按 hints 子集返回。
+        // Chromium 现行行为：未请求的字段不出现在返回对象里；brands/mobile/platform
+        // 即使不请求也总会出现（low-entropy baseline）。我们 mirror 这个语义。
+        if (typeof uad.getHighEntropyValues === 'function') {
+          const origGHEV = uad.getHighEntropyValues;
+          const wrappedGHEV = wrapStealth(origGHEV as unknown as Function, {
+            apply(_target, _thisArg, args: unknown[]) {
+              const hints = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+              const result: Record<string, unknown> = {
+                brands: uaCh.brands.map((b) => ({ ...b })),
+                mobile: uaCh.mobile,
+                platform: uaCh.platform,
+              };
+              for (const hint of hints) {
+                switch (hint) {
+                  case 'architecture':
+                    result.architecture = uaCh.architecture;
+                    break;
+                  case 'bitness':
+                    result.bitness = uaCh.bitness;
+                    break;
+                  case 'model':
+                    result.model = uaCh.model;
+                    break;
+                  case 'platformVersion':
+                    result.platformVersion = uaCh.platformVersion;
+                    break;
+                  case 'wow64':
+                    result.wow64 = uaCh.wow64;
+                    break;
+                  case 'fullVersionList':
+                    result.fullVersionList = uaCh.fullVersionList.map((b) => ({ ...b }));
+                    break;
+                  case 'formFactors':
+                    result.formFactors = ['Desktop'];
+                    break;
+                  default:
+                    // 未知 hint 静默忽略（与 Chromium 默认行为一致）
+                    break;
+                }
+              }
+              return Promise.resolve(result);
+            },
+          });
+          // 同上 —— getHighEntropyValues 也在 NavigatorUAData.prototype 上。
+          if (uadProto) {
+            try {
+              Object.defineProperty(uadProto, 'getHighEntropyValues', {
+                value: wrappedGHEV,
+                configurable: true,
+                writable: true,
+              });
+            } catch {
+              // 极个别 Chromium 版本上 proto 也被冻 —— 接受降级（静态属性仍生效）
+            }
           }
-        });
+        }
+
+        // toJSON()：CreepJS / 其他检测脚本会直接 JSON.stringify(uad)，需要它也返回
+        // 同一组 spoofed 值，否则两条路径数据不一致 → 立刻被判 lies。
+        if (uadProto) {
+          try {
+            Object.defineProperty(uadProto, 'toJSON', {
+              value: function toJSON() {
+                return {
+                  brands: uaCh.brands.map((b) => ({ ...b })),
+                  mobile: uaCh.mobile,
+                  platform: uaCh.platform,
+                };
+              },
+              configurable: true,
+              writable: true,
+            });
+          } catch {
+            // ignore — toJSON 不是 ID 杀手
+          }
+        }
       }
     }
   } catch (err) {
@@ -877,6 +968,20 @@ export function injectAll(config: InjectionConfig): void {
         maxTouchPoints: config.maxTouchPoints,
         webglVendor: config.webglVendor,
         webglRenderer: config.webglRenderer,
+        uaCh: {
+          brands: config.uaCh.brands.map((b) => ({ brand: b.brand, version: b.version })),
+          fullVersionList: config.uaCh.fullVersionList.map((b) => ({
+            brand: b.brand,
+            version: b.version,
+          })),
+          mobile: config.uaCh.mobile,
+          platform: config.uaCh.platform,
+          platformVersion: config.uaCh.platformVersion,
+          architecture: config.uaCh.architecture,
+          bitness: config.uaCh.bitness,
+          wow64: config.uaCh.wow64,
+          model: config.uaCh.model,
+        },
       };
       // 注意：var + forEach 是为了规避循环变量 closure 陷阱，并兼容老引擎。
       // 整段必须自包含、不引用外部 binding —— 它会被序列化进 Blob 在 worker
@@ -906,6 +1011,36 @@ export function injectAll(config: InjectionConfig): void {
         'defs.forEach(function(pair){var k=pair[0],v=pair[1];' +
         'try{Object.defineProperty(navigator,k,{get:function(){return v;},configurable:true});}catch(e){}' +
         '});' +
+        // navigator.userAgentData (UA-CH) 完整覆盖。
+        // 在 worker realm 里 navigator.userAgentData 默认含 "HeadlessChrome" brand，
+        // 必须在 brands / mobile / platform getter + getHighEntropyValues + toJSON
+        // 全部点上替换值，否则 CreepJS 在 worker section 立刻看出端倪。
+        'try{var uad=navigator.userAgentData;if(uad){' +
+        'var U=P.uaCh;' +
+        'var dup=function(arr){return arr.map(function(b){return{brand:b.brand,version:b.version};});};' +
+        // NavigatorUAData 实例 own 改不动 —— 只能动 prototype（同 main scope）。
+        'var proto=Object.getPrototypeOf(uad);' +
+        'if(proto){' +
+        'try{Object.defineProperty(proto,"brands",{get:function(){return dup(U.brands);},configurable:true});}catch(e){}' +
+        'try{Object.defineProperty(proto,"mobile",{get:function(){return U.mobile;},configurable:true});}catch(e){}' +
+        'try{Object.defineProperty(proto,"platform",{get:function(){return U.platform;},configurable:true});}catch(e){}' +
+        'var ghev=function(hints){' +
+        'var out={brands:dup(U.brands),mobile:U.mobile,platform:U.platform};' +
+        'var hh=Array.isArray(hints)?hints:[];' +
+        'for(var i=0;i<hh.length;i++){var h=hh[i];' +
+        'if(h==="architecture")out.architecture=U.architecture;' +
+        'else if(h==="bitness")out.bitness=U.bitness;' +
+        'else if(h==="model")out.model=U.model;' +
+        'else if(h==="platformVersion")out.platformVersion=U.platformVersion;' +
+        'else if(h==="wow64")out.wow64=U.wow64;' +
+        'else if(h==="fullVersionList")out.fullVersionList=dup(U.fullVersionList);' +
+        'else if(h==="formFactors")out.formFactors=["Desktop"];' +
+        '}' +
+        'return Promise.resolve(out);};' +
+        'try{Object.defineProperty(proto,"getHighEntropyValues",{value:ghev,configurable:true,writable:true});}catch(e){}' +
+        'try{Object.defineProperty(proto,"toJSON",{value:function(){return{brands:dup(U.brands),mobile:U.mobile,platform:U.platform};},configurable:true,writable:true});}catch(e){}' +
+        '}' +
+        '}}catch(e){}' +
         '}' +
         // WebGL 1/2 getParameter UNMASKED_VENDOR/RENDERER 覆盖
         'var ctxs=[];' +

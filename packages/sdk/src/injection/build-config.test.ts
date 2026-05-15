@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { seedToUint32 } from '@mosaiq/persona-schema';
 import {
   createMacosSonomaChromeUsPersona,
+  createUbuntu2204ChromeUsPersona,
+  createWin10ChromeUsPersona,
   createWin11ChromeUsPersona,
 } from '@mosaiq/persona-schema/templates';
 
@@ -200,6 +202,111 @@ describe('buildInjectionConfig', () => {
     it('propagates persona font list verbatim and order-stable', () => {
       const persona = createWin11ChromeUsPersona({ id: 'inj-fonts', displayName: 'X' });
       expect(buildInjectionConfig(persona).fontList).toEqual(persona.fingerprint.fontList.fonts);
+    });
+  });
+
+  describe('uaCh (UA-CH 派生)', () => {
+    it('derives Chrome triple brand list with Not.A/Brand v8 + Chromium', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-uach-w', displayName: 'W' });
+      const cfg = buildInjectionConfig(persona);
+      // 顺序固定：[真品牌, Not.A/Brand, Chromium] —— Chromium GREASE 真实顺序是
+      // 随机的，但我们为 persona 维度可复现性固定。fingerprinter 看的是集合，不是顺序。
+      expect(cfg.uaCh.brands.map((b) => b.brand)).toEqual([
+        'Google Chrome',
+        'Not.A/Brand',
+        'Chromium',
+      ]);
+      // majorVersion 应该跟 brands version 对齐
+      expect(cfg.uaCh.brands[0]?.version).toBe(String(persona.browser.majorVersion));
+      // fullVersionList 用 fullVersion
+      expect(cfg.uaCh.fullVersionList[0]?.version).toBe(persona.browser.fullVersion);
+      expect(cfg.uaCh.fullVersionList[1]).toEqual({ brand: 'Not.A/Brand', version: '8.0.0.0' });
+    });
+
+    it('Win11 (build ≥ 22000) → platformVersion "15.0.0" (UA-CH reduction)', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-uach-w11', displayName: 'W11' });
+      // Win11 模板 os.version = '10.0.22631' → build 22631 ≥ 22000
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.uaCh.platform).toBe('Windows');
+      expect(cfg.uaCh.platformVersion).toBe('15.0.0');
+    });
+
+    it('Win10 (build < 22000) → platformVersion "10.0.0"', () => {
+      const persona = createWin10ChromeUsPersona({ id: 'inj-uach-w10', displayName: 'W10' });
+      // Win10 模板 os.version = '10.0.19045' → build 19045 < 22000
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.uaCh.platform).toBe('Windows');
+      expect(cfg.uaCh.platformVersion).toBe('10.0.0');
+    });
+
+    it('macOS → platform "macOS" + platformVersion derived from major', () => {
+      const persona = createMacosSonomaChromeUsPersona({ id: 'inj-uach-m', displayName: 'M' });
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.uaCh.platform).toBe('macOS');
+      // Sonoma os.version = '14.6.1' → major "14" → "14.0.0"
+      expect(cfg.uaCh.platformVersion).toBe('14.0.0');
+    });
+
+    it('Linux → platform "Linux" + platformVersion "" (Chrome 105+ reduction 空串)', () => {
+      const persona = createUbuntu2204ChromeUsPersona({ id: 'inj-uach-l', displayName: 'L' });
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.uaCh.platform).toBe('Linux');
+      expect(cfg.uaCh.platformVersion).toBe('');
+    });
+
+    it('architecture follows persona.system.os.arch (x86_64 → "x86", arm64 → "arm")', () => {
+      const w = buildInjectionConfig(
+        createWin11ChromeUsPersona({ id: 'inj-uach-arch-w', displayName: 'X' }),
+      );
+      expect(w.uaCh.architecture).toBe('x86');
+      // macOS Sonoma 模板 arch = 'arm64'
+      const m = buildInjectionConfig(
+        createMacosSonomaChromeUsPersona({ id: 'inj-uach-arch-m', displayName: 'X' }),
+      );
+      expect(m.uaCh.architecture).toBe('arm');
+    });
+
+    it('all desktop personas report mobile=false / wow64=false / bitness="64"', () => {
+      for (const persona of [
+        createWin11ChromeUsPersona({ id: 'a1', displayName: 'X' }),
+        createMacosSonomaChromeUsPersona({ id: 'a2', displayName: 'X' }),
+        createUbuntu2204ChromeUsPersona({ id: 'a3', displayName: 'X' }),
+      ]) {
+        const cfg = buildInjectionConfig(persona);
+        expect(cfg.uaCh.mobile).toBe(false);
+        expect(cfg.uaCh.wow64).toBe(false);
+        expect(cfg.uaCh.bitness).toBe('64');
+        expect(cfg.uaCh.model).toBe('');
+      }
+    });
+
+    it('persona.browser.uaClientHints 显式覆盖时按 persona 原样返回', () => {
+      const base = createWin11ChromeUsPersona({ id: 'inj-uach-ovr', displayName: 'X' });
+      const explicit = {
+        ...base,
+        browser: {
+          ...base.browser,
+          uaClientHints: {
+            brands: [{ brand: 'CustomBrand', version: '99' }],
+            mobile: true,
+            platform: 'CustomOS',
+            platformVersion: '99.0.0',
+            architecture: 'wasm',
+            bitness: '32',
+            model: 'Pixel-Fold',
+            wow64: true,
+          },
+        },
+      };
+      const cfg = buildInjectionConfig(explicit);
+      expect(cfg.uaCh.platform).toBe('CustomOS');
+      expect(cfg.uaCh.platformVersion).toBe('99.0.0');
+      expect(cfg.uaCh.architecture).toBe('wasm');
+      expect(cfg.uaCh.bitness).toBe('32');
+      expect(cfg.uaCh.model).toBe('Pixel-Fold');
+      expect(cfg.uaCh.mobile).toBe(true);
+      expect(cfg.uaCh.wow64).toBe(true);
+      expect(cfg.uaCh.brands).toEqual([{ brand: 'CustomBrand', version: '99' }]);
     });
   });
 });

@@ -680,8 +680,119 @@ WebGL bold-fail = `LowerEntropy.CANVAS || LowerEntropy.WEBGL`。我们的 Canvas
 ### v0.2 待补
 
 - [ ] `persona.swPolicy: 'spoof' | 'passthrough' | 'block'` —— 让 PWA 用户选择是放弃 spoof 还是放弃 SW。
-- [ ] `userAgentData` 在 worker scope 仍泄露 `HeadlessChrome 147`（CreepJS 没把它判 lies 但是潜在 surface）。等 chromium fork 阶段直接改 source。
 - [ ] ServiceWorker realm 自身的 fetch interception（用 CDP `Network.requestIntercepted` + `Fetch.fulfillRequest` 在网络层改写 SW 脚本）。这是 Chrome blob 拒绝后唯一能让 SW 自己也 spoof 的路径，复杂度高。
+
+---
+
+## 5.6 Day 4.5 — UA-CH (`navigator.userAgentData`) 全覆盖（2026-05-15 完成）
+
+### 起因
+
+§5.5 worker scope 修完后再跑 probe，发现 `navigator.userAgentData` 在 **main + worker 两 scope 都泄露 `HeadlessChrome 147`**：
+
+```text
+brands: HeadlessChrome/147, Not.A/Brand/8, Chromium/147
+highEntropy.fullVersionList: HeadlessChrome v147.0.7727.15
+platformVersion: "10.0" (而不是 Win11 reduction 后的 "15.0.0")
+```
+
+CreepJS Worker section 把它直接渲染成 `HeadlessChrome 147 (147.0.7727.15)`，虽然没被判 lies（main/worker 一致），但是这是真实 surface 泄露：
+
+- 任何检测脚本 `navigator.userAgentData.brands.some(b => b.brand === "HeadlessChrome")` 一查一个准。
+- 也表明 persona 声称的 Win11 跟 Chrome 自报的 `platformVersion: "10.0"` 不一致（应是 "15.0.0"）。
+
+### 调研：为什么旧 spoof 只动了 `platform`
+
+`@d:\projects\Mosaiq\packages\sdk\src\injection\runner.ts` 旧代码：
+
+```ts
+if (uad) defineReadOnlyGetter(uad, 'platform', () => ...);
+```
+
+只覆盖了 `platform`。而且 `defineReadOnlyGetter` 是 `Object.defineProperty(instance, ...)`，里面 try-catch 静默。
+
+加诊断 probe 测出 root cause：**`NavigatorUAData` 实例是 WebIDL interface，own slot 加不上去**——`Object.defineProperty(uad, 'brands', ...)` 直接静默失败。proto 上的 brands getter 倒是 `configurable: true`，可以原地替换。旧 `platform` override 看起来"成功"只是因为 Chrome 在 Windows 上本来就报 `platform: "Windows"`，巧合一致。
+
+### 修法：proto-level 完整覆盖
+
+`@d:\projects\Mosaiq\packages\sdk\src\injection\runner.ts:317-430` 重写 main scope UA-CH 块，所有改动落在 `Object.getPrototypeOf(navigator.userAgentData)`（= `NavigatorUAData.prototype`）上：
+
+1. `brands` getter → 返回 persona 派生的 GREASE 三元组 `[真品牌, Not.A/Brand v8, Chromium]`
+2. `mobile` getter → `false`
+3. `platform` getter → `"Windows" | "macOS" | "Linux"`
+4. `getHighEntropyValues(hints)` 方法 → 按 hints 返回 `{architecture, bitness, model, platformVersion, wow64, fullVersionList, formFactors}` 子集，永远附带 brands/mobile/platform low-entropy baseline
+5. `toJSON()` 方法 → CreepJS 等用 `JSON.stringify(uad)` 时拿到同一组 spoofed 值
+
+worker IIFE (`workerSpoofSrc`) 同步加上等价 proto-level 覆盖（line 1014-1043，ES5 string-concat style）。
+
+### 派生函数 `deriveUaCh(persona)`
+
+`@d:\projects\Mosaiq\packages\sdk\src\injection\build-config.ts:28-103`，按 Chromium 现行 GREASE + UA-CH reduction 政策派生：
+
+| persona OS | platform | platformVersion |
+|---|---|---|
+| Win11 (build ≥ 22000) | `"Windows"` | `"15.0.0"` |
+| Win10 (build < 22000) | `"Windows"` | `"10.0.0"` |
+| macOS | `"macOS"` | `"<major>.0.0"`（e.g. `"14.0.0"` for Sonoma）|
+| Linux | `"Linux"` | `""`（Chrome 105+ Linux 上 UA-CH 减熵为空串）|
+
+architecture 按 `system.os.arch` 翻译（`x86_64 → "x86"`、`arm64 → "arm"`）。bitness 桌面默认 `"64"`。
+
+如果 persona 显式提供 `browser.uaClientHints`，则用户原值优先（用户意图保留）。
+
+### 验证
+
+```text
+bench/probe-uach.ts (post-fix):
+=== MAIN scope ===
+brands:        Google Chrome/147, Not.A/Brand/8, Chromium/147
+platform:      Windows
+mobile:        false
+highEntropy.platformVersion:  15.0.0     ✓  Win11 reduction
+highEntropy.fullVersionList:  Google Chrome 147.0.7727.15
+highEntropy.architecture:     x86
+highEntropy.bitness:          64
+
+=== WORKER scope === (DedicatedWorker)
+brands:        Google Chrome/147, Not.A/Brand/8, Chromium/147   ✓ 一致
+highEntropy.platformVersion:  15.0.0                            ✓ 一致
+... (其余字段全部 main↔worker 完全一致)
+```
+
+CreepJS Worker section 渲染从：
+
+```
+userAgentData:  HeadlessChrome 147 (147.0.7727.15) | Windows 10 (...) [10.0.0] x86_64
+```
+
+变成：
+
+```
+userAgentData:  Google Chrome 147 | Windows 11 [15.0.0] x86_64
+```
+
+### 战果
+
+| 指标 | Day 4 末 (§5.5) | Day 4.5 末 (§5.6) |
+|---|---|---|
+| `navigator.userAgentData.brands` (main) | `HeadlessChrome/147` ❌ | `Google Chrome/147` ✓ |
+| `navigator.userAgentData.brands` (worker) | `HeadlessChrome/147` ❌ | `Google Chrome/147` ✓ |
+| `highEntropy.platformVersion` (main) | `10.0` ❌（错版本号 + Win10 而非 Win11） | `15.0.0` ✓（Win11 reduction）|
+| `highEntropy.platformVersion` (worker) | `10.0` ❌ | `15.0.0` ✓ |
+| CreepJS Lies / Bold-fail | 1 / 1（Canvas 下游）| 1 / 1（Canvas 下游，**不动**——CreepJS 不就 UA-CH 判 lies）|
+
+Lies 计数不变属于符合预期：CreepJS 只比较 main↔worker 是否一致而不验证 brand 是否包含 HeadlessChrome；但 surface 真实泄露彻底消除，**advanced 检测脚本（fingerprint.com / 自研 anti-bot）抓 `HeadlessChrome` brand 的攻击线全部失效**。
+
+### 回归保护
+
+- `@d:\projects\Mosaiq\packages\sdk\src\injection\build-config.test.ts:206-309`：+8 条 UA-CH 派生测试，覆盖 Win11/Win10/macOS/Linux 四个 OS 路径、x86/arm 两个 arch、brand 三元组形状、`persona.browser.uaClientHints` 显式覆盖优先级。
+- `@d:\projects\Mosaiq\packages\sdk\bench\probe-uach.ts`：可重跑的 main↔worker UA-CH parity 验证脚本。
+- 总测试：153 → **161 通过**（+8）。
+
+### v0.3 待补
+
+- [ ] **GREASE 顺序随机化**：当前 brand list 顺序固定 `[真品牌, Not.A/Brand, Chromium]`；Chromium 真实顺序是 GREASE 算法 per-launch seeded 随机的。对 fingerprinter 看的是集合不是顺序，影响很小，但是高保真目标下值得做（用 persona masterSeed 派生稳定顺序）。
+- [ ] **CDP `Network.setExtraHTTPHeaders`** 同步把 `Sec-CH-UA*` 请求头改写——目前 Playwright `extraHTTPHeaders` 已经把 `Accept-Language` 改了，UA-CH 头按 `userAgent` option 自动派生但仍可能含 HeadlessChrome marker。需实测确认。
 
 ---
 
