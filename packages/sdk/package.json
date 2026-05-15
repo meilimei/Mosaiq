@@ -30,6 +30,7 @@
     "bench": "tsx bench/baseline-detection.ts",
     "bench:report": "tsx bench/report.ts",
     "bench:all": "pnpm bench && pnpm bench:report",
+    "bench:canvas": "tsx bench/canvas-cross-check.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {
