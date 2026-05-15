@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  playwright-core@1.59.1:
+    hash: ooion54wo4m2bgjoulubuxezlu
+    path: patches/playwright-core@1.59.1.patch
+
 importers:
 
   .:
@@ -58,7 +63,7 @@ importers:
         version: 0.453.0(react@18.3.1)
       playwright-core:
         specifier: 1.59.1
-        version: 1.59.1
+        version: 1.59.1(patch_hash=ooion54wo4m2bgjoulubuxezlu)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -147,7 +152,7 @@ importers:
         version: 7.0.6
       playwright-core:
         specifier: 1.59.1
-        version: 1.59.1
+        version: 1.59.1(patch_hash=ooion54wo4m2bgjoulubuxezlu)
       socks-proxy-agent:
         specifier: ^8.0.5
         version: 8.0.5
@@ -5619,11 +5624,11 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  playwright-core@1.59.1: {}
+  playwright-core@1.59.1(patch_hash=ooion54wo4m2bgjoulubuxezlu): {}
 
   playwright@1.59.1:
     dependencies:
-      playwright-core: 1.59.1
+      playwright-core: 1.59.1(patch_hash=ooion54wo4m2bgjoulubuxezlu)
     optionalDependencies:
       fsevents: 2.3.2
 
