@@ -49,9 +49,9 @@ export interface SiteSpec {
 }
 
 /**
- * 9 个目标站。按反指纹检测严苛程度从低到高排序。
+ * 12 个目标站。按反指纹检测严苛程度从低到高排序。
  *
- * 加 3 个站的动机（Phase 1 收尾，扩展防御面）：
+ * Phase 1 加 3 站动机（扩展防御面）：
  *   - **dbi-bot** (deviceandbrowserinfo) ：暴露**最直接的布尔信号**（`isPlaywright`、
  *     `hasInconsistentClientHints`、`hasInconsistentWorkerValues`、`isWebGLInconsistent` 等），
  *     这些恰好对应我们 v0.1 已实施的 spoof 面，是最快的 sanity check。
@@ -59,6 +59,18 @@ export interface SiteSpec {
  *     在其数据库中过于罕见"的 outlier，提示需要再贴近常见 persona。
  *   - **pixelscan** ：商业反检测圈最常用的 mask check 站之一，给出整体 mask/bot
  *     verdict + 分类指标。SPA 加载较慢，settle 给足。
+ *
+ * Phase 2.5 再加 3 站动机（v0.3 扩 baseline）：
+ *   - **arh.antoinevastel** (`arh.antoinevastel.com/bots/`)：research-grade Fp-Scanner，
+ *     每项给 Consistent / Unsure / Inconsistent 三态结果，颗粒度极细。Antoine Vastel
+ *     是 Datadome 研究员，scanner 是 Datadome 商用 detector 的开源版本，命中等价
+ *     于 Datadome 检测命中。
+ *   - **incolumitas** (`bot.incolumitas.com`)：Nikolai Tschacher 自维护的综合 detector，
+ *     覆盖 TLS / TCP/IP / 行为 / 浏览器全栈，含 v0.6+ 新规则（headless / cdp /
+ *     proxy 行为）。开源 + 持续更新，是 community 推崇的"硬试金石"。
+ *   - **fingerprint-scan** (`fingerprint-scan.com`)：商业 detector 风格的 bot risk
+ *     score（0-100）+ 各 surface breakdown。补充了"商业 detector 总评分"维度，
+ *     既能对照其他站的细项判断，又能给一个商用化的可读分。
  */
 export const SITES: SiteSpec[] = [
   {
@@ -128,6 +140,31 @@ export const SITES: SiteSpec[] = [
     url: 'https://abrahamjuliot.github.io/creepjs/',
     settleMs: 12_000,
     extract: extractCreepjs,
+  },
+  {
+    id: 'arh-antoinevastel',
+    name: 'arh.antoinevastel.com/bots',
+    url: 'https://arh.antoinevastel.com/bots/',
+    // Fp-Scanner 跑完所有规则要 8-12s（部分规则触发 setTimeout 异步检测）
+    settleMs: 10_000,
+    extract: extractAntoinevastel,
+  },
+  {
+    id: 'incolumitas',
+    name: 'bot.incolumitas.com',
+    url: 'https://bot.incolumitas.com/',
+    // 多个 detection section 异步上报；behavioral 检测要等鼠标/键盘事件超时；
+    // 给足 settle 让 "New Detection Tests" + "Browser Fingerprint" 全部收敛。
+    settleMs: 12_000,
+    extract: extractIncolumitas,
+  },
+  {
+    id: 'fingerprint-scan',
+    name: 'fingerprint-scan.com',
+    url: 'https://fingerprint-scan.com/',
+    // 商业风格 bot risk score 站，前端跑 fingerprint 收集 + 服务器算分，要 5-8s。
+    settleMs: 8_000,
+    extract: extractFingerprintScan,
   },
 ];
 
@@ -575,6 +612,291 @@ async function extractPixelscan(page: Page): Promise<Record<string, unknown>> {
     result.warningCards = cards.filter((c) => c.status === 'warning').length;
     result.successCards = cards.filter((c) => c.status === 'success').length;
     result.unknownCards = cards.filter((c) => c.status === 'unknown').length;
+
+    return result;
+  });
+}
+
+/**
+ * arh.antoinevastel.com/bots — Fp-Scanner（Datadome 研究员维护的 fingerprint
+ * bot detector），每项检测给 Consistent / Unsure / Inconsistent 三态。
+ *
+ * 页面结构：标题 "Result of Fp-scanner" 之下渲染一个列表 / 表，每行形如
+ * `[testName]: [Consistent|Unsure|Inconsistent]`。
+ *
+ * Inconsistent = bot 检出（严重）。Unsure = 模糊（中度）。Consistent = 通过。
+ *
+ * 提取策略：
+ *   1. 找所有列表 row / table row 含 "Consistent" / "Unsure" / "Inconsistent" 关键字
+ *   2. 把测试名拆出来，与 Fp-Scanner 已知 24 个检测项对照（USER_AGENT, WEBDRIVER,
+ *      WEBGL, NAVIGATOR_PROTOTYPE, NAVIGATOR_LANGUAGES_LENGTH, PLUGINS_LENGTH,
+ *      MIME_TYPES_LENGTH, PLUGINS_NAME, ACCURACY_TIMESTAMP, MEDIA_QUERY_DARK_MODE,
+ *      ...）
+ *   3. 兜底：抓 fp 本体 JSON（fp-collect 上传到下方 `<pre>` 里）
+ */
+async function extractAntoinevastel(page: Page): Promise<Record<string, unknown>> {
+  return await page.evaluate(() => {
+    const result: Record<string, unknown> = {};
+
+    // ── 1. 检测项三态结果 ──
+    interface FpsRow {
+      name: string;
+      status: 'consistent' | 'unsure' | 'inconsistent' | 'unknown';
+      raw: string;
+    }
+    const rows: FpsRow[] = [];
+    const seenNames = new Set<string>();
+    // Fp-Scanner 用 <li> / <tr> / <p> 渲染每项；为兼容多版本，全部扫一遍
+    const candidates = Array.from(
+      document.querySelectorAll('li, tr, p, div'),
+    ) as HTMLElement[];
+    for (const el of candidates) {
+      const text = (el.textContent ?? '').trim();
+      if (text.length < 5 || text.length > 300) continue;
+      // 三态关键字必须命中其一
+      const m = text.match(/\b(Consistent|Unsure|Inconsistent)\b/i);
+      if (!m) continue;
+      const verdict = (m[1] ?? '').toLowerCase();
+      // 把 verdict 之前的部分当 name；去掉冒号 / 减号 / 数字下划线噪声
+      const namePart = text
+        .slice(0, m.index ?? 0)
+        .replace(/[:\-–—]+\s*$/, '')
+        .trim();
+      // 跳过过长的（很可能整段说明） + 过短的（只剩标点）
+      if (namePart.length < 2 || namePart.length > 80) continue;
+      if (seenNames.has(namePart)) continue;
+      seenNames.add(namePart);
+      const status =
+        verdict === 'consistent'
+          ? 'consistent'
+          : verdict === 'unsure'
+            ? 'unsure'
+            : verdict === 'inconsistent'
+              ? 'inconsistent'
+              : 'unknown';
+      rows.push({ name: namePart, status, raw: text.slice(0, 200) });
+    }
+    result.rows = rows;
+    result.rowsTotal = rows.length;
+    result.consistent = rows.filter((r) => r.status === 'consistent').length;
+    result.unsure = rows.filter((r) => r.status === 'unsure').length;
+    result.inconsistent = rows.filter((r) => r.status === 'inconsistent').length;
+    result.inconsistentTests = rows
+      .filter((r) => r.status === 'inconsistent')
+      .map((r) => r.name);
+    result.unsureTests = rows.filter((r) => r.status === 'unsure').map((r) => r.name);
+
+    // ── 2. fp-collect JSON dump（如果暴露在 `<pre>` 里）──
+    let fpCollectJson: unknown = null;
+    document.querySelectorAll('pre, code').forEach((node) => {
+      if (fpCollectJson) return;
+      const text = (node.textContent ?? '').trim();
+      if (text.length < 100 || text.length > 100_000) return;
+      // fp-collect 含 "userAgent" + "languages" + "hardwareConcurrency" 等 key
+      if (!/\buserAgent\b.*\blanguages\b/s.test(text)) return;
+      try {
+        fpCollectJson = JSON.parse(text);
+      } catch {
+        // 非纯 JSON，跳过
+      }
+    });
+    result.fpCollect = fpCollectJson;
+
+    return result;
+  });
+}
+
+/**
+ * bot.incolumitas.com — Nikolai Tschacher 的综合 bot detector。
+ *
+ * 页面结构：分多个 section（Behavioral / New Detection Tests / Browser Fingerprint /
+ * Canvas / WebGL / Web Worker / Service Worker / Browser Data），每个 section 用
+ * `<pre>` 块输出 JSON 结果。本提取器：
+ *
+ *   1. 抓所有 `<pre>` 节点的 JSON，按 section 标题归类。
+ *   2. 关键 boolean / score 字段汇总（intoli/areyouheadless/headless/permissions/iframe
+ *      chrome window dimensions, etc.）。
+ *   3. fallback：扫正文里 `\bdetected[: ]+(true|yes)\b` 之类的硬信号。
+ */
+async function extractIncolumitas(page: Page): Promise<Record<string, unknown>> {
+  return await page.evaluate(() => {
+    const result: Record<string, unknown> = {};
+
+    // ── 1. 抓 `<pre>` JSON 块 ──
+    interface PreSection {
+      heading: string | null;
+      json: unknown;
+      rawSnippet: string;
+    }
+    const preSections: PreSection[] = [];
+    const pres = Array.from(document.querySelectorAll('pre, code')) as HTMLElement[];
+    for (const pre of pres) {
+      const text = (pre.textContent ?? '').trim();
+      if (text.length < 30 || text.length > 50_000) continue;
+      // 找紧邻的上一个 h2/h3/h4 作为 section heading
+      let heading: string | null = null;
+      let cursor: Element | null = pre;
+      while (cursor) {
+        cursor = cursor.previousElementSibling;
+        if (!cursor) {
+          cursor = pre.parentElement;
+          if (cursor) cursor = cursor.previousElementSibling;
+        }
+        if (!cursor) break;
+        const tn = cursor.tagName;
+        if (tn === 'H1' || tn === 'H2' || tn === 'H3' || tn === 'H4') {
+          heading = (cursor.textContent ?? '').trim().slice(0, 80);
+          break;
+        }
+      }
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // 不是 JSON 也保留 rawSnippet（如纯文本测试结果）
+      }
+      preSections.push({ heading, json: parsed, rawSnippet: text.slice(0, 400) });
+    }
+    result.preSections = preSections;
+
+    // ── 2. 提取关键布尔/数值 ──
+    // incolumitas 关心的"红色信号"字段（命中 = bot 检出）
+    const knownBadKeys = [
+      'intoli',
+      'isHeadlessChrome',
+      'detected',
+      'areYouHeadless',
+      'hasHeadlessUA',
+      'webdriver',
+      'phantomjs',
+      'selenium',
+      'iframeChrome',
+      'permissionsLeak',
+      'languagesNumberMismatch',
+      'fakeNotifications',
+      'fakeMimeTypes',
+      'fakePlugins',
+      'badMimeTypes',
+      'iframeContentWindowLeaks',
+    ];
+    const triggeredBadFlags: Array<{ section: string | null; key: string; value: unknown }> = [];
+    for (const sec of preSections) {
+      if (!sec.json || typeof sec.json !== 'object') continue;
+      // 递归扫一层（incolumitas JSON 大多是单层）
+      const obj = sec.json as Record<string, unknown>;
+      for (const k of Object.keys(obj)) {
+        const v = obj[k];
+        const lowerK = k.toLowerCase();
+        for (const bad of knownBadKeys) {
+          if (lowerK.includes(bad.toLowerCase())) {
+            if (v === true || v === 'true' || v === 1 || v === 'yes') {
+              triggeredBadFlags.push({ section: sec.heading, key: k, value: v });
+            }
+          }
+        }
+      }
+    }
+    result.triggeredBadFlags = triggeredBadFlags;
+    result.triggeredBadFlagsCount = triggeredBadFlags.length;
+
+    // ── 3. 文本 fallback：扫整体 "Bot detected" / "Headless detected" 类硬判定 ──
+    const allText = document.body?.textContent ?? '';
+    result.botDetectedText = /\b(bot\s+detected|headless\s+detected|automation\s+detected)\b/i.test(
+      allText,
+    );
+
+    // ── 4. behavioral score / category（页面顶部 "Behavioral Classification"） ──
+    const behavioralMatch = allText.match(/behavioral\s+classification[^]{0,400}/i);
+    result.behavioralSnippet = behavioralMatch
+      ? behavioralMatch[0].slice(0, 400).replace(/\s+/g, ' ').trim()
+      : null;
+
+    return result;
+  });
+}
+
+/**
+ * fingerprint-scan.com — 商业风格 bot risk score 站。
+ *
+ * 页面渲染一个 0-100 的 score（"Bot Risk Score"） + 各 surface 子分。Score >50 =
+ * 大概率 bot。
+ *
+ * 提取策略：
+ *   1. 抓主分数（页面通常用大字号 / 高亮 `<span>` / `<h2>` 显示）
+ *   2. 抓所有 fingerprint 属性表
+ *   3. 抓页面里所有数字 0-100 + verdict 关键字（low/medium/high risk）
+ */
+async function extractFingerprintScan(page: Page): Promise<Record<string, unknown>> {
+  return await page.evaluate(() => {
+    const result: Record<string, unknown> = {};
+
+    // ── 1. 找主分数（启发式：抓最显眼的 0-100 数字） ──
+    let botRiskScore: number | null = null;
+    let scoreSourceText: string | null = null;
+    const candidates = Array.from(
+      document.querySelectorAll('h1, h2, h3, [class*="score"], [class*="Score"], [class*="risk"], [class*="Risk"], strong, b, span'),
+    ) as HTMLElement[];
+    for (const el of candidates) {
+      const t = (el.textContent ?? '').trim();
+      if (t.length > 200) continue;
+      // 同时含有 "score" / "risk" 关键字 + 0-100 数字
+      const m = t.match(/\b(\d{1,3})\b/);
+      if (!m || !m[1]) continue;
+      const n = Number(m[1]);
+      if (n < 0 || n > 100) continue;
+      // 只在含有 score/risk/bot 上下文里提
+      if (!/score|risk|bot/i.test(t)) continue;
+      // 优先用第一个匹配且数字明确（不是 "404" 之类的）
+      if (botRiskScore === null || /risk\s+score/i.test(t)) {
+        botRiskScore = n;
+        scoreSourceText = t.slice(0, 150);
+      }
+    }
+    // fallback：扫正文找 "Bot Risk Score: 42" / "Score: 42" 类 pattern
+    if (botRiskScore === null) {
+      const bodyText = document.body?.textContent ?? '';
+      const m = bodyText.match(/(?:bot\s+risk\s+score|risk\s+score|score)[:\s]+(\d{1,3})\b/i);
+      if (m && m[1]) {
+        const n = Number(m[1]);
+        if (n >= 0 && n <= 100) {
+          botRiskScore = n;
+          scoreSourceText = m[0];
+        }
+      }
+    }
+    result.botRiskScore = botRiskScore;
+    result.scoreSourceText = scoreSourceText;
+    result.scoreVerdict =
+      botRiskScore === null
+        ? 'unknown'
+        : botRiskScore >= 50
+          ? 'bot'
+          : botRiskScore >= 25
+            ? 'suspicious'
+            : 'human';
+
+    // ── 2. fingerprint 属性表（如有） ──
+    const attrs: Array<{ name: string; value: string }> = [];
+    document.querySelectorAll('table tr, dl > *').forEach((tr) => {
+      const cells = Array.from(tr.querySelectorAll('th, td, dt, dd')) as HTMLTableCellElement[];
+      if (cells.length === 2) {
+        const [nameCell, valueCell] = cells;
+        if (!nameCell || !valueCell) return;
+        const name = (nameCell.textContent ?? '').trim();
+        const value = (valueCell.textContent ?? '').trim().slice(0, 300);
+        if (name && value && name !== 'Property' && name !== 'Attribute') {
+          attrs.push({ name, value });
+        }
+      }
+    });
+    result.attrs = attrs;
+    result.attrsTotal = attrs.length;
+
+    // ── 3. verdict 关键字 ──
+    const allText = document.body?.textContent ?? '';
+    result.highRiskHit = /\bhigh\s+risk\b/i.test(allText);
+    result.lowRiskHit = /\blow\s+risk\b/i.test(allText);
+    result.botDetectedText = /\b(bot\s+detected|likely\s+bot|automated)\b/i.test(allText);
 
     return result;
   });

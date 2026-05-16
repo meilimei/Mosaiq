@@ -423,6 +423,241 @@ function analyzeAmIUnique(extracted: Record<string, unknown>, hits: SurfaceHit[]
 }
 
 /**
+ * Phase 2.5 — Fp-Scanner（arh.antoinevastel.com/bots）已知规则到 surface 的映射。
+ *
+ * 这是 Datadome 商用 detector 的开源核心。Inconsistent = 强 bot 信号。
+ * 规则名按 Fp-Scanner 内部约定（screaming_snake_case），我们做大小写不敏感匹配。
+ */
+const FPSCANNER_TO_SURFACE: Record<string, { surface: Surface; severity: 'high' | 'medium' | 'low' }> = {
+  PHANTOM_UA: { surface: 'navigator', severity: 'high' },
+  PHANTOM_PROPERTIES: { surface: 'navigator', severity: 'high' },
+  PHANTOM_ETSL: { surface: 'navigator', severity: 'high' },
+  PHANTOM_LANGUAGE: { surface: 'navigator', severity: 'high' },
+  PHANTOM_WEBSOCKET: { surface: 'other', severity: 'medium' },
+  MQ_SCREEN: { surface: 'screen', severity: 'medium' },
+  PHANTOM_OVERFLOW: { surface: 'other', severity: 'low' },
+  PHANTOM_WINDOW_HEIGHT: { surface: 'screen', severity: 'medium' },
+  HEADCHR_UA: { surface: 'navigator', severity: 'high' },
+  WEBDRIVER: { surface: 'webdriver', severity: 'high' },
+  HEADCHR_CHROME_OBJ: { surface: 'navigator', severity: 'high' },
+  HEADCHR_PERMISSIONS: { surface: 'permissions', severity: 'high' },
+  HEADCHR_PLUGINS: { surface: 'plugins', severity: 'high' },
+  HEADCHR_IFRAME: { surface: 'other', severity: 'medium' },
+  CHR_BATTERY: { surface: 'other', severity: 'low' },
+  CHR_MEMORY: { surface: 'navigator', severity: 'medium' },
+  TRANSPARENT_PIXEL: { surface: 'canvas', severity: 'medium' },
+  SEQUENTUM: { surface: 'other', severity: 'medium' },
+  VIDEO_CODECS: { surface: 'other', severity: 'low' },
+};
+
+/**
+ * Phase 2.5 — Fp-Scanner（arh.antoinevastel.com）— 三态 consistency 检测。
+ *
+ * Inconsistent = 强 bot 信号（high）。Unsure = 模糊（medium）。Consistent = 通过。
+ *
+ * Outputs a Markdown table with all rows, and pushes high/medium hits to the
+ * surface tracker keyed by the FPSCANNER_TO_SURFACE map; unknown rule names
+ * fall back to `surface: 'other'`.
+ */
+function analyzeAntoinevastel(
+  extracted: Record<string, unknown>,
+  hits: SurfaceHit[],
+): string {
+  const rows =
+    (extracted.rows as
+      | Array<{ name: string; status: string; raw: string }>
+      | undefined) ?? [];
+  const total = (extracted.rowsTotal as number | undefined) ?? rows.length;
+  const consistent = (extracted.consistent as number | undefined) ?? 0;
+  const unsure = (extracted.unsure as number | undefined) ?? 0;
+  const inconsistent = (extracted.inconsistent as number | undefined) ?? 0;
+  const inconsistentTests = (extracted.inconsistentTests as string[] | undefined) ?? [];
+  const unsureTests = (extracted.unsureTests as string[] | undefined) ?? [];
+
+  let md = `**Fp-Scanner 三态结果**：✅ ${consistent} consistent / 🟡 ${unsure} unsure / 🔴 ${inconsistent} inconsistent (total ${total})\n\n`;
+
+  if (total === 0) {
+    md += `_⚠️ 未解析到任何 Consistent/Unsure/Inconsistent 行 — 页面 DOM 已变化或加载未完成（看截图）_\n`;
+    return md;
+  }
+  if (inconsistent === 0 && unsure === 0) {
+    md += `_所有 ${total} 项检测均 Consistent — Fp-Scanner / Datadome detector 通过_ ✅\n`;
+    return md;
+  }
+
+  const resolveRoute = (testName: string) => {
+    // FPSCANNER_TO_SURFACE 的 key 是 SCREAMING_SNAKE_CASE，做 substring + 大小写不敏感匹配
+    const upperName = testName.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    for (const [rule, route] of Object.entries(FPSCANNER_TO_SURFACE)) {
+      if (upperName.includes(rule)) return route;
+    }
+    return { surface: 'other' as Surface, severity: 'medium' as const };
+  };
+
+  if (inconsistent > 0) {
+    md += `**🔴 Inconsistent（强 bot 信号）**：\n\n`;
+    for (const name of inconsistentTests) {
+      const route = resolveRoute(name);
+      md += `- 🔴 **\`${name}\`** → surface: \`${route.surface}\`\n`;
+      hits.push({
+        surface: route.surface,
+        site: 'arh-antoinevastel',
+        detector: `fp-scanner inconsistent: ${name}`,
+        evidence: 'Inconsistent',
+        severity: 'high',
+      });
+    }
+    md += `\n`;
+  }
+  if (unsure > 0) {
+    md += `**🟡 Unsure（模糊信号）**：\n\n`;
+    for (const name of unsureTests) {
+      const route = resolveRoute(name);
+      md += `- 🟡 **\`${name}\`** → surface: \`${route.surface}\`\n`;
+      hits.push({
+        surface: route.surface,
+        site: 'arh-antoinevastel',
+        detector: `fp-scanner unsure: ${name}`,
+        evidence: 'Unsure',
+        severity: 'medium',
+      });
+    }
+  }
+  return md;
+}
+
+/**
+ * Phase 2.5 — incolumitas (`bot.incolumitas.com`) — 综合 bot detector。
+ *
+ * 我们的 extractor 抓了所有 `<pre>` 的 JSON 块，并扫了一组已知 bad key（intoli,
+ * webdriver, isHeadlessChrome, etc.）。这里把命中的 bad flag 转成 hits。
+ *
+ * Surface routing：根据 section heading 启发式路由（Browser Fingerprint → navigator，
+ * Canvas → canvas，WebGL → webgl，Web Worker → other 等）。
+ */
+function analyzeIncolumitas(
+  extracted: Record<string, unknown>,
+  hits: SurfaceHit[],
+): string {
+  const preSections =
+    (extracted.preSections as
+      | Array<{ heading: string | null; json: unknown; rawSnippet: string }>
+      | undefined) ?? [];
+  const triggered =
+    (extracted.triggeredBadFlags as
+      | Array<{ section: string | null; key: string; value: unknown }>
+      | undefined) ?? [];
+  const total = (extracted.triggeredBadFlagsCount as number | undefined) ?? triggered.length;
+  const botDetectedText = (extracted.botDetectedText as boolean | undefined) ?? false;
+
+  let md = `**Pre-sections 抓取**：${preSections.length} 个 JSON 段\n\n`;
+  md += `**红色 bot 信号触发**：${total} 项\n\n`;
+  if (botDetectedText) {
+    md += `_🔴 页面正文含 "bot detected" / "headless detected" 字样 — 综合判定 bot_\n\n`;
+  }
+
+  if (preSections.length === 0) {
+    md += `_⚠️ 未抓到任何 \`<pre>\` JSON 块 — 页面可能未完成异步上报（看截图）_\n`;
+    return md;
+  }
+  if (total === 0 && !botDetectedText) {
+    md += `_所有已知 bad key 在抓到的 ${preSections.length} 个 section 中均为 false / 缺失 — incolumitas 综合判定通过_ ✅\n`;
+    return md;
+  }
+
+  const sectionToSurface = (heading: string | null): Surface => {
+    if (!heading) return 'other';
+    const h = heading.toLowerCase();
+    if (h.includes('canvas')) return 'canvas';
+    if (h.includes('webgl')) return 'webgl';
+    if (h.includes('worker')) return 'other'; // worker scope
+    if (h.includes('fingerprint') || h.includes('browser')) return 'navigator';
+    if (h.includes('headless')) return 'navigator';
+    if (h.includes('proxy') || h.includes('tcp') || h.includes('tls')) return 'other';
+    if (h.includes('header')) return 'navigator';
+    return 'other';
+  };
+
+  if (triggered.length > 0) {
+    md += `**触发的红色信号**：\n\n`;
+    for (const flag of triggered) {
+      const surface = sectionToSurface(flag.section);
+      md += `- 🔴 **\`${flag.section ?? '?'}.${flag.key}\`** = \`${String(flag.value)}\` → surface: \`${surface}\`\n`;
+      hits.push({
+        surface,
+        site: 'incolumitas',
+        detector: `incolumitas ${flag.section ?? '?'}: ${flag.key}`,
+        evidence: String(flag.value),
+        severity: 'high',
+      });
+    }
+  }
+
+  // 展开 sections（人工查阅用，不入 hits）
+  md += `\n<details><summary>展开 ${preSections.length} 个 section snippet</summary>\n\n`;
+  for (const sec of preSections.slice(0, 12)) {
+    md += `**${sec.heading ?? '(no heading)'}**:\n\`\`\`\n${sec.rawSnippet.slice(0, 240)}\n\`\`\`\n`;
+  }
+  md += `\n</details>\n`;
+  return md;
+}
+
+/**
+ * Phase 2.5 — fingerprint-scan.com — 0-100 bot risk score。
+ *
+ * Score ≥ 50 = bot (high)；25-49 = suspicious (medium)；< 25 = human (no hit)。
+ * 同时若正文含 "bot detected" / "high risk" 关键字 → 兜底 high hit。
+ */
+function analyzeFingerprintScan(
+  extracted: Record<string, unknown>,
+  hits: SurfaceHit[],
+): string {
+  const score = extracted.botRiskScore as number | null | undefined;
+  const verdict = extracted.scoreVerdict as string | undefined;
+  const sourceText = extracted.scoreSourceText as string | null | undefined;
+  const highRisk = (extracted.highRiskHit as boolean | undefined) ?? false;
+  const botDetected = (extracted.botDetectedText as boolean | undefined) ?? false;
+  const attrsTotal = (extracted.attrsTotal as number | undefined) ?? 0;
+
+  let md = `**Bot Risk Score**：${score ?? 'N/A'} / 100  (verdict: **${verdict ?? 'unknown'}**)\n\n`;
+  if (sourceText) md += `_从 "${sourceText.slice(0, 120)}" 中提取_\n\n`;
+  md += `**抓到属性**：${attrsTotal} 项\n`;
+  md += `**关键字命中**：high-risk=${highRisk ? '✅' : '✗'} / bot-detected=${botDetected ? '✅' : '✗'}\n\n`;
+
+  if (score === null || score === undefined) {
+    md += `_⚠️ 未解析到 0-100 风险分 — 页面 DOM 已变化或异步未完成（看截图）_\n`;
+    return md;
+  }
+
+  if (verdict === 'bot' || score >= 50) {
+    md += `_🔴 score=${score} ≥ 50 → 判定 bot_\n`;
+    hits.push({
+      surface: 'other',
+      site: 'fingerprint-scan',
+      detector: `fingerprint-scan bot risk score`,
+      evidence: `score=${score} verdict=${verdict ?? '?'}`,
+      severity: 'high',
+    });
+  } else if (verdict === 'suspicious' || score >= 25) {
+    md += `_🟡 score=${score} 在 25-49 区间 → 可疑_\n`;
+    hits.push({
+      surface: 'other',
+      site: 'fingerprint-scan',
+      detector: `fingerprint-scan suspicious score`,
+      evidence: `score=${score}`,
+      severity: 'medium',
+    });
+  } else {
+    md += `_✅ score=${score} < 25 → 判定 human_\n`;
+  }
+  if (highRisk && (score ?? 0) < 50) {
+    // 关键字命中但 score 偏低 — 警告但不入额外 hit（已计 score-based）
+    md += `\n_注：正文含 "high risk" 字样但 score=${score} 偏低，提示 detector 内部信号不一致_\n`;
+  }
+  return md;
+}
+
+/**
  * Pixelscan —— SPA，可能被 Cloudflare 卡住。我们做：
  *   - 若 challenge 触发 → 输出警告 + 不 hit（站点未真正完成检测，结果不可信）。
  *   - 否则按卡片状态出 high (danger) / medium (warning) hit。
@@ -696,6 +931,15 @@ function generate(rawPath: string, outDir: string): void {
           break;
         case 'pixelscan':
           md += analyzePixelscan(r.extracted, hits);
+          break;
+        case 'arh-antoinevastel':
+          md += analyzeAntoinevastel(r.extracted, hits);
+          break;
+        case 'incolumitas':
+          md += analyzeIncolumitas(r.extracted, hits);
+          break;
+        case 'fingerprint-scan':
+          md += analyzeFingerprintScan(r.extracted, hits);
           break;
         case 'browserleaks-js':
         default:
