@@ -293,14 +293,118 @@ export const INTEL_UHD_730_D3D11: WebglProfile = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Intel UHD 630 / Win10/11 / Chrome / ANGLE Direct3D11
+// 来源：ANGLE D3D11 backend 硬限制（与 UHD 730 共享同 backend，capabilities 几乎完全相同）。
+// 唯一差异：UNMASKED_RENDERER_WEBGL 字符串声称 UHD 630 + matchRenderer 改正则。
+// 数据交叉验证：deviceandbrowserinfo.com WebGL renderer 数据库收录 UHD 630 字符串
+// 与 win10-chrome-us 模板用的字符串一致（device id 0x3e92 = Coffee Lake gen）。
+//
+// 注意：UHD 630 的 capabilities hash 与 UHD 730 几乎相同（同 ANGLE backend），
+// 所以 creepjs WebGL bold-fail 仍可能 trigger。Phase 2.2 的主要价值是让
+// win10-chrome-us persona 获完整 49-param 覆盖，而非 UNMASKED-only fallback。
+// 实际白名单命中验证见 bench/find-creepjs-whitelist-fit.ts。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const INTEL_UHD_630_D3D11: WebglProfile = {
+  id: 'intel-uhd-630-d3d11',
+  name: 'Intel UHD Graphics 630 / Direct3D11 / Win',
+  // 匹配 win10-chrome-us 模板的 webglRenderer 字符串
+  // 注意正则需排他于 UHD 730（用 `\b630\b` 字界）
+  matchRenderer: /UHD Graphics 630\b/,
+  // capabilities hash 与 UHD 730 共享（同 ANGLE D3D11 backend），暂未验证白名单
+  // 命中。后续 Phase 2.x 可能通过反向 fit 调整若干参数让 hash 进入白名单。
+  knownInCreepjsWhitelist: undefined,
+  webgl1: new Map<number, GlParamValue>([
+    // —— String params (Chrome+ANGLE 全机器统一返回这些字符串) ——
+    [GL.VENDOR, 'WebKit'],
+    [GL.RENDERER, 'WebKit WebGL'],
+    [GL.VERSION, 'WebGL 1.0 (OpenGL ES 2.0 Chromium)'],
+    [GL.SHADING_LANGUAGE_VERSION, 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'],
+    // —— Stencil state initial values ——
+    [GL.STENCIL_VALUE_MASK, 0x7fffffff],
+    [GL.STENCIL_WRITEMASK, 0x7fffffff],
+    [GL.STENCIL_BACK_VALUE_MASK, 0x7fffffff],
+    [GL.STENCIL_BACK_WRITEMASK, 0x7fffffff],
+    // —— Texture caps (D3D11 spec hard limit = 16384) ——
+    [GL.MAX_TEXTURE_SIZE, 16384],
+    [GL.MAX_CUBE_MAP_TEXTURE_SIZE, 16384],
+    [GL.MAX_RENDERBUFFER_SIZE, 16384],
+    [GL.MAX_VIEWPORT_DIMS, [16384, 16384]],
+    // —— Shader caps (D3D feature level 11_0) ——
+    [GL.MAX_VERTEX_ATTRIBS, 16],
+    [GL.MAX_VERTEX_UNIFORM_VECTORS, 4096],
+    [GL.MAX_VARYING_VECTORS, 30],
+    [GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS, 16],
+    [GL.MAX_TEXTURE_IMAGE_UNITS, 16],
+    [GL.MAX_FRAGMENT_UNIFORM_VECTORS, 1024],
+    [GL.MAX_COMBINED_TEXTURE_IMAGE_UNITS, 32],
+    // —— Aliased ranges ——
+    [GL.ALIASED_LINE_WIDTH_RANGE, [1, 1]],
+    [GL.ALIASED_POINT_SIZE_RANGE, [1, 1024]],
+    // —— Color / depth / stencil bits ——
+    [GL.RED_BITS, 8],
+    [GL.GREEN_BITS, 8],
+    [GL.BLUE_BITS, 8],
+    [GL.ALPHA_BITS, 8],
+    [GL.DEPTH_BITS, 24],
+    [GL.STENCIL_BITS, 8],
+    [GL.SUBPIXEL_BITS, 4],
+    // —— MSAA ——
+    [GL.SAMPLES, 0],
+    [GL.SAMPLE_BUFFERS, 0],
+  ]),
+  webgl2: new Map<number, GlParamValue>([
+    // —— String params (WebGL2 版本号) ——
+    [GL.VERSION, 'WebGL 2.0 (OpenGL ES 3.0 Chromium)'],
+    [GL.SHADING_LANGUAGE_VERSION, 'WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)'],
+    // —— WebGL2 caps（与 UHD 730 共享，源 ANGLE D3D11 硬限制） ——
+    [GL.MAX_3D_TEXTURE_SIZE, 2048],
+    [GL.MAX_ARRAY_TEXTURE_LAYERS, 2048],
+    [GL.MAX_DRAW_BUFFERS, 8],
+    [GL.MAX_COLOR_ATTACHMENTS, 8],
+    [GL.MAX_VERTEX_OUTPUT_COMPONENTS, 64],
+    [GL.MAX_FRAGMENT_INPUT_COMPONENTS, 128],
+    [GL.MIN_PROGRAM_TEXEL_OFFSET, -8],
+    [GL.MAX_PROGRAM_TEXEL_OFFSET, 7],
+    [GL.MAX_SAMPLES, 16],
+    [GL.MAX_UNIFORM_BUFFER_BINDINGS, 60],
+    [GL.MAX_UNIFORM_BLOCK_SIZE, 65536],
+    [GL.MAX_VERTEX_UNIFORM_BLOCKS, 14],
+    [GL.MAX_FRAGMENT_UNIFORM_BLOCKS, 14],
+    [GL.MAX_COMBINED_UNIFORM_BLOCKS, 28],
+    // —— Phase 1.9b 新增（CreepJS short list） ——
+    [GL.MAX_ELEMENTS_VERTICES, 1048575],
+    [GL.MAX_ELEMENTS_INDICES, 1048575],
+    [GL.MAX_TEXTURE_LOD_BIAS, 15],
+    [GL.MAX_FRAGMENT_UNIFORM_COMPONENTS, 16384],
+    [GL.MAX_VERTEX_UNIFORM_COMPONENTS, 16384],
+    [GL.MAX_VARYING_COMPONENTS, 124],
+    [GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS, 4],
+    [GL.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS, 128],
+    [GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS, 4],
+    [GL.MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS, 245760],
+    [GL.MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS, 245760],
+    [GL.MAX_SERVER_WAIT_TIMEOUT, 0],
+    [GL.MAX_ELEMENT_INDEX, 0xfffffffe],
+    [GL.MAX_CLIENT_WAIT_TIMEOUT_WEBGL, 0],
+  ]),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Profile selector
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 已知 profile 清单。按数组顺序匹配 `webglRenderer`，第一个 match 的胜出。
  * 添加新 profile：在数组里增 entry + 在上方导出常量。
+ *
+ * 注意：UHD 630 排在 UHD 730 之前，因为 `\b630\b` regex 更严格（避免 730 字符串
+ * 含 "630" 子串误匹配）。当前两个正则互斥，顺序无影响，但保持 specificity 排序。
  */
-export const KNOWN_PROFILES: readonly WebglProfile[] = [INTEL_UHD_730_D3D11];
+export const KNOWN_PROFILES: readonly WebglProfile[] = [
+  INTEL_UHD_630_D3D11,
+  INTEL_UHD_730_D3D11,
+];
 
 /**
  * 根据 persona 声称的 webglRenderer 字符串挑一个 profile。

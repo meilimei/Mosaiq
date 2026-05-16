@@ -221,19 +221,24 @@ describe('buildInjectionConfig', () => {
       expect(cfg.webglProfile?.webgl1['0xd3a']).toEqual([16384, 16384]);
     });
 
-    it('Win10 / macOS / Ubuntu persona 暂未匹配（保留 null → runner 跳过 spoof）', () => {
-      // Win10 用 UHD 630（不在 KNOWN_PROFILES 内）
-      expect(
-        buildInjectionConfig(createWin10ChromeUsPersona({ id: 'inj-glp-w10', displayName: 'X' }))
-          .webglProfile,
-      ).toBeNull();
-      // macOS 用 Apple M2
+    it('Win10 persona (Intel UHD 630) 派生 INTEL_UHD_630_D3D11 profile (Phase 2.2)', () => {
+      // Phase 2.2: UHD 630 加入 KNOWN_PROFILES，win10-chrome-us 不再 fallback 到 null
+      const cfg = buildInjectionConfig(
+        createWin10ChromeUsPersona({ id: 'inj-glp-w10', displayName: 'X' }),
+      );
+      expect(cfg.webglProfile).not.toBeNull();
+      expect(cfg.webglProfile?.id).toBe('intel-uhd-630-d3d11');
+      expect(cfg.webglProfile?.name).toContain('UHD Graphics 630');
+    });
+
+    it('macOS / Ubuntu persona 暂未匹配（保留 null → runner 跳过 spoof）', () => {
+      // macOS 用 Apple M2 - 暂无 profile
       expect(
         buildInjectionConfig(
           createMacosSonomaChromeUsPersona({ id: 'inj-glp-mac', displayName: 'X' }),
         ).webglProfile,
       ).toBeNull();
-      // Ubuntu 用 Mesa
+      // Ubuntu 用 Mesa - 暂无 profile
       expect(
         buildInjectionConfig(
           createUbuntu2204ChromeUsPersona({ id: 'inj-glp-ubt', displayName: 'X' }),

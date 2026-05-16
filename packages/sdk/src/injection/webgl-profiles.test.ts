@@ -11,6 +11,7 @@ import {
   FLOAT32_ARRAY_PARAMS,
   GL,
   INT32_ARRAY_PARAMS,
+  INTEL_UHD_630_D3D11,
   INTEL_UHD_730_D3D11,
   KNOWN_PROFILES,
   STRING_PARAMS,
@@ -88,9 +89,15 @@ describe('INTEL_UHD_730_D3D11 profile', () => {
     expect(INTEL_UHD_730_D3D11.matchRenderer.test(personaRenderer)).toBe(true);
   });
 
-  it('matchRenderer 不会误伤 UHD 630 / Mesa / Apple M2', () => {
+  it('matchRenderer 不会误伤 Mesa / Apple M2', () => {
+    // 注：Phase 2.2 后 UHD 630 有专用 profile，在 selectWebglProfileForPersona 里会被选中；
+    // 这里仅验证 UHD 730 的 regex 不跨匹配到 UHD 630。
+    expect(
+      INTEL_UHD_730_D3D11.matchRenderer.test(
+        'ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      ),
+    ).toBe(false);
     const others = [
-      'ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)',
       'ANGLE (Intel, Mesa Intel(R) UHD Graphics (CML GT2) (0x00009BC4), OpenGL 4.6 ...)',
       'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)',
     ];
@@ -252,6 +259,45 @@ describe('INTEL_UHD_730_D3D11 profile', () => {
   });
 });
 
+describe('INTEL_UHD_630_D3D11 profile (Phase 2.2)', () => {
+  it('matchRenderer 匹配 win10-chrome-us 模板的 webglRenderer', () => {
+    const personaRenderer =
+      'ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    expect(INTEL_UHD_630_D3D11.matchRenderer.test(personaRenderer)).toBe(true);
+  });
+
+  it('matchRenderer `\\b630\\b` 不跨匹配 UHD 730 / 6300 / 6300U etc.', () => {
+    const negatives = [
+      'ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) ...)',
+      'NVIDIA GeForce GTX 6300', // 假想 — 防止子串匹配
+    ];
+    for (const r of negatives) {
+      expect(INTEL_UHD_630_D3D11.matchRenderer.test(r)).toBe(false);
+    }
+  });
+
+  it('id 为 "intel-uhd-630-d3d11"', () => {
+    expect(INTEL_UHD_630_D3D11.id).toBe('intel-uhd-630-d3d11');
+  });
+
+  it('knownInCreepjsWhitelist 标 undefined（数据未实测白名单命中）', () => {
+    expect(INTEL_UHD_630_D3D11.knownInCreepjsWhitelist).toBeUndefined();
+  });
+
+  it('WebGL1 / WebGL2 表 size 与 UHD 730 等同（同 ANGLE D3D11 backend）', () => {
+    expect(INTEL_UHD_630_D3D11.webgl1.size).toBe(INTEL_UHD_730_D3D11.webgl1.size);
+    expect(INTEL_UHD_630_D3D11.webgl2.size).toBe(INTEL_UHD_730_D3D11.webgl2.size);
+  });
+
+  it('关键 caps 与 UHD 730 数值一致（ANGLE D3D11 硬限制共享）', () => {
+    const a = INTEL_UHD_630_D3D11.webgl1;
+    const b = INTEL_UHD_730_D3D11.webgl1;
+    for (const pname of [GL.MAX_TEXTURE_SIZE, GL.MAX_VERTEX_ATTRIBS, GL.MAX_RENDERBUFFER_SIZE]) {
+      expect(a.get(pname)).toBe(b.get(pname));
+    }
+  });
+});
+
 describe('selectWebglProfile', () => {
   it('Intel UHD 730 renderer → INTEL_UHD_730_D3D11', () => {
     const profile = selectWebglProfile(
@@ -260,15 +306,25 @@ describe('selectWebglProfile', () => {
     expect(profile).toBe(INTEL_UHD_730_D3D11);
   });
 
+  it('Intel UHD 630 renderer → INTEL_UHD_630_D3D11 (Phase 2.2)', () => {
+    const profile = selectWebglProfile(
+      'ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    );
+    expect(profile).toBe(INTEL_UHD_630_D3D11);
+  });
+
   it('未知 renderer → null（runner.ts 跳过 GL param spoof）', () => {
     expect(selectWebglProfile('ANGLE (NVIDIA, GeForce RTX 4090, D3D11)')).toBeNull();
     expect(selectWebglProfile('Apple M2 Pro')).toBeNull();
     expect(selectWebglProfile('')).toBeNull();
   });
 
-  it('KNOWN_PROFILES 数组顺序决定优先级（第一个 match 胜出）', () => {
-    // 当前只有一个 profile，但留这条 test 防止未来重构破坏顺序合约
-    expect(KNOWN_PROFILES[0]).toBe(INTEL_UHD_730_D3D11);
+  it('KNOWN_PROFILES 数组顺序决定优先级（specificity 高的在前）', () => {
+    // Phase 2.2: UHD 630 的 regex `\b630\b` 更严格（留字界避免抑 730 中含 630三字的问题），
+    // 所以排在 UHD 730 之前。当前两 regex 互斥，顺序不影响行为。
+    expect(KNOWN_PROFILES.length).toBeGreaterThanOrEqual(2);
+    expect(KNOWN_PROFILES.map((p) => p.id)).toContain('intel-uhd-630-d3d11');
+    expect(KNOWN_PROFILES.map((p) => p.id)).toContain('intel-uhd-730-d3d11');
   });
 });
 
