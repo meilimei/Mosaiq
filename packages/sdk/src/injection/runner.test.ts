@@ -444,3 +444,142 @@ describe('CDP detection hardening (Phase 1.6)', () => {
     expect(Function.prototype.toString.call(Object.defineProperties)).toContain('[native code]');
   });
 });
+
+describe('Error.stack frame poisoning hardening (Phase 3.1)', () => {
+  // §13 装 V8 全局 `Error.prepareStackTrace` hook，filter 掉敏感栈帧
+  // （utilityscript / blob: / puppeteer / playwright 等）。真站 detector 走
+  // `try { ... } catch (e) { check_keywords(e.stack) }` 路径 → hook 必须拦下。
+
+  type PrepFn = (err: Error, stack: unknown[]) => string;
+
+  function getPrep(): PrepFn {
+    const fn = (Error as unknown as { prepareStackTrace?: PrepFn }).prepareStackTrace;
+    if (typeof fn !== 'function') {
+      throw new Error('Error.prepareStackTrace not installed');
+    }
+    return fn;
+  }
+
+  // 构造 fake CallSite（V8 stack frames 的 minimal interface），
+  // 避免在 happy-dom + Node 环境下 frame 内容平台依赖。
+  function frame(
+    functionName: string,
+    fileName: string,
+    label = `${functionName} (${fileName}:1:1)`,
+  ): unknown {
+    return {
+      getFunctionName: () => functionName,
+      getFileName: () => fileName,
+      toString: () => label,
+    };
+  }
+
+  it('installs Error.prepareStackTrace as a function', () => {
+    expect(typeof (Error as unknown as { prepareStackTrace?: unknown }).prepareStackTrace).toBe(
+      'function',
+    );
+  });
+
+  it('filters UtilityScript frames (Playwright internal bridge)', () => {
+    const prep = getPrep();
+    const result = prep(new Error('test'), [
+      frame('appCode', 'https://site.com/app.js'),
+      frame('UtilityScript.evaluate', '<anonymous>'),
+      frame('UtilityScript.<anonymous>', '<anonymous>'),
+    ]);
+    expect(typeof result).toBe('string');
+    expect(result).toContain('appCode');
+    expect(result).toContain('https://site.com/app.js');
+    expect(result).not.toContain('UtilityScript');
+  });
+
+  it('filters blob: file URLs (worker self-source URL leak)', () => {
+    const prep = getPrep();
+    const result = prep(new Error('worker-test'), [
+      frame('userFn', 'https://site.com/main.js'),
+      frame('onmessage', 'blob:null/abc-uuid-123'),
+    ]);
+    expect(result).toContain('userFn');
+    expect(result).not.toContain('blob:');
+  });
+
+  it('filters puppeteer / playwright / automation / cdp / devtools substrings', () => {
+    const prep = getPrep();
+    const result = prep(new Error('multi'), [
+      frame('normalFn', 'app.js'),
+      frame('puppeteerInternal', 'pup.js'),
+      frame('playwrightHelper', 'pw.js'),
+      frame('__playwright__', 'inject.js'),
+      frame('PuppeteerExtra', 'extra.js'),
+      frame('evaluationScript', 'ev.js'),
+    ]);
+    expect(result).toContain('normalFn');
+    expect(result).not.toContain('puppeteer');
+    expect(result).not.toContain('playwright');
+    expect(result).not.toContain('PuppeteerExtra');
+    expect(result).not.toContain('evaluationScript');
+  });
+
+  it('preserves user frames in stack output (no false positives)', () => {
+    const prep = getPrep();
+    const result = prep(new Error('user-test'), [
+      frame('handleClick', 'https://shop.example.com/cart.js'),
+      frame('Array.forEach', '<anonymous>'),
+    ]);
+    expect(result).toContain('Error: user-test');
+    expect(result).toContain('handleClick');
+    expect(result).toContain('https://shop.example.com/cart.js');
+    expect(result).toContain('Array.forEach');
+  });
+
+  it('emits valid V8-format string for empty stack', () => {
+    const prep = getPrep();
+    const result = prep(new Error('empty'), []);
+    expect(typeof result).toBe('string');
+    expect(result).toContain('Error: empty');
+  });
+
+  it('handles CallSite getter that throws (defensive)', () => {
+    const prep = getPrep();
+    const badFrame = {
+      getFunctionName: () => {
+        throw new Error('boom');
+      },
+      getFileName: () => 'app.js',
+      toString: () => 'crashy (app.js:1:1)',
+    };
+    const result = prep(new Error('defensive'), [badFrame, frame('goodFn', 'app.js')]);
+    // 抛错的 frame 被 try/catch 兜住，保守不算可疑 → 保留
+    expect(result).toContain('crashy');
+    expect(result).toContain('goodFn');
+  });
+
+  it('Error.prepareStackTrace.toString returns native code (stealth)', () => {
+    const prep = (Error as unknown as { prepareStackTrace?: PrepFn }).prepareStackTrace!;
+    expect(Function.prototype.toString.call(prep)).toContain('[native code]');
+  });
+
+  it('does not break Error subclasses', () => {
+    class CustomError extends Error {}
+    const e = new CustomError('sub-test');
+    // 真实读 .stack — 走 V8 自动调 prepareStackTrace 路径
+    const stack = e.stack;
+    expect(typeof stack === 'string' || stack === undefined).toBe(true);
+    if (typeof stack === 'string') {
+      expect(stack).not.toContain('UtilityScript');
+      expect(stack).not.toContain('blob:');
+    }
+  });
+
+  it('case-insensitive matching catches mixed-case variants', () => {
+    const prep = getPrep();
+    const result = prep(new Error('case-test'), [
+      frame('userFn', 'app.js'),
+      frame('Puppeteer.evaluate', 'pup.js'),
+      frame('PlayWright.helper', 'pw.js'),
+    ]);
+    expect(result).toContain('userFn');
+    expect(result.toLowerCase()).not.toContain('puppeteer');
+    expect(result.toLowerCase()).not.toContain('playwright');
+  });
+});

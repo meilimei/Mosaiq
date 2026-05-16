@@ -1520,6 +1520,32 @@ export function injectAll(config: InjectionConfig): void {
         'return _origDPs.call(Object,obj,descs);' +
         '};' +
         '}catch(e){}' +
+        // ── Error.stack frame poisoning hardening (mirror of main scope §13) ──
+        // Phase 3.1 worker scope 关键：worker 用 URL.createObjectURL(new Blob) 加载，
+        // 其 stack 始终含 `blob:null/<uuid>:N:N` URL leak。incolumitas / fp-scanner /
+        // modified fp-collect 通过 throw + read err.stack 反查 → 命中 blob: 即 bot。
+        // 装 Error.prepareStackTrace V8 hook，filter 后返回 cleaned string。
+        'try{' +
+        'var _SUSP=["utilityscript","puppeteer","playwright","__playwright__","__pwinitscripts","puppeteerextra","evaluationscript","cdp.","devtools"];' +
+        'var _SUSP_PFX=["blob:","data:"];' +
+        'var _isSusp=function(cs){try{' +
+        'var fn=String(cs.getFunctionName?cs.getFunctionName():"");' +
+        'var file=String(cs.getFileName?cs.getFileName():"");' +
+        'var c=(fn+" "+file).toLowerCase();' +
+        'for(var i=0;i<_SUSP.length;i++){if(c.indexOf(_SUSP[i])>=0)return true;}' +
+        'var fl=file.toLowerCase();' +
+        'for(var j=0;j<_SUSP_PFX.length;j++){if(fl.indexOf(_SUSP_PFX[j])===0)return true;}' +
+        '}catch(e){}' +
+        'return false;};' +
+        'var _origPrep=Error.prepareStackTrace;' +
+        'Error.prepareStackTrace=function(err,ss){' +
+        'var f=[];for(var i=0;i<ss.length;i++){if(!_isSusp(ss[i]))f.push(ss[i]);}' +
+        'if(typeof _origPrep==="function"){try{return _origPrep.call(Error,err,f);}catch(e){}}' +
+        'var head=String(err)||(err&&err.message?err.message:"Error");' +
+        'var lines=[];for(var k=0;k<f.length;k++){lines.push("    at "+String(f[k]));}' +
+        'return head+(lines.length?"\\n"+lines.join("\\n"):"");' +
+        '};' +
+        '}catch(e){}' +
         '}catch(e){}})();';
 
       function resolveWorkerScriptUrl(scriptUrl: string | URL): string {
@@ -1764,6 +1790,115 @@ export function injectAll(config: InjectionConfig): void {
     }) as typeof Object.defineProperties;
   } catch (err) {
     console.debug('[mosaiq] cdp hardening failed', err);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 13. Error.stack frame poisoning hardening (Phase 3.1, 2026-05-16)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // 触发：Phase 2.5 全 12-站 bench (results/2026-05-16T12-43-07-880Z/) +
+  // `bench/probe-error-stack.ts` 探测到：
+  //   - MAIN scope: stack 含 `at UtilityScript.evaluate (<anonymous>:N:N)` —
+  //     Playwright 注入痕迹（即使我们 spoof 完美，Playwright eval 路径本身
+  //     就在 stack 里留 "UtilityScript" 字符串）
+  //   - WORKER scope: stack 含 `at self.onmessage (blob:null/<uuid>:N:N)` —
+  //     §11 worker IIFE 通过 `URL.createObjectURL(new Blob(...))` 加载，
+  //     stack 始终带 `blob:` URL leak（这是 v0.2 worker 透明性根本性 leak）
+  //
+  // 实战指向：incolumitas modified fp-collect（Phase 2.5 raw JSON 抓到
+  // `webDriver: true` 同时 `webDriverValue: false`，配合 `errorsGenerated:
+  // ["azeaze is not defined", ...]`）→ detector 通过故意 throw
+  // ReferenceError 并 inspect err.stack 字符串反查自动化框架 signature。
+  // 同时 arh-antoinevastel `WEBDRIVER` Inconsistent 大概率同一根因
+  // （fp-scanner 直接用 fp-collect 的 webDriver 字段）。
+  //
+  // 修法：装 V8 全局 `Error.prepareStackTrace` hook —— 第一次读 err.stack
+  // 时 V8 调它，传入 raw error + 结构化 CallSite[] stack frames。我们 filter
+  // 掉敏感 frame 后委托给原 hook（若有）或 V8 默认格式，永远不让 PATTERNS
+  // 进入用户可见 stack。
+  //
+  // ⚠️ Anti-detection 副作用：默认 `Error.prepareStackTrace === undefined`，
+  // 装上后变 function。detector 可 typeof 检测。缓解：
+  //   1. wrapStealth 包装 hook → `Function.prototype.toString` 返回 native 字符串
+  //   2. **不**走 `Object.defineProperty` 装 hook（accessor descriptor 极可疑），
+  //      直接赋值（与 puppeteer-extra-plugin-stealth / rebrowser-patches 同手法）
+  //   3. V8 字段本身的存在不在已知 fp-collect / fp-scanner / CreepJS 检测点列表
+  try {
+    interface CallSite {
+      getFunctionName(): string | null;
+      getFileName(): string | null;
+      toString(): string;
+    }
+    const SUSPICIOUS_SUBSTRS = [
+      'utilityscript',
+      'puppeteer',
+      'playwright',
+      '__playwright__',
+      '__pwinitscripts',
+      'puppeteerextra',
+      'evaluationscript',
+      'cdp.',
+      'devtools',
+    ];
+    const SUSPICIOUS_FILE_PREFIXES = ['blob:', 'data:'];
+
+    function isSuspiciousFrame(cs: CallSite): boolean {
+      try {
+        const fn = String(cs.getFunctionName() ?? '');
+        const file = String(cs.getFileName() ?? '');
+        const combined = (fn + ' ' + file).toLowerCase();
+        for (const p of SUSPICIOUS_SUBSTRS) {
+          if (combined.includes(p)) return true;
+        }
+        const fileLower = file.toLowerCase();
+        for (const p of SUSPICIOUS_FILE_PREFIXES) {
+          if (fileLower.startsWith(p)) return true;
+        }
+      } catch {
+        // CallSite getter 抛错 → 保守不当可疑
+      }
+      return false;
+    }
+
+    const ErrorCtor = Error as unknown as {
+      prepareStackTrace?: (err: Error, stack: unknown[]) => string;
+    };
+    const origPrep = ErrorCtor.prepareStackTrace;
+
+    const ourPrep = function prepareStackTrace(
+      err: Error,
+      structuredStack: unknown[],
+    ): string {
+      const filtered = (structuredStack as CallSite[]).filter(
+        (cs) => !isSuspiciousFrame(cs),
+      );
+      // 委托给原 hook（如果有），否则走 V8 default 格式
+      if (typeof origPrep === 'function') {
+        try {
+          return origPrep.call(Error, err, filtered);
+        } catch {
+          // 原 hook 出错降级 default
+        }
+      }
+      const head = String(err) || (err && err.message ? err.message : 'Error');
+      const lines = filtered.map((cs) => '    at ' + String(cs));
+      return head + (lines.length ? '\n' + lines.join('\n') : '');
+    };
+
+    // 不走 wrapStealth(Proxy) —— wrapStealth 默认捕获的 origStr 是
+    // `Function.prototype.toString.call(ourPrep)`，会返回我们的 source code
+    // （非 native）→ detector 一调 toString 立刻看穿。改为直接手动注册到
+    // stealthRegistry：Function.prototype.toString hook 命中时返回 native
+    // 风格字符串。同时 V8 不再多一层 Proxy 间接调用，性能 + 行为更稳。
+    stealthRegistry.set(ourPrep, 'function prepareStackTrace() { [native code] }');
+
+    try {
+      ErrorCtor.prepareStackTrace = ourPrep;
+    } catch {
+      // 某些 frozen 环境下赋值失败 — 不影响主流程
+    }
+  } catch (err) {
+    console.debug('[mosaiq] error stack hardening failed', err);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
