@@ -68,66 +68,89 @@
 
 ---
 
-### Phase 2.2 — Add `INTEL_UHD_630_D3D11` profile
+### Phase 2.2 — Add `INTEL_UHD_630_D3D11` profile ✅ 部分完成 (2026-05-16)
 
 **目标**：加一个 capabilities hash 在 CreepJS 白名单内的 GPU profile。
 
-**数据来源（按可信度排序）**：
+#### Part 1: Base profile ✅ commit fb0813a
 
-1. **browserleaks 公开统计** —— browserleaks.com/webgl 大量真实用户 dump，UHD 630 是常见样本
-2. **WebGLReport.com 公开数据库** —— 类似 browserleaks，有 GPU 参数列表
-3. **CreepJS GitHub issues** —— 用户提交的 fingerprint capture（含 capabilities hash）
-4. **离线推算** —— 从 CreepJS `capabilities[]` 数组反推可能的参数组合（最弱可信，仅备用）
+加 `INTEL_UHD_630_D3D11` profile（与 UHD 730 同 ANGLE D3D11 backend，GL caps
+完全相同，仅 matchRenderer / id 不同）。`win10-chrome-us` persona 不再走
+UNMASKED-only fallback。
 
-**实施流程**：
+- sdk: 225 → 233 (+8 tests, all green)
+- 测试覆盖：matchRenderer、id、knownInCreepjsWhitelist 字段、caps parity
 
-1. 收集 ≥3 个独立 source 的 UHD 630 D3D11 参数 dump
-2. cross-validate：取 ≥2 个 source 一致的值；冲突值用 majority vote
-3. 写入 `webgl-profiles.ts` `INTEL_UHD_630_D3D11`（49 named params）
-4. `diagnose-creepjs-webgl-hash.ts` 计算我们的 capabilities hash
-5. 对照 CreepJS source 中 `capabilities[]` 数组（已存于 PHASE-1-NEXT-STEPS §1.9b，250 entries）
-6. 命中 → ✅；未命中 → 调整参数（如 MAX_TEXTURE_LOD_BIAS、stencil masks）重试
+#### Part 2: Reverse-fit whitelist hit ❌ 负面结论
 
-**验收**：
+写了 `bench/find-creepjs-whitelist-fit.ts` 枚举单 param 修改让 hash 命中两个
+CreepJS 白名单（capabilities[] + brandCapabilities[]）。
 
-- ✅ INTEL_UHD_630_D3D11 capabilities hash ∈ CreepJS `capabilities[]`
-- ✅ matchRenderer regex 不与 UHD 730 冲突
-- ✅ webgl-profiles.test.ts 覆盖 UHD 630（≥4 测试，参考 UHD 730 测试模板）
-- ✅ diagnose-creepjs-webgl-hash 同时跑两 profile，UHD 630 hash 在白名单
+**关键数字**：
 
-**依赖**：Phase 2.1 完成
+- Baseline UHD 730/630 capHash `-2146263890` (NOT in whitelist)
+- Baseline brandHash `621302ee` (NOT in whitelist)
+- 最近 cap whitelist hash 距 baseline 10197
+- 3218 single-change permutations: **0 full hits, 0 partial hits**
+- cap whitelist 密度 237/2³² ≈ 5.52e-8
+- brand whitelist 密度 287/2³² ≈ 6.68e-8
+- Joint hit 期望 tries: **2.71×10¹⁴** —— blind brute-force 数学不可能
 
-**估时**：3-5h（含数据源调研）
+**结论**：
 
-**风险**：
+CreepJS 白名单是从真实用户提交的捕获积累，不是算法推导。我们的 GPU profile
+（不论是 UHD 730 还是 UHD 630）落在白名单内**纯粹靠运气** —— 项目方是否
+恰好录入了我们这个 driver/GPU 组合。新一代 GPU（如 UHD 730 Alder Lake 2022+）
+几乎肯定不在；老一代（如 UHD 630 Coffee Lake 2017）也要看 driver 版本。
 
-- 公开数据源不全 → fallback 用 CreepJS issues 里的真值 capture
-- 数据源精确值可能因 driver 版本飘移 → 优先用 majority vote，不行就拿 capabilities hash 反向 fit
+**这不是 Mosaiq spoof 缺陷** —— 真实硬件用户跑 UHD 730/新 driver 同样会
+触发 `LowerEntropy.WEBGL`，CreepJS 单纯没收录他们。
+
+**实施路径（不再追求 v0.3 内解决）**：
+
+1. **v0.4+：** 真机 capture pipeline —— 收集真实 UHD 630/UHD 620 Coffee Lake
+   用户的 webglParams，标 `knownInCreepjsWhitelist: true` 的 profile
+2. **接受现状**：creepjs.com WebGL bold-fail 不阻断核心 v0.3 目标
+   （多 fingerprinter 跨站表现）。其他 fingerprinter 不用 CreepJS 白名单
+
+**Part 2 artifacts**：
+
+- `bench/find-creepjs-whitelist-fit.ts` —— reverse-fit 探索工具，含 CreepJS
+  whitelist 完整副本 + hashMini / capabilitiesHash 实现 + 稀疏度分析
+- 输出可重现：`pnpm --filter @mosaiq/sdk exec tsx bench/find-creepjs-whitelist-fit.ts`
 
 ---
 
-### Phase 2.3 — Alt persona template
+### Phase 2.3 — Documentation + bench verification（重新定义）
 
-**目标**：让 user 可选 trade-off `persona-honest UHD 730` vs `whitelist-pass UHD 630`。
+**原计划**：新增 `win11-chrome-us-uhd630.ts` alt template 给用户 trade-off
+`persona-honest UHD 730` vs `whitelist-pass UHD 630`。
 
-**范围**：
+**重新定义原因**：Phase 2.2 Part 2 证明 UHD 630 hash 同样不在 CreepJS 白名单
+（与 UHD 730 同 ANGLE backend），所以 trade-off 不存在 —— 两个 GPU 都
+bold-fail。新 template 无价值。
 
-- `packages/persona-schema/src/templates/win11-chrome-us-uhd630.ts`（NEW）
-  - 同 win11-chrome-us，但 `gpu.webglRenderer` = UHD 630 字符串
-  - `gpu.webglProfileId = 'intel-uhd-630-d3d11'`
-- 文档：在 `packages/persona-schema/README.md`（或 SDK quickstart）加 template 选择指南
-- 测试：`templates.test.ts`（如有）+ build-config round-trip 测试
+**实际任务（缩小 scope）**：
+
+- 文档：在 `packages/sdk/README.md` 或 `packages/persona-schema/README.md`
+  加一节 "WebGL spoofing & CreepJS bold-fail expectations"，引用 Phase 2.2
+  Part 2 的分析，明确告知用户：
+  - 4 个内置 template (win11/win10/macos/ubuntu) 的 WebGL bold-fail 在
+    creepjs.com 上预期为 trigger
+  - 这是 CreepJS 白名单覆盖问题，非 spoof 缺陷
+  - 其他主流 fingerprinter (browserleaks/sannysoft/fp.imperva) 不依赖此白名单
+- bench：跑 `win10-chrome-us` + `win11-chrome-us` end-to-end 通过
+  `bench/baseline-detection.ts`（或 9 站套件），确认非 creepjs 站点
+  pass rate 不退化
+- 测试：persona-schema 已有的 4 template catalog 测试足够，无需新加
 
 **验收**：
 
-- ✅ `createWin11ChromeUsUhd630Persona({...})` 导出
-- ✅ persona schema 验证通过
-- ✅ build-config 选 INTEL_UHD_630_D3D11 profile
-- ✅ bench 跑 UHD 630 persona 时，creepjs WebGL bold-fail **消失**
+- ✅ README 文档段落落地（≥1 个清晰说明 + 复现命令）
+- ✅ baseline-detection 跑 win10 + win11，所有非 creepjs 站点保持 v0.2 baseline
+- ✅ 已知 limitation 在 PHASE-2-PLAN + README 双重记录
 
-**依赖**：Phase 2.2 完成
-
-**估时**：1-2h
+**估时**：1-1.5h（无新代码，仅文档 + 跑 bench 验证）
 
 ---
 
