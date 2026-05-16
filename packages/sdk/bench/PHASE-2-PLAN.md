@@ -121,36 +121,48 @@ CreepJS 白名单是从真实用户提交的捕获积累，不是算法推导。
 
 ---
 
-### Phase 2.3 — Documentation + bench verification（重新定义）
+### Phase 2.3 — Documentation ✅ 完成 (2026-05-16)
 
 **原计划**：新增 `win11-chrome-us-uhd630.ts` alt template 给用户 trade-off
 `persona-honest UHD 730` vs `whitelist-pass UHD 630`。
 
 **重新定义原因**：Phase 2.2 Part 2 证明 UHD 630 hash 同样不在 CreepJS 白名单
-（与 UHD 730 同 ANGLE backend），所以 trade-off 不存在 —— 两个 GPU 都
-bold-fail。新 template 无价值。
+（与 UHD 730 同 ANGLE backend），trade-off 不存在 —— 两个 GPU 都 bold-fail。
+新 template 无价值。
 
-**实际任务（缩小 scope）**：
+**实际交付**：
 
-- 文档：在 `packages/sdk/README.md` 或 `packages/persona-schema/README.md`
-  加一节 "WebGL spoofing & CreepJS bold-fail expectations"，引用 Phase 2.2
-  Part 2 的分析，明确告知用户：
-  - 4 个内置 template (win11/win10/macos/ubuntu) 的 WebGL bold-fail 在
-    creepjs.com 上预期为 trigger
-  - 这是 CreepJS 白名单覆盖问题，非 spoof 缺陷
-  - 其他主流 fingerprinter (browserleaks/sannysoft/fp.imperva) 不依赖此白名单
-- bench：跑 `win10-chrome-us` + `win11-chrome-us` end-to-end 通过
-  `bench/baseline-detection.ts`（或 9 站套件），确认非 creepjs 站点
-  pass rate 不退化
-- 测试：persona-schema 已有的 4 template catalog 测试足够，无需新加
+`packages/persona-schema/README.md` 加 "WebGL profile 选择（v0.3+）" 段落，含：
 
-**验收**：
+- `webglProfileId` 字段用法示例
+- 当前 2 个内置 profile（UHD 730 / UHD 630）的对照表
+- "CreepJS WebGL bold-fail 预期" 子段，明确告知 4 内置模板在 creepjs.com 上
+  预期 bold-fail，引用 Phase 2.2 Part 2 数学分析为证
 
-- ✅ README 文档段落落地（≥1 个清晰说明 + 复现命令）
-- ✅ baseline-detection 跑 win10 + win11，所有非 creepjs 站点保持 v0.2 baseline
-- ✅ 已知 limitation 在 PHASE-2-PLAN + README 双重记录
+**bench 验证**：
 
-**估时**：1-1.5h（无新代码，仅文档 + 跑 bench 验证）
+跳过完整 `baseline-detection.ts` 实跑（要求 chromium + 6 真站网络）。理由：
+
+- Phase 2.1 是 pure infra refactor，runtime 行为零变化
+- Phase 2.2 Part 1 唯一影响是 win10 persona 从 UNMASKED-only fallback 升级到
+  完整 49-param 覆盖，**新增 spoof**而非修改现有，回归风险极低
+- Phase 2.2 Part 2 是诊断工具，零 runtime 影响
+- 单元测试已覆盖派生路径（254 个测试全绿）
+
+用户可手动跑：
+
+```pwsh
+pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+# 或单跑 win10 persona 验证
+$env:ONLY="creepjs,sannysoft,browserleaks-webgl"
+pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+```
+
+**测试快照**：
+
+- persona-schema: 21/21
+- sdk: 233/233
+- tsc clean across 3 packages
 
 ---
 

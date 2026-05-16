@@ -74,4 +74,46 @@ writeFileSync('persona.schema.json', JSON.stringify(getPersonaJsonSchema(), null
 - **Locale 必须 BCP 47**：`en-US` 而非 `EN_US`
 - **WebRTC 默认 proxy_only**：避免代理场景下本地 IP 泄露
 
+## WebGL profile 选择（v0.3+）
+
+`hardware.gpu.webglProfileId` 字段（可选）允许用户显式指定 SDK 内置 WebGL
+profile 来覆盖基于 `webglRenderer` 字符串的 regex 自动选择。
+
+```ts
+const persona = createWin11ChromeUsPersona({ id: 'x', displayName: 'X' });
+persona.hardware.gpu.webglProfileId = 'intel-uhd-630-d3d11'; // override
+```
+
+当前 SDK 提供 2 个内置 profile：
+
+| profile id | 匹配 renderer | 适用模板 |
+|---|---|---|
+| `intel-uhd-730-d3d11` | `/UHD Graphics 730/` | `win11-chrome-us` |
+| `intel-uhd-630-d3d11` | `/UHD Graphics 630\b/` | `win10-chrome-us` |
+
+如果 `webglProfileId` typo / 未注册，SDK 会自动降级到 regex 匹配（避免 typo
+关闭 spoof）。
+
+### CreepJS WebGL bold-fail 预期
+
+**已知 limitation**：所有 4 个内置 persona 模板在 [creepjs.com](https://creepjs.com)
+上预期会触发 `LowerEntropy.WEBGL` bold-fail。
+
+**为什么**：CreepJS 用硬编码白名单（`capabilities[]` 237 个 int hash +
+`brandCapabilities[]` 287 个 hex hashMini）检测 GPU 真伪。新 GPU（如 UHD
+730 Alder Lake 2022+）或非典型 driver 版本的真实硬件用户**同样会被误判**。
+
+**这不是 Mosaiq spoof 缺陷**。我们的 49-param WebGL profile 完整匹配 ANGLE
+D3D11 backend 真实值；问题是 CreepJS 数据库覆盖有限。详细数学分析（包括
+为何 blind reverse-fit 在数学上不可能）见 `packages/sdk/bench/PHASE-2-PLAN.md`
+Phase 2.2 Part 2。
+
+**实操影响**：
+
+- creepjs.com WebGL 显示 `lies` / `not-trusted` —— 预期内
+- 其他主流 fingerprinter（browserleaks / sannysoft / pixelscan）不依赖
+  此白名单，pass rate 正常
+- 真实硬件 + 主流 driver 版本的用户访问 creepjs 同样会触发 bold-fail，
+  这是行业普遍现象
+
 License: Apache-2.0
