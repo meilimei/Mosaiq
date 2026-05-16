@@ -8,8 +8,9 @@
 
 ## 🚀 想立即跑起来？
 
-**v0.2 已可用**：Electron 桌面壳 + Playwright CDP 注入引擎 + humanize 类人输入引擎。能创建 Persona（4 模板）、启动隔离浏览器、跑指纹自检、用 SDK 跑类人鼠标键盘。
+**v0.2.0 已发布**（2026-05-16）：Electron 桌面壳 + Playwright CDP 注入引擎 + humanize 类人输入引擎。能创建 Persona（4 模板）、启动隔离浏览器、跑指纹自检、用 SDK 跑类人鼠标键盘。**反检测注入引擎已硬化**：CreepJS lies 10→2、Canvas 双 guard 治 lies / LowerEntropy、WebGL 49-param ANGLE 全覆盖、UA-CH 全 scope spoof、worker scope 加固。
 
+→ **[CHANGELOG.md](./CHANGELOG.md)** — v0.1.0 → v0.2.0 完整变更（Phase 1.5-1.9 + Phase 2.1-2.4）
 → **[QUICKSTART.md](./QUICKSTART.md)** — 5 分钟从 clone 到第一次自检
 → **[docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)** — v0.2 humanize 引擎完整设计稿
 
