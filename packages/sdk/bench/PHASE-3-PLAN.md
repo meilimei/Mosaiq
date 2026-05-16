@@ -19,7 +19,7 @@ dbi-bot 间歇性 timeout → **Phase 3.2** bench retry。
 
 ## Sub-phases
 
-### Phase 3.1 — Error.stack frame poisoning hardening 🔴 priority 1
+### Phase 3.1 — Error.stack frame poisoning hardening ✅ 完成 (2026-05-16)
 
 **目标**：清洗 `Error.prototype.stack` 字符串，去掉 Playwright/blob: 等自动化痕迹。
 
@@ -69,19 +69,46 @@ Error.prepareStackTrace = function(err, structuredStack) {
   缓解：wrapStealth 让 `Error.prepareStackTrace.toString()` 返回 `function prepareStackTrace() { [native code] }`。
 - 全局覆盖 prepareStackTrace 对依赖 source-map 的库有影响（Sentry / Pino）— web 端这类几乎不存在，server-side 不在我们 scope。
 
-**估时**：3-4h（含实施 + 测试 + probe 验证 + bench 重跑 + 文档）
+**实际估时**：4h（含主 + worker 实施 + 10 unit tests + probe-error-stack + probe-fpcollect-source + 2 次 bench + analyzer false positive 修复 + 文档）
 
-**验收**：
+**验收**（实际结果）：
 
 - ✅ probe-error-stack.ts 全部 clean (main + worker 0 hits)
-- ✅ arh-antoinevastel `WEBDRIVER` Inconsistent → Consistent（如果是该路径触发）
-- ✅ incolumitas modified fp-collect `webDriver: true` → false（同上前提）
-- ✅ 271 单测保持不退化 + 新增 ≥ 8 测试
+- ⚠️ arh-antoinevastel `WEBDRIVER` Inconsistent — **实际根因不是 Error.stack**：probe-fpcollect-source 揭示 fp-collect `webDriver: 'webdriver' in navigator`，对所有现代 Chrome 用户都是 true（W3C WebDriver Recommendation 2018+ 强制 `navigator.webdriver` 存在）。fp-scanner 2017 版本未跟进 spec → 对所有 Chrome 用户都报 Inconsistent。已加 `KNOWN_OUTDATED_RULES` 白名单不入 hits。
+- ⚠️ incolumitas modified fp-collect `webDriver: true` — 同一 root cause，已从 `extractIncolumitas.knownBadKeys` 移除 `'webdriver'` substring 扫描。
+- ✅ 281/281 单测全绿（271 → 281，+10 测试覆盖 hook 安装 / filter / stealth / 边界）
+- ✅ 12 站 bench：hits 5 → 3（other 3 → 2 + canvas 1 + webdriver 1 → 0）
 
-**风险与备选**：
+**剩余 3 个 hits（已分类，全部不属于 Phase 3.1 范围）**：
 
-- 如果 fp-collect modified 用的是**别的**检测（非 Error.stack），Phase 3.1 不会让 incolumitas 转绿。但 worker `blob:` leak 修了仍是净改进。
-- 如果 fp-collect 用 `Object.getPrototypeOf(navigator).webdriver` 取 raw getter — 这是 Phase 3.1 范围外，需另开 Phase 3.5 navigator getter chain hardening。
+| Hit | 归属 |
+|---|---|
+| `creepjs WebGL bold-fail` (hash=aeaae448) | Phase 2.2 reverse-fit 负面结论，Phase 3.4 二轮 |
+| `browserleaks-canvas uniqueness=100%` | Phase 2.4 设计 tradeoff（per-persona uniqueness） |
+| `fingerprint-scan score=75 verdict=bot` | Phase 3.3 reverse engineering |
+
+**关键经验** —— Phase 2.5 bench 显示 5 hits 时，**2 个其实是 analyzer false positive**（不是 spoof 漏洞），而不是 Phase 3.1 真正修了它们。Phase 3.1 的实际价值：
+
+1. **闭合 Error.stack 检测路径**（即使当前主流 detector 不用，puppeteer-extra-plugin-stealth 也做此 hardening 作为防御纵深）
+2. **侦察 → 改进 measurement 准确度**：probe-fpcollect-source 让我们看清楚检测路径，反过来纠正 analyzer
+
+**实施细节**：
+
+- `runner.ts` §13：装 `Error.prepareStackTrace` 全局 hook，过滤 `utilityscript / blob: / puppeteer / playwright / __playwright__ / __pwInitScripts / puppeteerextra / evaluationscript / cdp. / devtools` 字样 + `blob: / data:` 文件前缀
+- Worker IIFE 镜像同样 filter list
+- 关键 stealth：不用 wrapStealth (Proxy 会注册 source code) — 改 `stealthRegistry.set(ourPrep, 'function prepareStackTrace() { [native code] }')` + 直接赋值，保 `Function.prototype.toString` 透明
+- `extractIncolumitas.knownBadKeys` 移 `'webdriver'`（W3C spec false positive）
+- `analyzeAntoinevastel` 加 `KNOWN_OUTDATED_RULES = new Set(['WEBDRIVER'])`，标 ℹ️ note 不入 hits
+
+**bench 数据归档**：
+
+- 起点：`bench/results/2026-05-16T12-43-07-880Z/` (Phase 2.5 完成态，hits=5)
+- 终点：`bench/results/2026-05-16T13-25-39-879Z/` (Phase 3.1 完成态，hits=3)
+
+**Commit**：
+
+- `272c7df` feat(sdk): Phase 3.1 — Error.stack frame poisoning hardening (main + worker)
+- `782fbd0` fix(bench): correct false positives in incolumitas/arh-antoinevastel analyzers
 
 ---
 
