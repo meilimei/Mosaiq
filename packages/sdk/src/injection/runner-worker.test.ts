@@ -387,3 +387,164 @@ describe('Phase 2.6 worker IIFE: execution in sandbox (live spoof verification)'
     }
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// 测试 Group 5：Phase 4.2 新增 — AudioBuffer audio spoof 镜像（静态断言）
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 4.2 worker IIFE: AudioBuffer audio spoof mirror (static)', () => {
+  it('payload contains audioNoiseSeed + audioNoiseAmplitude', () => {
+    expect(capturedIIFE).toMatch(/audioNoiseSeed/);
+    expect(capturedIIFE).toMatch(/audioNoiseAmplitude/);
+  });
+
+  it('IIFE checks typeof AudioBuffer (worker realm graceful no-op)', () => {
+    expect(capturedIIFE).toMatch(/typeof AudioBuffer/);
+  });
+
+  it('IIFE contains _mkAudioPrng + per-channel seed XOR (Phase 4.2 marker)', () => {
+    expect(capturedIIFE).toMatch(/_mkAudioPrng/);
+    // per-channel XOR seed pattern (_audioSeed^ch)
+    expect(capturedIIFE).toMatch(/_audioSeed\^ch/);
+  });
+
+  it('IIFE replaces AudioBuffer.prototype.getChannelData', () => {
+    expect(capturedIIFE).toMatch(/AudioBuffer\.prototype\.getChannelData\s*=\s*function/);
+  });
+
+  it('IIFE uses mulberry32 PRNG (same algo as main scope §6)', () => {
+    // 已在 OffscreenCanvas group 测过 0x6d2b79f5 存在；audio block 复用 mulberry32
+    // 这里只验证 IIFE 内含独立 audio prng helper（与 canvas _mkPrng 区分）
+    expect(capturedIIFE).toMatch(/_mkAudioPrng/);
+  });
+
+  it('IIFE noise lookup is in-place: buf[i] = (buf[i]||0) + (prng()-0.5)*_audioAmp', () => {
+    // 关键 noise pattern —— 保证 hook 真的修改返回 buffer 数据
+    expect(capturedIIFE).toMatch(/buf\[i\]=\(buf\[i\]\|\|0\)\+\(prng\(\)-0\.5\)\*_audioAmp/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 测试 Group 6：Phase 4.2 — sandbox 执行验证 AudioBuffer hook 真生效
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 4.2 worker IIFE: AudioBuffer execution in sandbox', () => {
+  /**
+   * 复制 Group 4 sandbox 基础设施 + 加 AudioBuffer polyfill。
+   * 这是 closure-isolated helper，与 Group 4 的 `runIIFEInSandbox` 不耦合。
+   */
+  function runIIFEWithAudio(iife: string) {
+    // 模拟 worker realm：navigator + WebGL/OffscreenCanvas/AudioBuffer 都要 polyfill
+    // 因为 IIFE 在一个 try block 内串联多个独立 try block，前面的 hook 失败不影响后面
+    class FakeWebGL1 {
+      getParameter(): unknown {
+        return -1;
+      }
+    }
+    class FakeWebGL2 extends FakeWebGL1 {}
+    class FakeOffscreenCanvas {
+      width: number;
+      height: number;
+      constructor(w: number, h: number) {
+        this.width = w;
+        this.height = h;
+      }
+    }
+    class FakeOCCtx {
+      canvas: FakeOffscreenCanvas;
+      constructor(canvas: FakeOffscreenCanvas) {
+        this.canvas = canvas;
+      }
+      getImageData(_x: number, _y: number, w: number, h: number) {
+        return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
+      }
+    }
+
+    // 关键：FakeAudioBuffer polyfill —— 模拟 worker realm 的 OfflineAudioContext
+    // 渲染结果。getChannelData 返回内部 Float32Array view（与真实行为一致）。
+    class FakeAudioBuffer {
+      length: number;
+      sampleRate: number;
+      numberOfChannels: number;
+      #channels: Float32Array[];
+      constructor(numberOfChannels: number, length: number, sampleRate: number) {
+        this.numberOfChannels = numberOfChannels;
+        this.length = length;
+        this.sampleRate = sampleRate;
+        this.#channels = [];
+        for (let c = 0; c < numberOfChannels; c++) {
+          const arr = new Float32Array(length);
+          // 三角波 baseline：每 sample = (i + c*100) * 1e-4
+          for (let i = 0; i < length; i++) arr[i] = (i + c * 100) * 1e-4;
+          this.#channels.push(arr);
+        }
+      }
+      getChannelData(channel: number): Float32Array {
+        const buf = this.#channels[channel];
+        if (!buf) throw new Error(`channel ${channel} out of range`);
+        return buf;
+      }
+    }
+
+    const sandbox = {
+      navigator: { userAgent: 'BEFORE-SPOOF' } as Record<string, unknown>,
+      Promise,
+      Math,
+      JSON,
+      Array,
+      Object,
+      Map,
+      Set,
+      Reflect,
+      Int32Array,
+      Float32Array,
+      Uint8ClampedArray,
+      Error,
+      console: { debug() {} },
+      WebGLRenderingContext: FakeWebGL1,
+      WebGL2RenderingContext: FakeWebGL2,
+      OffscreenCanvasRenderingContext2D: FakeOCCtx,
+      OffscreenCanvas: FakeOffscreenCanvas,
+      AudioBuffer: FakeAudioBuffer,
+    } as Record<string, unknown>;
+
+    const cleanedIIFE = iife
+      .replace(/\nimportScripts\([^)]*\);?\s*$/m, '')
+      .replace(/\nimport\([^)]*\);?\s*$/m, '');
+
+    const keys = Object.keys(sandbox);
+    const fn = new Function(...keys, cleanedIIFE);
+    fn(...keys.map((k) => sandbox[k]));
+    return { sandbox, FakeAudioBuffer };
+  }
+
+  it('IIFE replaces AudioBuffer.prototype.getChannelData (hook live in sandbox)', () => {
+    const { FakeAudioBuffer } = runIIFEWithAudio(capturedIIFE);
+    // hook 后实例化 + 读 channel data，应该看到 noise 注入
+    const buf = new FakeAudioBuffer(1, 5000, 44100);
+    const data = buf.getChannelData(0);
+    let differences = 0;
+    for (let i = 0; i < data.length; i++) {
+      const baseline = i * 1e-4;
+      if (data[i] !== baseline) differences++;
+    }
+    // 5000 sample 几乎全应该被 PRNG noise 改变
+    expect(differences).toBeGreaterThan(4900);
+  });
+
+  it('IIFE per-channel XOR seed produces distinct noise sequences', () => {
+    const { FakeAudioBuffer } = runIIFEWithAudio(capturedIIFE);
+    const buf = new FakeAudioBuffer(2, 100, 44100);
+    const ch0 = Array.from(buf.getChannelData(0));
+    const ch1 = Array.from(buf.getChannelData(1));
+    // 去掉 baseline 差（channel-XOR seed 让 noise 序列不同）
+    const noise0 = ch0.map((v, i) => v - i * 1e-4);
+    const noise1 = ch1.map((v, i) => v - (i + 100) * 1e-4);
+    expect(noise0).not.toEqual(noise1);
+    // 量级仍受 amplitude (1e-7) 约束
+    const maxNoise0 = Math.max(...noise0.map(Math.abs));
+    const maxNoise1 = Math.max(...noise1.map(Math.abs));
+    expect(maxNoise0).toBeLessThan(1e-6);
+    expect(maxNoise1).toBeLessThan(1e-6);
+  });
+});

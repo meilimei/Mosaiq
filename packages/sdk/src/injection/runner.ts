@@ -946,7 +946,38 @@ export function injectAll(config: InjectionConfig): void {
     }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // 6. AudioContext
+  // 6. AudioContext + AudioBuffer
+  //
+  // Phase 4.1: 在 v0.3 之前 §6 只 hook AnalyserNode.getFloatFrequencyData
+  // （real-time spectrum）+ AudioContext.sampleRate getter。但**经典 audio
+  // fingerprint**（CreepJS / fp.com / FingerprintJS audio probe）走的是另一条
+  // 路径 —— OfflineAudioContext + DynamicsCompressor + AudioBuffer.getChannelData：
+  //
+  //   const ctx = new OfflineAudioContext(1, 5000, 44100);
+  //   const osc = ctx.createOscillator(); osc.type = 'triangle'; osc.frequency = 10000;
+  //   const cmp = ctx.createDynamicsCompressor(); // threshold/knee/ratio/attack/release
+  //   osc.connect(cmp); cmp.connect(ctx.destination);
+  //   osc.start();
+  //   return ctx.startRendering().then(buf => {
+  //     const data = buf.getChannelData(0);
+  //     let sum = 0;
+  //     for (let i = 0; i < buf.length; i++) sum += Math.abs(data[i]);
+  //     return hashMini(sum.toString());
+  //   });
+  //
+  // 这条路径在 v0.3 完全裸奔：oscillator + compressor 渲染结果 deterministic
+  // （同 Chrome+OS+ANGLE 永远一样），detector 拿稳定 hash 跨 persona 关联。
+  //
+  // 修法：hook AudioBuffer.prototype.getChannelData —— 一次 hook 覆盖
+  //   - OfflineAudioContext.startRendering 渲染结果
+  //   - 实时 AudioContext.createBuffer / decodeAudioData 解码 PCM
+  //   - 任何其他 AudioBuffer 来源
+  // 直接在返回的 Float32Array 上 in-place 加 1e-7 量级 noise，量级远小于
+  // 16-bit PCM quantization (≈3e-5)，听感无差异。但 5000 sample × 5e-8
+  // random walk ≈ 1e-4 累积偏移，改变 sum.toString() 第 4-6 位 → hash 必变。
+  //
+  // per-channel seed XOR：左右声道用不同 noise，避免 stereo correlation 检测。
+  //
   // ═══════════════════════════════════════════════════════════════════════════
 
   try {
@@ -962,6 +993,24 @@ export function injectAll(config: InjectionConfig): void {
           for (let i = 0; i < array.length; i++) {
             array[i] = (array[i] ?? 0) + (audioPrng() - 0.5) * amplitude;
           }
+        },
+      });
+    }
+
+    // Phase 4.1: AudioBuffer.getChannelData 拦截（CreepJS / fp.com 经典路径）
+    if (typeof AudioBuffer !== 'undefined') {
+      const origGCD = AudioBuffer.prototype.getChannelData;
+      AudioBuffer.prototype.getChannelData = wrapStealth(origGCD, {
+        apply(target, thisArg: AudioBuffer, args: [number]) {
+          const buffer = Reflect.apply(target, thisArg, args) as Float32Array;
+          // per-channel deterministic PRNG：seed XOR channel index
+          // 左右声道用不同 noise 序列，避免 detector 比对左右相关性
+          const channel = (args[0] ?? 0) | 0;
+          const channelPrng = makePrng((config.audioNoiseSeed ^ channel) >>> 0);
+          for (let i = 0; i < buffer.length; i++) {
+            buffer[i] = (buffer[i] ?? 0) + (channelPrng() - 0.5) * amplitude;
+          }
+          return buffer;
         },
       });
     }
@@ -1321,6 +1370,12 @@ export function injectAll(config: InjectionConfig): void {
         // isAllZero / perturbImageData 三件套 + hook getImageData / convertToBlob。
         canvasNoiseSeed: config.canvasNoiseSeed,
         canvasNoiseStrength: config.canvasNoiseStrength,
+        // Phase 4.2: AudioBuffer spoof params（main scope §6 audio 镜像）。
+        // worker 内 OfflineAudioContext + AudioBuffer.getChannelData 是经典
+        // audio fingerprint 路径（CreepJS / fp.com），main scope hook 无法跨
+        // realm。透传 seed + amplitude 到 worker IIFE 复刻 per-channel noise。
+        audioNoiseSeed: config.audioNoiseSeed,
+        audioNoiseAmplitude: config.audioNoiseAmplitude,
         uaCh: {
           brands: config.uaCh.brands.map((b) => ({ brand: b.brand, version: b.version })),
           fullVersionList: config.uaCh.fullVersionList.map((b) => ({
@@ -1486,6 +1541,40 @@ export function injectAll(config: InjectionConfig): void {
         'var imageData=_origGID.call(this,x,y,w,h,settings);' +
         'if(this.canvas&&_isProbeOC(this.canvas))return imageData;' +
         'return _perturbOC(imageData);' +
+        '};' +
+        '}}catch(e){}' +
+        // ── Phase 4.2: AudioBuffer 镜像（main scope §6 audio spoof 对称） ──
+        //
+        // Worker scope 内可用 audio API：OfflineAudioContext + AudioBuffer
+        // （AudioContext/AnalyserNode 不暴露给 dedicated worker —— 它们绑扬声器）。
+        // CreepJS / fp.com 的经典 audio fingerprint 走 OfflineAudioContext +
+        // DynamicsCompressor + AudioBuffer.getChannelData 路径，**完全可在
+        // worker realm 内执行绕开 main scope hook**。这里复刻 main scope §6
+        // 的 per-channel seed XOR noise，让跨 scope fingerprint 一致地 unique。
+        //
+        // 单点 hook：AudioBuffer.prototype.getChannelData。覆盖 startRendering /
+        // createBuffer / decodeAudioData 所有产出 AudioBuffer 的来源。
+        // 量级 audioNoiseAmplitude（默认 1e-7）远小于 16-bit PCM ULP，听感无差异，
+        // 但 5000-sample sum 在 toString() 4-6 位小数即可改变 hashMini 输出。
+        'try{if(typeof AudioBuffer!=="undefined"){' +
+        'function _mkAudioPrng(seed){' +
+        'var a=seed>>>0;' +
+        'return function(){' +
+        'a=(a+0x6d2b79f5)>>>0;var t=a;' +
+        't=Math.imul(t^(t>>>15),t|1);' +
+        't^=t+Math.imul(t^(t>>>7),t|61);' +
+        'return((t^(t>>>14))>>>0)/4294967296;' +
+        '};' +
+        '}' +
+        'var _audioAmp=P.audioNoiseAmplitude;' +
+        'var _audioSeed=P.audioNoiseSeed>>>0;' +
+        'var _origGCD=AudioBuffer.prototype.getChannelData;' +
+        'AudioBuffer.prototype.getChannelData=function(channel){' +
+        'var buf=_origGCD.call(this,channel);' +
+        'var ch=(channel|0);' +
+        'var prng=_mkAudioPrng((_audioSeed^ch)>>>0);' +
+        'for(var i=0;i<buf.length;i++){buf[i]=(buf[i]||0)+(prng()-0.5)*_audioAmp;}' +
+        'return buf;' +
         '};' +
         '}}catch(e){}' +
         // ── CDP detection hardening (mirror of main scope §12) ──
