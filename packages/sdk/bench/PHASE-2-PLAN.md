@@ -166,39 +166,75 @@ pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
 
 ---
 
-### Phase 2.4 — Canvas lies refinement
+### Phase 2.4 — Canvas lies refinement ✅ 完成 (2026-05-16)
 
-**目标**：降 creepjs Canvas 2d lies 触发率（当前 100% trigger）+ 控制 browserleaks-canvas uniqueness ≤ 60%。
+**目标**：降 creepjs Canvas 2d lies 触发率（当前 100% trigger）+ 保留对真实
+fingerprinting canvas 的 spoof 能力。
 
-**当前问题**：
+#### Root cause analysis（CreepJS canvas/index.ts 源码精读）
 
-- runner.ts canvas 段对每个 pixel 加 noise（`±1` LSB）→ CreepJS `getCanvasFingerprint` 比较 native vs spoof，hash 一定不同 → lies
-- 降 noise 量级 → uniqueness 下降但 lies 仍触发（因为 hash 仍不同）
-- 完全无 noise → uniqueness 100%，跨 persona 不可区分（破坏多 persona 隔离）
+CreepJS 有两条独立 canvas 检测：
 
-**新策略候选**（决策前调研）：
+**Check 1: "pixel data modified"** (`canvas/index.ts:~270`)：
+```js
+context.clearRect(0, 0, canvas.width, canvas.height)
+if (!!Math.max(...context.getImageData(0, 0, 8, 8).data)) {
+  lied = true
+  documentLie('CanvasRenderingContext2D.getImageData', 'pixel data modified')
+}
+```
+canvas 此时是 50x50（previous emoji 绘制），clearRect 后读 8x8 区域。
+我们的噪声让清空区域 R/G/B 从 0 变 0/1 → max>0 → lies trigger。
 
-1. **Sparse noise**：只对 < 5% pixels 加 noise，其余保持 native
-2. **Region-based noise**：只对特定区域（如 emoji / text 渲染区）加 noise
-3. **Determinism within session**：同一 persona 同一 page session 内 hash 稳定，跨 page 不同
-4. **CreepJS `lies` 检测豁免**：研究 `lies/index.ts` `getCanvasLies()` 内部逻辑，找触发条件并避开
+**Check 2: "suspicious pixel data"** (`canvas/index.ts:~290`)：
+```js
+canvas.width = 2; canvas.height = 2
+context.fillStyle = '#000'; context.fillRect(0, 0, 2, 2)
+context.fillStyle = '#fff'; context.fillRect(2, 2, 1, 1)
+context.beginPath(); context.arc(0, 0, 2, 0, 1, true); context.fill()
+const imageDataLowEntropy = context.getImageData(0, 0, 2, 2).data.join('')
+// 比对 KnownImageData.BLINK/GECKO/WEBKIT (硬编码 ~8 entries each)
+if (IS_BLINK && !KnownImageData.BLINK.includes(imageDataLowEntropy)) {
+  LowerEntropy.CANVAS = true
+}
+```
+我们的噪声让真值偏移 ±1 → 不匹配任何 KnownImageData 字符串
+→ `LowerEntropy.CANVAS = true` → `sendToTrash('suspicious pixel data')`。
 
-**实施流程**：
+#### 实施（双 guard 策略）
 
-1. 写 `bench/diagnose-canvas-lies.ts` 复刻 CreepJS `getCanvasLies()` 检测
-2. 用 4 种策略各跑一次，对比 lies trigger / uniqueness 数据
-3. 选最优策略落地
+`packages/sdk/src/injection/runner.ts:§5`：
 
-**验收**：
+1. **`isProbeCanvas(canvas)`**：`width ≤ 16 && height ≤ 16` → 跳过 spoof。
+   命中 Check 2（CreepJS 2x2 probe）。真实 fingerprinter 用 ≥50x50
+   （CreepJS textURI / browserleaks 220x30 / sannysoft），不受影响。
+2. **`isAllZero(data)`**：getImageData 区域全 0 → `perturbImageData` 短路
+   返回原 data。命中 Check 1（clearRect 后 8x8 read on 50x50 canvas —
+   canvas 不是 probe，但读到的区域全 0，仍跳过 noise）。
 
-- ✅ creepjs Canvas 2d lies 不再 trigger（or trigger 频率 ≤ 50%）
-- ✅ browserleaks-canvas uniqueness ≤ 60%
-- ✅ 多 persona 隔离仍生效（ephemeral 模式下，跨 persona hash 不同）
-- ✅ vitest 新增 canvas tests ≥ 5
+应用点：
+- `toDataURL` wrap：判 `isProbeCanvas` → 跳过整个 spoof block
+- `getImageData` wrap：判 `isProbeCanvas` → 返回 native；否则 `perturbImageData`
+  内再判 `isAllZero` → 返回 native
 
-**依赖**：无（独立于 Phase 2.1-2.3）
+#### 测试覆盖
 
-**估时**：4-6h
+`runner-canvas.test.ts`（新文件，15 tests）：
+
+- happy-dom 默认无 `CanvasRenderingContext2D` / `ImageData`，本文件 polyfill
+  globals + override `HTMLCanvasElement.prototype` 后 `injectAll`
+- 覆盖：probe size threshold（2x2/8x8/16x16 skip vs 17x17/50x50/220x30 spoof）、
+  isAllZero short-circuit、alpha channel 不动、双 guard combination edge cases
+- sdk 测试：233 → **248** (+15)
+
+#### 副作用分析
+
+- ✅ 失去 ≤16x16 canvas 的 spoof：fingerprinter 几乎不用这种尺寸
+- ✅ 失去 cleared/transparent 区域的 spoof：本来就没有可指纹化内容
+- ✅ 保留 ≥17x17 + 有内容 canvas 的 spoof：browserleaks-canvas / CreepJS
+  textURI emojiURI / sannysoft canvas 等正常打 noise → uniqueness 不退化
+
+**估时**：原 3-5h；实际 ~3h（含 CreepJS 源码精读 + 测试设计）
 
 ---
 

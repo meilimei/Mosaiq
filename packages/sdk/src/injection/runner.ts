@@ -828,6 +828,36 @@ export function injectAll(config: InjectionConfig): void {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. Canvas
+  //
+  // Phase 2.4: 双 guard 防 CreepJS canvas lies / LowerEntropy.CANVAS 触发
+  //
+  // 历史：v0.2 对所有 pixel 加 ±1 LSB noise。CreepJS canvas/index.ts 有两条
+  // 独立 lies/lower-entropy 检测：
+  //
+  //   Check 1 "pixel data modified"：clearRect(0,0,W,H) + getImageData(0,0,8,8)
+  //     检查 Math.max(...data) > 0。我们的噪声让清空 8x8 区域的 R/G/B 从 0 变
+  //     成 0 或 1（负 delta clamp 到 0，正 delta 到 1）→ max==1 → lies trigger
+  //
+  //   Check 2 "suspicious pixel data"：canvas=2x2 上画特定 fillRect+arc+fill
+  //     pattern，getImageData(0,0,2,2) join('') 与硬编码 KnownImageData
+  //     (BLINK/GECKO/WEBKIT 各 ~8 个) 比对。我们的噪声让真值偏移 ±1
+  //     → 不匹配任何 KnownImageData → LowerEntropy.CANVAS=true
+  //
+  // 修复策略（Phase 2.4）：
+  //
+  //   - **isProbeCanvas**：canvas.width ≤ 16 && height ≤ 16 → 跳过 noise
+  //     处理 Check 2（CreepJS 2x2 probe canvas）。真实 fingerprinter 用
+  //     >= 50x50（CreepJS textURI / browserleaks 220x30），不受影响。
+  //
+  //   - **isAllZero**：getImageData 返回区域全 0 → 跳过 noise
+  //     处理 Check 1（cleared 8x8 region on 50x50 canvas — 大 canvas 不被
+  //     isProbeCanvas 跳过，但读到的区域全 0，仍跳过 noise）
+  //
+  // 副作用分析：
+  //   - 失去 ≤16x16 canvas 的 spoof：fingerprinter 几乎不用这种尺寸
+  //   - 失去 cleared/transparent 区域的 spoof：本来就没有可指纹化的内容
+  //   - 保留 ≥17x17 canvas + 有内容区域的 spoof：browserleaks-canvas / CreepJS
+  //     textURI emojiURI / sannysoft canvas 等仍正常打 noise → uniqueness 不退化
   // ═══════════════════════════════════════════════════════════════════════════
 
   // typeof guard：测试环境通常没有 CanvasRenderingContext2D，跳过避免噪声。
@@ -837,7 +867,25 @@ export function injectAll(config: InjectionConfig): void {
       if (strength > 0) {
         const prngSeed = config.canvasNoiseSeed;
 
+        // Phase 2.4 guard 1: 探测 canvas 是否是 CreepJS-style probe（≤16x16）
+        function isProbeCanvas(canvas: HTMLCanvasElement): boolean {
+          return canvas.width <= 16 && canvas.height <= 16;
+        }
+
+        // Phase 2.4 guard 2: 探测 ImageData 是否全 0（cleared / transparent）
+        // O(n) 扫描；探测 region ≤ 8x8 = 256 byte 的情况下成本可忽略
+        function isAllZero(data: Uint8ClampedArray): boolean {
+          for (let i = 0; i < data.length; i++) {
+            if (data[i] !== 0) return false;
+          }
+          return true;
+        }
+
         function perturbImageData(imageData: ImageData): ImageData {
+          // Phase 2.4: 防 CreepJS Check 1 "pixel data modified"
+          // 全 0 区域（clearRect 后）不加 noise，保留 Math.max(...) === 0
+          if (isAllZero(imageData.data)) return imageData;
+
           const prng = makePrng(prngSeed);
           const data = imageData.data;
           for (let i = 0; i < data.length; i += 4) {
@@ -856,7 +904,14 @@ export function injectAll(config: InjectionConfig): void {
           apply(target, thisArg: HTMLCanvasElement, args: [string?, number?]) {
             const [type, quality] = args;
             const ctx = thisArg.getContext('2d');
-            if (ctx && thisArg.width > 0 && thisArg.height > 0) {
+            // Phase 2.4: skip probe-size canvas（防 CreepJS Check 2 "suspicious
+            // pixel data"，2x2 probe 走原 path → 命中 KnownImageData → low entropy 不触发）
+            if (
+              ctx &&
+              thisArg.width > 0 &&
+              thisArg.height > 0 &&
+              !isProbeCanvas(thisArg)
+            ) {
               try {
                 const imageData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
                 perturbImageData(imageData);
@@ -877,6 +932,11 @@ export function injectAll(config: InjectionConfig): void {
             args: [number, number, number, number, ImageDataSettings?],
           ) {
             const imageData = Reflect.apply(target, thisArg, args) as ImageData;
+            // Phase 2.4: skip probe-size canvas（同上）
+            if (thisArg.canvas && isProbeCanvas(thisArg.canvas)) {
+              return imageData;
+            }
+            // perturbImageData 内会再做 isAllZero check 防 Check 1
             return perturbImageData(imageData);
           },
         });
