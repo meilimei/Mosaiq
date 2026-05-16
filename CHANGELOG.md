@@ -5,6 +5,107 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [0.3.0] — 2026-05-16
+
+The **"v0.3 defensive depth + measurement accuracy"** release. Builds on
+v0.2.0 anti-detection engine with three new phases plus consolidated
+Phase 2.5–2.6 work that was deferred from v0.2.0:
+
+- **Phase 2.5 – 2.6** (consolidated): Worker scope full mirror (WebGL
+  49-param + OffscreenCanvas) and baseline expanded from 9 → 12 sites.
+- **Phase 3.1 – 3.3** (this release): Error.stack frame poisoning hardening,
+  bench retry mechanism, Castle.io commercial detector limitation
+  documented.
+
+### Added
+
+- **Worker scope full mirror** (`Phase 2.6`): Worker IIFE now mirrors
+  main scope WebGL 49-param spoof + OffscreenCanvas noise injection +
+  `navigator.webdriver` spoof. Was previously partial (2 WebGL params,
+  no canvas). Closes CreepJS worker-scope `does not match` flags. 23
+  new tests in `runner-worker.test.ts`.
+- **3 new baseline detection sites** (`Phase 2.5`): `arh-antoinevastel`
+  (Datadome Fp-Scanner 22-rule three-state detector), `incolumitas`
+  (multi-section JSON detector including Worker scope navigator props),
+  `fingerprint-scan` (Castle.io commercial bot risk score).
+  9 → **12** sites in `bench/baseline-detection.ts`.
+- **Phase 3.1 — Error.stack frame poisoning hardening** (`runner.ts §13`):
+  Installs V8 `Error.prepareStackTrace` global hook in main + worker
+  scopes. Filters suspicious frames (`utilityscript`, `blob:`,
+  `puppeteer`, `playwright`, `__playwright__`, `__pwInitScripts`,
+  `puppeteerExtra`, `evaluationScript`, `cdp.`, `devtools`) before they
+  enter user-visible `error.stack`. Defends against detectors that throw
+  `ReferenceError` and inspect stack content for automation signatures.
+  10 new unit tests. `Function.prototype.toString` stealth preserved via
+  manual `stealthRegistry.set` (no Proxy wrap → avoids source-code leak).
+- **Phase 3.2 — bench retry mechanism** (`baseline-detection.ts`):
+  `runOneWithRetry` wrapper with exponential backoff (1s/2s/4s).
+  `RETRIES=N` env (default 2 = 3 total attempts). `SiteResult.retries`
+  field + report metadata surfaces measurement reliability. Prevents
+  single flaky site (dbi-bot intermittent 60s gateway timeouts) from
+  failing the full bench.
+- **2 diagnostic probes** (`bench/probe-error-stack.ts`,
+  `bench/probe-fpcollect-source.ts`): Direct-injection scripts for
+  rapid Error.stack reconnaissance and fp-collect source inspection.
+  Drove the Phase 3.1 implementation + Phase 3.3 Castle.io discovery.
+
+### Changed
+
+- **12-site bench hits**: 5 → **2** (Phase 3 cycle). Remaining 2 hits
+  are Phase 2 already-documented limitations:
+  - `creepjs WebGL bold-fail` (Phase 2.2 negative reverse-fit, CreepJS
+    whitelist gap for Intel UHD 730)
+  - `browserleaks-canvas uniqueness=100%` (Phase 2.4 per-persona
+    uniqueness tradeoff)
+- **`extractIncolumitas.knownBadKeys`**: Removed `'webdriver'`.
+  Recon via `probe-fpcollect-source.ts` revealed that incolumitas's
+  modified fp-collect uses `webDriver: 'webdriver' in navigator`, which
+  is **always true on every modern Chrome user** (W3C WebDriver
+  Recommendation 2018+ mandates `navigator.webdriver` to exist). This
+  was a false positive in our analyzer, not a spoof leak.
+- **`analyzeAntoinevastel.KNOWN_OUTDATED_RULES`**: Added `WEBDRIVER` to
+  whitelist. fp-scanner 2017 vintage uses same `'webdriver' in navigator`
+  check via fp-collect, predating W3C spec update → flags every modern
+  Chrome user as Inconsistent. Now shown as ℹ️ informational, not red flag.
+- **`analyzeFingerprintScan` Castle.io demote** (`Phase 3.3`):
+  Recon revealed `<script src=".../castle.browser.js">` — fingerprint-scan.com
+  is a Castle.io commercial detector marketing demo. 75/100 score is
+  Castle's enterprise black-box output (out-of-scope for SDK injection
+  layer). Demoted to ℹ️ note (same tier as CreepJS WebGL bold-fail).
+- **Worker scope `navigator.webdriver` spoof** (`Phase 2.6.1`): Phase 2.6
+  worker IIFE `defs` array initially missed `webdriver`. Added — fixes
+  worker-realm `navigator.webdriver=true` leak. Discovered via Phase 2.5
+  bench against `incolumitas` "Web Worker Navigatory Property" section.
+- **`arh-antoinevastel` extractor** (`Phase 2.6.1`): Initial regex used
+  `\b(Consistent|Unsure|Inconsistent)\b` word boundary on tr.textContent
+  which couldn't match `RULEConsistent{...}` (no separator between
+  cells). Rewrote to parse `table#scanner tbody tr` 3-`<td>` structure
+  directly. 0 rows → 21 rows captured.
+
+### Documented (known limitations)
+
+- **fingerprint-scan (Castle.io) commercial detector**: Reverse engineering
+  Castle.io's minified browser fingerprinter + black-box server-side
+  scoring is out-of-scope for v0.3 SDK injection layer. Castle.io
+  reverse should be addressed in v0.4+ chromium-fork patches.
+
+### Verification
+
+- **Tests**: persona-schema 21/21, sdk **281/281** (248 → 281, +10 Phase 3.1
+  stack hardening + 23 Phase 2.6 worker).
+- **Typecheck**: clean across 3 packages.
+- **Bench**: 12-site `baseline-detection.ts` ran 12 OK / 0 FAIL,
+  hits=**2** (both Phase 2 already-documented known-limits).
+  Latest result: `bench/results/2026-05-16T13-25-39-879Z/`.
+- **Probe**: `bench/probe-error-stack.ts` confirms zero suspicious
+  frames in main + worker scopes post-Phase 3.1 hook.
+
+### Migration from 0.2.0
+
+No breaking changes. Persona files saved under 0.2.0 remain valid.
+
+---
+
 ## [0.2.0] — 2026-05-16
 
 The **"v0.2 anti-detection engine"** release. Builds on the v0.1.0 Persona +
@@ -118,5 +219,6 @@ Initial public release. See git tag `v0.1.0`.
 - humanize input engine (mouse jitter, keystroke timing)
 - 9-site baseline detection bench (creepjs, sannysoft, browserleaks, etc.)
 
+[0.3.0]: https://github.com/meilimei/Mosaiq/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/meilimei/Mosaiq/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/meilimei/Mosaiq/releases/tag/v0.1.0
