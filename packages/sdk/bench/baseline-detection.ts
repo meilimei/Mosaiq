@@ -9,6 +9,7 @@
  *   ONLY=sannysoft      只跑指定站点（id，多个用逗号分隔）
  *   SKIP=creepjs        跳过指定站点
  *   TIMEOUT_MS=60000    单站超时（默认 60s）
+ *   RETRIES=2           单站最大重试次数（默认 2，即首次失败后再重试 2 次共 3 attempts）
  *   RESULTS_DIR=...     输出目录（默认 bench/results/<timestamp>）
  *
  * 流程：
@@ -33,6 +34,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PERSONA_ID = `baseline-bench-${Date.now().toString(36)}`;
 const DEFAULT_TIMEOUT = 60_000;
+const DEFAULT_RETRIES = 2;
 const MAX_BODY_TEXT = 50_000; // 截断超大 page
 
 function parseEnv() {
@@ -40,10 +42,11 @@ function parseEnv() {
   const only = process.env.ONLY?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
   const skip = process.env.SKIP?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
   const timeoutMs = Number(process.env.TIMEOUT_MS ?? DEFAULT_TIMEOUT);
+  const retries = Number(process.env.RETRIES ?? DEFAULT_RETRIES);
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const resultsDir =
     process.env.RESULTS_DIR ?? resolve(__dirname, 'results', ts);
-  return { headed, only, skip, timeoutMs, resultsDir };
+  return { headed, only, skip, timeoutMs, retries, resultsDir };
 }
 
 function pickSites(only: string[], skip: string[]): SiteSpec[] {
@@ -136,8 +139,44 @@ async function runOne(
   return result;
 }
 
+/**
+ * Phase 3.2 — runOne 的 retry 包装。dbi-bot / pixelscan 等不稳定站点偶发
+ * 60s timeout 是 site-side issue，重试一次大多能拿到结果。指数退避（1s, 2s, 4s…）
+ * 避免对目标站点 hammer。最终结果（成功或所有重试用尽）填入 SiteResult.retries
+ * 字段，让 report 可见 measurement reliability。
+ */
+async function runOneWithRetry(
+  page: import('playwright-core').Page,
+  spec: SiteSpec,
+  resultsDir: string,
+  timeoutMs: number,
+  maxRetries: number,
+): Promise<SiteResult> {
+  let lastResult: SiteResult | null = null;
+  const maxAttempts = Math.max(1, maxRetries + 1);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      const backoffMs = 1_000 * Math.pow(2, attempt - 2); // 1s, 2s, 4s, ...
+      console.log(
+        `[bench]   retry ${attempt - 1}/${maxRetries} after ${backoffMs}ms backoff`,
+      );
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+    const r = await runOne(page, spec, resultsDir, timeoutMs);
+    r.retries = attempt - 1;
+    lastResult = r;
+    if (r.ok) {
+      if (attempt > 1) {
+        console.log(`[bench]   succeeded on attempt ${attempt}`);
+      }
+      return r;
+    }
+  }
+  return lastResult!;
+}
+
 async function main() {
-  const { headed, only, skip, timeoutMs, resultsDir } = parseEnv();
+  const { headed, only, skip, timeoutMs, retries, resultsDir } = parseEnv();
   const sites = pickSites(only, skip);
   if (sites.length === 0) {
     console.error('[bench] no sites selected');
@@ -148,6 +187,7 @@ async function main() {
   console.log(`[bench] results dir: ${resultsDir}`);
   console.log(`[bench] sites: ${sites.map((s) => s.id).join(', ')}`);
   console.log(`[bench] headless: ${!headed}`);
+  console.log(`[bench] retries per site: ${retries}`);
 
   // ── 1. 创建 ephemeral persona ─────────────────────────────────────
   if (personaExists(PERSONA_ID)) {
@@ -171,9 +211,9 @@ async function main() {
   const overallStart = Date.now();
 
   try {
-    // ── 3. 顺序跑各站 ──────────────────────────────────────────────
+    // ── 3. 顺序跑各站（带 retry） ─────────────────────────────────
     for (const spec of sites) {
-      const r = await runOne(page, spec, resultsDir, timeoutMs);
+      const r = await runOneWithRetry(page, spec, resultsDir, timeoutMs, retries);
       results.push(r);
     }
   } finally {
@@ -191,12 +231,16 @@ async function main() {
 
   // ── 4. 写 raw.json ────────────────────────────────────────────────
   const overallMs = Date.now() - overallStart;
+  const totalRetries = results.reduce((sum, r) => sum + (r.retries ?? 0), 0);
+  const sitesWithRetry = results.filter((r) => (r.retries ?? 0) > 0).length;
   const summary = {
     timestamp: new Date().toISOString(),
     overallMs,
     sitesAttempted: sites.length,
     sitesOk: results.filter((r) => r.ok).length,
     sitesFail: results.filter((r) => !r.ok).length,
+    sitesWithRetry,
+    totalRetries,
     persona: {
       id: persona.metadata.id,
       template: 'win11-chrome-us',
@@ -213,7 +257,10 @@ async function main() {
   writeFileSync(rawPath, JSON.stringify(summary, null, 2), 'utf8');
   console.log(`[bench] wrote ${rawPath}`);
   console.log(
-    `[bench] done in ${overallMs}ms — OK=${summary.sitesOk} FAIL=${summary.sitesFail}`,
+    `[bench] done in ${overallMs}ms — OK=${summary.sitesOk} FAIL=${summary.sitesFail}` +
+      (totalRetries > 0
+        ? ` (${sitesWithRetry} sites needed retries, ${totalRetries} total retries)`
+        : ''),
   );
   console.log(`[bench] next: tsx bench/report.ts ${resultsDir}`);
 }

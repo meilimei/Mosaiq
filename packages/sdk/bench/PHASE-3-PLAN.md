@@ -112,18 +112,33 @@ Error.prepareStackTrace = function(err, structuredStack) {
 
 ---
 
-### Phase 3.2 — bench retry mechanism 🟡 priority 3
+### Phase 3.2 — bench retry mechanism ✅ 完成 (2026-05-16)
 
 **目标**：dbi-bot / pixelscan 等不稳定站加重试，避免单点 timeout 污染 bench 结果。
 
-**修法**：
+**实施**：
 
-- `bench/baseline-detection.ts` 单站尝试 N 次（默认 2）
-- 每次 timeout 用指数退避（1s, 2s）
-- 报告记录 retry count
-- 全失败才 FAIL
+- `bench/baseline-detection.ts`：
+  - 新加 `runOneWithRetry(...)` wrapper（指数退避 1s/2s/4s）
+  - 默认 `RETRIES=2`（首次 + 2 次重试 = 最多 3 attempts）
+  - env 可调 `RETRIES=N` (0 = 关闭重试)
+  - `SiteResult.retries` 字段记录实际重试次数
+  - main loop 输出 retry 统计：`done in Xms — OK=12 FAIL=0 (1 sites needed retries, 1 total retries)`
+- `bench/sites.ts`：`SiteResult` interface 加 `retries?: number`
+- `bench/report.ts`：
+  - `RawSummary` 加 `sitesWithRetry` / `totalRetries`（向后兼容旧 raw.json）
+  - 报告 metadata 区显示 **"重试情况：N 站需要重试，共 M 次重试"**（仅当 totalRetries > 0）
+  - 各站详情显示 **"重试：N 次（Phase 3.2 retry mechanism）"**
 
-**估时**：1h
+**验收**：
+
+- ✅ typecheck clean，281/281 tests pass（实施 + report.ts 调整）
+- ✅ env `RETRIES=0` 关闭重试时行为与 Phase 3.1 完全一致（backward compat）
+- ⚠️ retry 触发场景非确定性（需要 dbi-bot 真实间歇 timeout），下次有 site 失败时观察
+
+**实际估时**：45min（含 sites.ts/baseline-detection.ts/report.ts 三处修改 + 文档）
+
+**Commit**：后续 `feat(bench): Phase 3.2 — retry mechanism for flaky sites`
 
 ---
 

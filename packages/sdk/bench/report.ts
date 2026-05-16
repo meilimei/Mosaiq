@@ -25,6 +25,9 @@ interface RawSummary {
   sitesAttempted: number;
   sitesOk: number;
   sitesFail: number;
+  /** Phase 3.2 — 重试统计（可选，旧 raw.json 不含此字段） */
+  sitesWithRetry?: number;
+  totalRetries?: number;
   persona: {
     id: string;
     template: string;
@@ -49,6 +52,8 @@ interface RawSummary {
     screenshot?: string;
     html?: string;
     extracted?: Record<string, unknown>;
+    /** Phase 3.2 — 实际重试次数（0 = 一次成功） */
+    retries?: number;
   }>;
 }
 
@@ -921,6 +926,9 @@ function generate(rawPath: string, outDir: string): void {
   md += `**总耗时**：${(summary.overallMs / 1000).toFixed(1)}s\n\n`;
   md += `**Persona 模板**：\`${summary.persona.template}\`\n\n`;
   md += `**站点结果**：${summary.sitesOk}/${summary.sitesAttempted} 成功跑完\n\n`;
+  if ((summary.totalRetries ?? 0) > 0) {
+    md += `**重试情况**：${summary.sitesWithRetry ?? 0} 站需要重试，共 ${summary.totalRetries ?? 0} 次重试（Phase 3.2 retry mechanism）\n\n`;
+  }
   md += `---\n\n## 各站详情\n\n`;
 
   for (const r of summary.results) {
@@ -928,6 +936,9 @@ function generate(rawPath: string, outDir: string): void {
     md += `- URL：${r.url}\n`;
     md += `- 耗时：${r.durationMs}ms\n`;
     md += `- 状态：${r.ok ? '✅ OK' : '❌ FAIL'}\n`;
+    if ((r.retries ?? 0) > 0) {
+      md += `- 重试：${r.retries} 次（Phase 3.2 retry mechanism）\n`;
+    }
     if (r.error) md += `- 错误：\`${r.error}\`\n`;
     if (r.title) md += `- 标题：${r.title}\n`;
     if (r.screenshot) md += `- 截图：[\`${r.screenshot}\`](./${r.screenshot})\n`;

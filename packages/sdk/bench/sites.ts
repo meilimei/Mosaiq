@@ -30,6 +30,12 @@ export interface SiteResult {
   html?: string;
   /** 站点特异提取的结构化字段（每站不同） */
   extracted?: Record<string, unknown>;
+  /**
+   * 实际重试次数（0 = 首次成功不需要重试；N>0 = 前 N 次失败、第 N+1 次成功或最终失败）。
+   * Phase 3.2：bench retry mechanism — dbi-bot / pixelscan 等不稳定站点
+   * 偶发 timeout，重试机制让单点 flake 不污染整体 baseline。
+   */
+  retries?: number;
 }
 
 export interface SiteSpec {
