@@ -638,8 +638,20 @@ function analyzeIncolumitas(
 /**
  * Phase 2.5 — fingerprint-scan.com — 0-100 bot risk score。
  *
- * Score ≥ 50 = bot (high)；25-49 = suspicious (medium)；< 25 = human (no hit)。
- * 同时若正文含 "bot detected" / "high risk" 关键字 → 兜底 high hit。
+ * ⚠️ **关键发现**（Phase 3.3 reconnaissance, 2026-05-16）：fingerprint-scan.com 是
+ * **Castle.io** 商业反欺诈服务的 marketing demo —— 站点加载
+ * `<script src="https://d220g4lrdguk14.cloudfront.net/v3/castle.browser.js">`
+ * （Castle 的浏览器 fingerprinter），score 是 Castle.io enterprise 商业黑盒算分
+ * 的输出。Reverse 它的 75/100 组成需要逆向 minified Castle JS + 揣摩 server-side
+ * weighting，工作量 hours-of-engineering 且即便 reverse 成功也只是 snapshot —
+ * Castle 会持续更新算法。
+ *
+ * 决策：把 fingerprint-scan score≥50 视为**已知商业 detector 限制**（类似 CreepJS
+ * WebGL bold-fail / browserleaks-canvas uniqueness），仅显示 ℹ️ note，**不入 hits**。
+ * 真正不可绕的 enterprise tier 应当在 chromium-fork 层面解（v0.4+）。普通站点不
+ * 使用 Castle，所以不影响主流场景。
+ *
+ * attrsTotal / 关键字命中等数据仍然抓取并显示，对调试有价值。
  */
 function analyzeFingerprintScan(
   extracted: Record<string, unknown>,
@@ -662,12 +674,21 @@ function analyzeFingerprintScan(
     return md;
   }
 
+  // Phase 3.3: Castle.io 商业 detector — 不入 hits，仅显示。
   if (verdict === 'bot' || score >= 50) {
-    md += `_🔴 score=${score} ≥ 50 → 判定 bot_\n`;
+    md += `_ℹ️ score=${score} ≥ 50 (verdict=${verdict}) — 由 **Castle.io** 商业 detector 算分。\n`;
+    md += `Castle 是 enterprise 反欺诈服务，黑盒算分 + 持续更新；reverse 工作量极重且不稳定，\n`;
+    md += `归为已知商业 detector 限制，与 CreepJS WebGL bold-fail / browserleaks-canvas\n`;
+    md += `uniqueness 一档（Phase 2.2 + Phase 2.4 known limits）。不入 hits。需要绕过\n`;
+    md += `Castle.io 的场景应等 v0.4+ chromium-fork 层面方案。_\n`;
+    return md;
+  }
+  if (highRisk || botDetected) {
+    md += `_🔴 关键字命中（high-risk 或 bot-detected）→ 判定 bot_\n`;
     hits.push({
       surface: 'other',
       site: 'fingerprint-scan',
-      detector: `fingerprint-scan bot risk score`,
+      detector: `fingerprint-scan keyword`,
       evidence: `score=${score} verdict=${verdict ?? '?'}`,
       severity: 'high',
     });

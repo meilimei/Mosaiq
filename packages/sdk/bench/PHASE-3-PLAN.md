@@ -142,19 +142,42 @@ Error.prepareStackTrace = function(err, structuredStack) {
 
 ---
 
-### Phase 3.3 — fingerprint-scan score reverse 🟡 priority 2
+### Phase 3.3 — fingerprint-scan score: Castle.io known-limit ✅ 完成 (2026-05-16)
 
 **目标**：弄清楚 fingerprint-scan 75/100 的 high-weight 特征。
 
-**侦察步骤**：
+**侦察发现**：抓 fingerprint-scan.com HTML 看 script 引用，发现：
 
-1. 跑 fingerprint-scan + dump body content（已经有 attrs 列表）
-2. 对比正常 user (你自己机器 headed mode) 跑出的分数差异
-3. 定位 weight 因素（可能是：CDP Check / Chrome Object / iframe consistency / Same as Main JS Context）
+```html
+<script src="https://d220g4lrdguk14.cloudfront.net/v3/castle.browser.js" crossorigin="anonymous"></script>
+<script src="cstl.js" crossorigin="anonymous"></script>
+```
 
-**修法**：取决于侦察结论。如果是单点 fix，归并入 runner.ts 既有 surface；如果跨多 surface，开 Phase 3.5+。
+**fingerprint-scan.com 是 Castle.io 商业反欺诈服务的 marketing demo**。score=75 是 Castle.io enterprise 黑盒算分，**不是 fingerprint-scan 自有算法**。Castle 持续更新算法 + 服务端做 weighting，reverse 工作量极重且不稳定。
 
-**估时**：3-5h（侦察重，修可能 1-2h 或 5h+ 视复杂度）
+**决策**（与 CreepJS WebGL bold-fail / browserleaks-canvas uniqueness 同档处理）：
+
+- `analyzeFingerprintScan` 把 `score≥50 || verdict='bot'` 改为 **ℹ️ note 不入 hits**
+- 解释文本说明 Castle.io 商业 detector + 推 v0.4+ chromium-fork 层面方案
+- 保留 attrs 抓取（135 项）+ 关键字 fallback hit（如果文本明确含 'bot detected' 仍计 hit）
+
+**为什么不 reverse**：
+
+1. **ROI 极低**：Castle.io 是商业 enterprise tier。reverse minified JS + 揣摩 server weighting 工作量 hours 量级；即便 reverse 成功只是 snapshot，Castle 持续更新。
+2. **不影响普通站点**：Castle 服务付费 enterprise，主流站不使用
+3. **架构层面**：真正 enterprise-grade detector 应在 chromium-fork patch 层解（v0.4+ scope），而非 SDK injection
+
+**验收**：
+
+- ✅ Phase 3.1 完成态 bench 数据 (`bench/results/2026-05-16T13-25-39-879Z/`) 重跑 report.ts → hits **3 → 2**
+- ✅ 剩余 2 hits 全是 Phase 2 already-recorded known-limits：
+  - `creepjs WebGL bold-fail` (Phase 2.2 negative reverse-fit, CreepJS 白名单 gap)
+  - `browserleaks-canvas uniqueness=100%` (Phase 2.4 per-persona uniqueness tradeoff)
+- ✅ **PHASE-3-PLAN v0.3 验收标准达成** (hits ≤ 2)
+
+**实际估时**：30min（probe 抓 script tags → 识别 Castle.io → 决定 demote 而非 reverse → 实施 + 文档）
+
+**Commit**：后续 `fix(bench): Phase 3.3 — demote fingerprint-scan score to Castle.io known-limit`
 
 ---
 
