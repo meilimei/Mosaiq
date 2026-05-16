@@ -15,6 +15,8 @@ import {
   KNOWN_PROFILES,
   STRING_PARAMS,
   selectWebglProfile,
+  selectWebglProfileById,
+  selectWebglProfileForPersona,
   serializeProfile,
 } from './webgl-profiles.js';
 
@@ -270,6 +272,94 @@ describe('selectWebglProfile', () => {
   });
 });
 
+describe('Phase 2.1: WebglProfile id + selectors', () => {
+  it('每个 KNOWN_PROFILES entry 有唯一 id（命名约定 <vendor>-<model>-<backend>）', () => {
+    const ids = KNOWN_PROFILES.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      // 命名格式：全小写 + 连字符 + 数字
+      expect(id).toMatch(/^[a-z0-9-]+$/);
+      expect(id.length).toBeGreaterThanOrEqual(3);
+      expect(id.length).toBeLessThanOrEqual(64);
+    }
+  });
+
+  it('INTEL_UHD_730_D3D11.id === "intel-uhd-730-d3d11"', () => {
+    expect(INTEL_UHD_730_D3D11.id).toBe('intel-uhd-730-d3d11');
+  });
+
+  it('每个 profile 标注 knownInCreepjsWhitelist（true | false | undefined）', () => {
+    for (const p of KNOWN_PROFILES) {
+      const v = p.knownInCreepjsWhitelist;
+      expect(v === undefined || typeof v === 'boolean').toBe(true);
+    }
+  });
+
+  it('UHD 730 标记为 knownInCreepjsWhitelist=false（Phase 1.9b 验证）', () => {
+    expect(INTEL_UHD_730_D3D11.knownInCreepjsWhitelist).toBe(false);
+  });
+});
+
+describe('selectWebglProfileById', () => {
+  it('id 命中返回对应 profile', () => {
+    expect(selectWebglProfileById('intel-uhd-730-d3d11')).toBe(INTEL_UHD_730_D3D11);
+  });
+
+  it('id 未注册返回 null（不强 fail）', () => {
+    expect(selectWebglProfileById('nonexistent-zzz')).toBeNull();
+    expect(selectWebglProfileById('')).toBeNull();
+  });
+});
+
+describe('selectWebglProfileForPersona', () => {
+  /**
+   * Phase 2.1 高层入口。验证三类路径：
+   *   1. webglProfileId 命中 → 用 id 选（绕过 regex）
+   *   2. webglProfileId typo / 未注册 → 降级 regex
+   *   3. webglProfileId 未提供 → 走 regex
+   */
+
+  const UHD_730 =
+    'ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)';
+
+  it('webglProfileId 显式命中 → 选 id（绕过 regex）', () => {
+    const profile = selectWebglProfileForPersona({
+      webglRenderer: 'irrelevant string that does not match any regex',
+      webglProfileId: 'intel-uhd-730-d3d11',
+    });
+    expect(profile).toBe(INTEL_UHD_730_D3D11);
+  });
+
+  it('webglProfileId typo → 降级到 regex match（避免 typo 关 spoof）', () => {
+    const profile = selectWebglProfileForPersona({
+      webglRenderer: UHD_730,
+      webglProfileId: 'typo-zzz',
+    });
+    expect(profile).toBe(INTEL_UHD_730_D3D11); // regex match 兜底
+  });
+
+  it('webglProfileId 未提供 → 走 regex（向后兼容旧行为）', () => {
+    const profile = selectWebglProfileForPersona({ webglRenderer: UHD_730 });
+    expect(profile).toBe(INTEL_UHD_730_D3D11);
+  });
+
+  it('webglProfileId 未提供 + renderer 不 match → null', () => {
+    const profile = selectWebglProfileForPersona({
+      webglRenderer: 'ANGLE (NVIDIA, GeForce RTX 4090, D3D11)',
+    });
+    expect(profile).toBeNull();
+  });
+
+  it('webglProfileId 显式 + 同 id → 等同于 regex 选择结果', () => {
+    const a = selectWebglProfileForPersona({
+      webglRenderer: UHD_730,
+      webglProfileId: 'intel-uhd-730-d3d11',
+    });
+    const b = selectWebglProfileForPersona({ webglRenderer: UHD_730 });
+    expect(a).toBe(b);
+  });
+});
+
 describe('serializeProfile', () => {
   it('Map<number, ...> → Record<hex string, ...>', () => {
     const ser = serializeProfile(INTEL_UHD_730_D3D11);
@@ -277,6 +367,11 @@ describe('serializeProfile', () => {
     expect(ser.webgl1[`0x${GL.MAX_TEXTURE_SIZE.toString(16)}`]).toBe(16384);
     expect(ser.webgl1[`0x${GL.MAX_VIEWPORT_DIMS.toString(16)}`]).toEqual([16384, 16384]);
     expect(ser.webgl2[`0x${GL.MAX_3D_TEXTURE_SIZE.toString(16)}`]).toBe(2048);
+  });
+
+  it('Phase 2.1: serialize 保留 id 字段', () => {
+    const ser = serializeProfile(INTEL_UHD_730_D3D11);
+    expect(ser.id).toBe('intel-uhd-730-d3d11');
   });
 
   it('序列化结果可 JSON.parse / JSON.stringify 往返不变', () => {

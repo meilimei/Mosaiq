@@ -70,6 +70,8 @@ export interface InjectionConfig {
    * UNMASKED_VENDOR/RENDERER 两个字符串 spoof（v0.1 行为）。
    */
   webglProfile: {
+    /** Phase 2.1: profile 稳定 id（如 'intel-uhd-730-d3d11'），仅 debug 用 */
+    readonly id: string;
     readonly name: string;
     // value 可以是：number（capability）、readonly number[]（typed-array dims/range）、
     // string（VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION，Phase 1.9b 加入）

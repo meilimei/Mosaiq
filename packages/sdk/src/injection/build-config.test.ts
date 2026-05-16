@@ -247,6 +247,60 @@ describe('buildInjectionConfig', () => {
       const roundTrip = JSON.parse(JSON.stringify(cfg.webglProfile));
       expect(roundTrip).toEqual(cfg.webglProfile);
     });
+
+    it('Phase 2.1: serialized profile 带 id 字段（与 KNOWN_PROFILES 对齐）', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-glp-id', displayName: 'X' });
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.webglProfile?.id).toBe('intel-uhd-730-d3d11');
+    });
+  });
+
+  describe('webglProfile webglProfileId override (Phase 2.1)', () => {
+    /**
+     * Phase 2.1: persona.hardware.gpu.webglProfileId 让用户绕过 regex match
+     * 强制选某个 profile id。Phase 2.2 会加 INTEL_UHD_630 让此 override 真正
+     * 用得上；当前只能验证：
+     *   - id 匹配 KNOWN_PROFILES 时 → 选中（即便 webglRenderer 字符串与 profile
+     *     的 matchRenderer 不一致）
+     *   - id 未匹配（typo） → 降级 regex match，不强 fail
+     */
+
+    it('webglProfileId 命中时用 id 选 profile（绕过 regex）', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-id-hit', displayName: 'X' });
+      // Win11 模板的 webglRenderer 是 UHD 730，对应的 profile id 也是 'intel-uhd-730-d3d11'
+      // 当 webglProfileId 显式声明同一 id 时，行为应等同（id 优先 → 选中）
+      const personaWithId = {
+        ...persona,
+        hardware: {
+          ...persona.hardware,
+          gpu: { ...persona.hardware.gpu, webglProfileId: 'intel-uhd-730-d3d11' },
+        },
+      };
+      const cfg = buildInjectionConfig(personaWithId);
+      expect(cfg.webglProfile?.id).toBe('intel-uhd-730-d3d11');
+    });
+
+    it('webglProfileId typo 时降级到 regex match（不强 fail）', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-id-typo', displayName: 'X' });
+      const personaWithBadId = {
+        ...persona,
+        hardware: {
+          ...persona.hardware,
+          gpu: { ...persona.hardware.gpu, webglProfileId: 'nonexistent-profile-id-zzz' },
+        },
+      };
+      const cfg = buildInjectionConfig(personaWithBadId);
+      // typo 时不该 disable spoof —— 应该降级用 webglRenderer regex 选 UHD 730
+      expect(cfg.webglProfile?.id).toBe('intel-uhd-730-d3d11');
+    });
+
+    it('webglProfileId 留空 / undefined 时按 regex match（向后兼容 v0.2 行为）', () => {
+      const persona = createWin11ChromeUsPersona({ id: 'inj-id-undef', displayName: 'X' });
+      // 默认就是 undefined（template 不设置）
+      expect(persona.hardware.gpu.webglProfileId).toBeUndefined();
+      const cfg = buildInjectionConfig(persona);
+      expect(cfg.webglProfile?.id).toBe('intel-uhd-730-d3d11');
+    });
   });
 
   describe('uaCh (UA-CH 派生)', () => {

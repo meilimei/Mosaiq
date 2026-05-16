@@ -63,6 +63,21 @@ export const GpuSchema = z.object({
    *   'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics, OpenGL 4.1)'
    */
   webglRenderer: z.string().min(1).max(256),
+  /**
+   * Phase 2.1: 显式指定 SDK 内置的 WebGL GL-参数 profile id（绕过基于
+   * `webglRenderer` 字符串的 regex 自动选择）。例：'intel-uhd-630-d3d11'。
+   *
+   * - 留空（默认）：SDK 按 `webglRenderer` regex 匹配 KNOWN_PROFILES
+   * - 设置时：SDK 优先用此 id 查找；id 未注册时降级 regex（避免 typo 关 spoof）
+   *
+   * 用例：高级用户已知某 profile 的 capabilities hash 在 CreepJS 白名单内，
+   * 想 trade-off "persona-honest renderer 字符串" vs "creepjs WebGL pass"。
+   *
+   * 注意：profile id 影响的是 GL capability 常量返回值，不改 webglRenderer
+   * 字符串本身。如果两者矛盾（如 renderer 写 UHD 730 但 profileId 选 UHD 630），
+   * CreepJS 跨字段 cross-check 仍可能 catch；建议保持 persona 内部一致。
+   */
+  webglProfileId: z.string().min(1).max(64).optional(),
   /** WebGPU adapter info (Chrome 113+). 可选；未提供时 SDK 推断。 */
   webgpu: z
     .object({

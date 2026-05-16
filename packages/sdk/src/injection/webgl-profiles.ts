@@ -52,6 +52,16 @@
 export type GlParamValue = number | readonly number[] | string;
 
 export interface WebglProfile {
+  /**
+   * 稳定的 profile 标识符，用于 persona 显式指定（`Persona.hardware.gpu.webglProfileId`）。
+   * 命名约定：`<vendor>-<model>-<backend>`，全小写连字符，例：
+   *   - `'intel-uhd-730-d3d11'`
+   *   - `'intel-uhd-630-d3d11'`
+   *   - `'apple-m2-metal'`
+   *
+   * Profile id 是稳定 API contract（同 v0.x 内不能改），name 可以随时调整。
+   */
+  readonly id: string;
   /** Debug 用的人类可读名字，不影响行为 */
   readonly name: string;
   /**
@@ -59,6 +69,19 @@ export interface WebglProfile {
    * 第一个 match 的 profile 生效；想强制不 spoof 留空数组即可。
    */
   readonly matchRenderer: RegExp;
+  /**
+   * 此 profile 的 capabilities hash 是否在 CreepJS 的硬编码白名单（src/webgl/index.ts
+   * `capabilities[]` 数组，~250 个已知 GPU hashes）内。
+   *
+   * - `true`：creepjs.com `LowerEntropy.WEBGL` 不会触发，bold-fail 消失
+   * - `false`：profile 仍生效但 creepjs WebGL 仍 bold-fail（Mosaiq spoof 没问题，
+   *   只是 CreepJS 项目数据库未收录该 GPU 的真值——真实用户也会被同样标记）
+   * - `undefined`：未验证 / 数据未确认
+   *
+   * 用法：dev 模式下 SDK 可输出 hint 提示用户切换到白名单内 profile。
+   * 不影响 runtime spoof 行为。
+   */
+  readonly knownInCreepjsWhitelist?: boolean;
   /**
    * WebGL1 参数表。key 是 GL constant 数值（直接写 number；hex 字面量便于对照
    * GL spec），value 是该参数下 ANGLE/driver/GPU 三者组合的真实返回值。
@@ -184,8 +207,13 @@ export const STRING_PARAMS: ReadonlySet<number> = new Set([
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const INTEL_UHD_730_D3D11: WebglProfile = {
+  id: 'intel-uhd-730-d3d11',
   name: 'Intel UHD Graphics 730 / Direct3D11 / Win',
   matchRenderer: /UHD Graphics 730/,
+  // Phase 1.9b 验证：capabilities hash -2146263890 不在 CreepJS 白名单
+  // （Intel UHD 730 是 2022 Alder Lake 12 代，CreepJS 数据库未收录）
+  // 真实 UHD 730 用户访问 creepjs.com 也会同样 bold-fail；非 Mosaiq bug
+  knownInCreepjsWhitelist: false,
   webgl1: new Map<number, GlParamValue>([
     // —— String params (Chrome+ANGLE 全机器统一返回这些字符串) ——
     [GL.VENDOR, 'WebKit'],
@@ -288,6 +316,43 @@ export function selectWebglProfile(webglRenderer: string): WebglProfile | null {
 }
 
 /**
+ * 按 profile id 精确查找。Phase 2.1 引入，配合 `Persona.hardware.gpu.webglProfileId`
+ * 让用户显式选定 profile（绕过 regex match）。
+ *
+ * @returns 匹配的 profile；若 id 未注册返回 null。
+ */
+export function selectWebglProfileById(id: string): WebglProfile | null {
+  for (const profile of KNOWN_PROFILES) {
+    if (profile.id === id) return profile;
+  }
+  return null;
+}
+
+/**
+ * 高层入口：根据 persona 选 profile。
+ *
+ * 优先级：
+ *   1. **显式 override**：`persona.hardware.gpu.webglProfileId` 非空 → 按 id 查；
+ *      未找到时降级到 regex match（避免 typo 直接 disable spoof）
+ *   2. **隐式 regex**：按 `webglRenderer` 字符串匹配 `KNOWN_PROFILES`
+ *
+ * 这个函数被 build-config.ts 使用；`selectWebglProfile` 保留作为更底层 API。
+ *
+ * @returns 选中的 profile，或 null（runner.ts 跳过 GL param spoof，回到 v0.1 行为）
+ */
+export function selectWebglProfileForPersona(input: {
+  webglRenderer: string;
+  webglProfileId?: string | undefined;
+}): WebglProfile | null {
+  if (input.webglProfileId) {
+    const explicit = selectWebglProfileById(input.webglProfileId);
+    if (explicit) return explicit;
+    // 落到 regex match —— 不强 fail，避免 typo 误关 spoof
+  }
+  return selectWebglProfile(input.webglRenderer);
+}
+
+/**
  * 序列化版本：把 Map<number, GlParamValue> 降级成 Record<string, ...>，便于
  * 通过 init script JSON.stringify 进 page context。key 是 hex 字符串（`"0x0d33"`），
  * value 是 number 或 number[]。
@@ -295,6 +360,8 @@ export function selectWebglProfile(webglRenderer: string): WebglProfile | null {
  * runner.ts 用对称的 deserialization 重建 Map + typed array。
  */
 export interface SerializedWebglProfile {
+  /** Phase 2.1: profile id（debug 友好；runner.ts 暂不读，但 diagnose 工具可用） */
+  readonly id: string;
   readonly name: string;
   readonly webgl1: Readonly<Record<string, GlParamValue>>;
   readonly webgl2: Readonly<Record<string, GlParamValue>>;
@@ -310,6 +377,7 @@ export function serializeProfile(profile: WebglProfile): SerializedWebglProfile 
     return out;
   };
   return {
+    id: profile.id,
     name: profile.name,
     webgl1: dump(profile.webgl1),
     webgl2: dump(profile.webgl2),

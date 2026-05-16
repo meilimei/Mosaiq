@@ -126,6 +126,51 @@ describe('Persona template: ubuntu-2204-chrome-us', () => {
   });
 });
 
+describe('Phase 2.1: hardware.gpu.webglProfileId schema', () => {
+  it('字段可选，默认 undefined（向后兼容）', () => {
+    const p = createWin11ChromeUsPersona({ id: 'gpu-pid-default', displayName: 'X' });
+    expect(p.hardware.gpu.webglProfileId).toBeUndefined();
+    expect(() => parsePersona(p)).not.toThrow();
+  });
+
+  it('字段可设为合法字符串（profile id 命名规范）', () => {
+    const base = createWin11ChromeUsPersona({ id: 'gpu-pid-set', displayName: 'X' });
+    const persona = {
+      ...base,
+      hardware: {
+        ...base.hardware,
+        gpu: { ...base.hardware.gpu, webglProfileId: 'intel-uhd-630-d3d11' },
+      },
+    };
+    expect(() => parsePersona(persona)).not.toThrow();
+    expect(parsePersona(persona).hardware.gpu.webglProfileId).toBe('intel-uhd-630-d3d11');
+  });
+
+  it('空字符串被拒（zod min(1)）', () => {
+    const base = createWin11ChromeUsPersona({ id: 'gpu-pid-empty', displayName: 'X' });
+    const persona = {
+      ...base,
+      hardware: {
+        ...base.hardware,
+        gpu: { ...base.hardware.gpu, webglProfileId: '' },
+      },
+    };
+    expect(() => parsePersona(persona)).toThrow();
+  });
+
+  it('过长字符串被拒（zod max(64)）', () => {
+    const base = createWin11ChromeUsPersona({ id: 'gpu-pid-long', displayName: 'X' });
+    const persona = {
+      ...base,
+      hardware: {
+        ...base.hardware,
+        gpu: { ...base.hardware.gpu, webglProfileId: 'a'.repeat(65) },
+      },
+    };
+    expect(() => parsePersona(persona)).toThrow();
+  });
+});
+
 describe('TEMPLATE_CATALOG', () => {
   it('every catalog entry produces a schema-valid persona', () => {
     for (const tpl of TEMPLATE_CATALOG) {
