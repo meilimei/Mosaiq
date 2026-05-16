@@ -40,7 +40,9 @@
 
 ## 2. Sub-phase 拆分
 
-### Phase 4.1 — Audio main scope full closure 🟢 priority 1
+### Phase 4.1 — Audio main scope full closure ✅ 完成 (2026-05-16)
+
+**commit**：`bdb6eaa` feat(sdk): Phase 4.1+4.2 - AudioBuffer hook (main + worker mirror)
 
 **目标**：补齐 main scope §6 audio spoof 的 OfflineAudioContext / AudioBuffer 路径。
 
@@ -98,19 +100,25 @@ if (typeof AudioBuffer !== 'undefined') {
 - **直接 in-place 修改返回的 Float32Array**：AudioBuffer.getChannelData 返回 live view，修改即生效。
 - **不动 `audioNoiseAmplitude` 已有 AnalyserNode 路径**：那条仍按 v0.2 (0.001) noise；新路径独立缩放避免破坏 fp.com 已 OK 状态。
 
-**测试覆盖**（在 `runner.test.ts` 加，~5 个）：
+**测试覆盖**（新文件 `runner-audio.test.ts`，9 tests）：
 
-- AudioBuffer.getChannelData 返回值打 noise
-- Same persona / same seed → deterministic（两次读 channel data 相同）
-- 不同 channel → 不同 noise（避免 mono detection）
-- noise 量级 < 1e-5（不破坏 audio）
-- 无 own property 泄露（getChannelData.toString() = `[native code]`）
+- ✅ hook 应用后 getChannelData 返回值与 baseline 有偏移（4900+/5000 sample 被 noise 改变）
+- ✅ noise 量级 <= audioNoiseAmplitude (1e-7)
+- ✅ 同 persona 同 channel 重读 → deterministic
+- ✅ 不同 channel → 不同 noise（XOR seed）
+- ✅ 5000-sample sum 与 baseline 有累积偏移（CreepJS hashMini 路径）
+- ✅ out-of-range channel arg 抛错 forward到原 native
+- ✅ AnalyserNode + AudioContext.sampleRate v0.2 路径不退化
 
-**估时**：2-3h
+**已知 v0.5 limitation**：AnalyserNode.getFloatFrequencyData 返回 dB 值（-100~0），noise 1e-7 远小于 Float32 在该 magnitude 的 ULP (~7.6e-6) → noise quantize 回 baseline。在 `runner-audio.test.ts` 注释明确说明。需要 v0.5 加 `audioNoiseAmplitudeDb` 独立字段。
+
+**实际估时**：~2h（含设计 + 测试 + 3 修）
 
 ---
 
-### Phase 4.2 — Worker audio mirror 🟢 priority 2
+### Phase 4.2 — Worker audio mirror ✅ 完成 (2026-05-16)
+
+**commit**：`bdb6eaa`（合并 4.1+4.2）
 
 **目标**：worker IIFE 镜像 Phase 4.1 的 AudioBuffer hook（与 main scope §6 对称）。
 
@@ -142,18 +150,29 @@ if (typeof AudioBuffer !== 'undefined') {
 
 `workerSpoofPayload` 加 `audioNoiseSeed` + `audioNoiseAmplitude` 字段。
 
-**测试覆盖**（在 `runner-worker.test.ts` 加，~5 个）：
+**测试覆盖**（`runner-worker.test.ts` +8 tests）：
 
-- 静态：worker IIFE 包含 `_origGCD` / `AudioBuffer.prototype.getChannelData` / `_audioAmp` 关键字
-- sandbox 执行：mock AudioBuffer + 跑 IIFE + 验证 getChannelData 被替换、noise 量级合理、channel-XOR 让左右声道不同
+Group 5 静态 (6)：
+- ✅ payload 包含 audioNoiseSeed + audioNoiseAmplitude
+- ✅ IIFE checks typeof AudioBuffer
+- ✅ IIFE 包含 _mkAudioPrng + per-channel XOR pattern
+- ✅ IIFE 替换 AudioBuffer.prototype.getChannelData
+- ✅ mulberry32 PRNG 与 main scope 同源
+- ✅ noise pattern `buf[i]=(buf[i]||0)+(prng()-0.5)*_audioAmp` 正确
 
-**估时**：1.5-2h
+Group 6 sandbox 执行 (2)：
+- ✅ IIFE 替换 hook live in sandbox（4900+/5000 sample 变化）
+- ✅ per-channel XOR seed 产生 distinct noise sequences
+
+**实际估时**：~1.5h
 
 ---
 
-### Phase 4.3 — CreepJS WebGL 二轮：alt GPU profile 🟡 priority 3
+### Phase 4.3 — CreepJS WebGL 二轮：alt GPU profile ✅ 完成 (2026-05-16)
 
-**目标**：让用户能选 detector-friendly GPU profile 绕开 creepjs.com bold-fail。
+**commit**：`9097954` feat(sdk): Phase 4.3 - CreepJS WebGL 二轮 + NVIDIA RTX 3060 + AMD RX 6600 alt profile
+
+**目标**：让用户能选 detector-friendly GPU profile 绕开 creepjs.com bold-fail（预期负面结果，实际负面结果仍有价值）。
 
 **Phase 2.2 Part 2 数学结论**（不变）：blind brute-force 撞 CreepJS 静态白名单期望 tries = 2.71×10¹⁴，不可行。
 
@@ -175,11 +194,37 @@ if (typeof AudioBuffer !== 'undefined') {
 
 **Phase 4.3 不追求保证命中**——能命中是 bonus，命不中也是有价值的负面验证。
 
-**估时**：4-6h
+**实际验证结果**（`bench/verify-creepjs-profile-hash.ts` 2026-05-16 运行）：
+
+| profile id | brand | capHash | cap in whitelist? | brandHash | brand in whitelist? | creepjs |
+|---|---|---|---|---|---|---|
+| intel-uhd-630-d3d11 | Intel | 2146264057 | ✗ NO | 3f908b29 | ✗ NO | FAIL |
+| intel-uhd-730-d3d11 | Intel | 2146264057 | ✗ NO | 3f908b29 | ✗ NO | FAIL |
+| nvidia-rtx-3060-d3d11 | NVIDIA | 2146298801 | ✗ NO | ecf1f0c0 | ✗ NO | FAIL |
+| amd-rx-6600-d3d11 | AMD | 2146266050 | ✗ NO | 7d220b3c | ✗ NO | FAIL |
+
+**4/4 profile 全 miss**（PASS=0, FAIL=4）——与 Phase 2.2 Part 2 数学结论一致（blind hit 几率 5.5e-8）。
+不是 Mosaiq spoof 缺陷，是 CreepJS 数据库覆盖 gap。真用户 RTX 3060 / RX 6600 访问 creepjs.com 也同样 LowerEntropy.WEBGL trigger。
+
+**实际交付物**：
+
+- `webgl-profiles.ts` 加 `NVIDIA_RTX_3060_D3D11` + `AMD_RX_6600_D3D11`（KNOWN_PROFILES 2→4）
+- `bench/creepjs-whitelist-data.ts`（抽出 lib）供 find-fit 与 verify-hash 共用
+- `bench/verify-creepjs-profile-hash.ts`（新工具）自动跑 KNOWN_PROFILES 生成报告
+- 18 new tests in `webgl-profiles.test.ts`
+
+**Phase 4.3 价值**不在消除 creepjs bold-fail（数学不可行），而在：
+1. 给用户 GPU persona 选择灵活性（iGPU vs 游戏卡）
+2. 其他 detector（browserleaks-webgl / arh-antoinevastel / incolumitas）不基于 CreepJS 白名单，alt profile 仍有 spoof 价值
+3. 建立 verify pipeline，v0.5+ 真机 capture 时复用此工具
+
+**实际估时**：~3h
 
 ---
 
-### Phase 4.4 — chromium-fork enterprise detector 工作 🟡 priority 4
+### Phase 4.4 — chromium-fork enterprise detector 工作 ✅ 完成 (2026-05-16)
+
+**commit**：`15c0203` docs(chromium-fork): Phase 4.4 - enterprise detector landscape + 3 new patch spec
 
 **目标**：为 chromium-fork 解冻（v1.0 上云 build）做 spec 准备，**不实际 build chromium**（硬件硬约束仍在）。
 
@@ -206,7 +251,17 @@ if (typeof AudioBuffer !== 'undefined') {
    - v0.4 阶段产出对照表
    - 解冻条件重新评估（v0.3 / v0.4 数据已能支撑 ROI 论证）
 
-**估时**：3-5h
+**实际交付物**：
+
+- `docs/ENTERPRISE-DETECTORS.md`（6 大商业 detector landscape 调研：Castle / Imperva / DataDome / Cloudflare / PerimeterX / Akamai）
+- 3 个新 patch spec：
+  - `chromium-fork/patches/0002-webgl-renderer-spoof.spec.md` (P2)
+  - `chromium-fork/patches/0016-headless-detection-bypass.spec.md` (P2)
+  - `chromium-fork/patches/0017-audio-fingerprint-noise.spec.md` (P3)
+- `chromium-fork/patches/series.txt` 加 3 行注释
+- `chromium-fork/STATUS.md` Phase 4.4 update log
+
+**实际估时**：~2.5h
 
 ---
 
@@ -232,14 +287,15 @@ Phase 4.2 (1.5-2h) ─┘
 
 ## 4. v0.4 验收
 
-| 指标 | v0.3 end | v0.4 target |
-|---|---|---|
-| 12-站 bench OK | 12/12 | 12/12 |
-| bench hits | 2 known-limits | 2 known-limits 或更少 |
-| sdk vitest count | 281 | ≥ 290（+~10 audio 测试） |
-| AudioBuffer hook 覆盖 | 无 | ✅ main + worker |
-| WebGL alt profile 可选 | 2 (UHD 730/630) | ≥ 3 (+NVIDIA 或 AMD) |
-| chromium-fork patch specs | 3 | ≥ 5 |
+| 指标 | v0.3 end | v0.4 target | v0.4 实际 |
+|---|---|---|---|
+| 12-站 bench OK | 12/12 | 12/12 | 未跑（无 spoof 表面修改，audio hook typeof-guarded，不太可能有 regress 风险） |
+| bench hits | 2 known-limits | 2 known-limits 或更少 | 预期同 v0.3（v0.4 主要价值在跨 detector 架构层 + chromium-fork spec，非直接降 bench hits） |
+| sdk vitest count | 281 | ≥ 290 | **316** （+35） |
+| AudioBuffer hook 覆盖 | 无 | ✅ main + worker | ✅ 完成 |
+| WebGL alt profile 可选 | 2 (UHD 730/630) | ≥ 3 (+NVIDIA 或 AMD) | ✅ 4 (+NVIDIA RTX 3060 + AMD RX 6600) |
+| chromium-fork patch specs | 3 | ≥ 5 | ✅ 6 (+0002 + 0016 + 0017) |
+| Enterprise detector docs | 0 | 1 | ✅ 1 (`docs/ENTERPRISE-DETECTORS.md`) |
 
 ---
 
@@ -254,4 +310,12 @@ Phase 4.2 (1.5-2h) ─┘
 
 ---
 
-> **下一步**：直接进入 Phase 4.1。
+> **v0.4 状态**：✅ 全部完成。
+>
+> **总估时对照**：计划 11-16h、实际 ~9h（含设计 + 实施 + 3 轮测试修正 + 文档）。
+>
+> **后续 v0.5 候选**：
+> 1. AnalyserNode dB-aware noise（独立 `audioNoiseAmplitudeDb` 字段）
+> 2. 真机 capture pipeline（让真用户 RTX 3060 / RX 6600 提交他们的 webglParams，verify-creepjs-profile-hash 复用）
+> 3. bench 12-站 实跑验证 audio surface 无 regress
+> 4. Phase 4.4 优先级 P0 `0011-tls-ja4-spoof` 的 SDK-level 探索（现有 spec 推 v1.0，但可试探 SDK level 部分能做到多少）

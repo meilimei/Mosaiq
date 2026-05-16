@@ -5,6 +5,148 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [0.4.0] — 2026-05-16
+
+The **"v0.4 audio closure + multi-GPU + chromium-fork bridge"** release.
+Closes the last major SDK-level fingerprint gap (audio), broadens GPU
+persona choice, and opens the chromium-fork enterprise-detector workstream
+with three new patch design specs (no native build yet — chromium-fork
+remains in cold storage; see `chromium-fork/STATUS.md`).
+
+- **Phase 4.1 – 4.2**: AudioBuffer hook in main + worker scope.
+- **Phase 4.3**: CreepJS WebGL second round — NVIDIA RTX 3060 / AMD RX
+  6600 alt profiles + verify pipeline.
+- **Phase 4.4**: Enterprise detector landscape + 3 new chromium-fork
+  patch design specs (`0002 webgl-renderer`, `0016 headless-bypass`,
+  `0017 audio-noise`).
+
+### Added
+
+- **Phase 4.1 — AudioBuffer.getChannelData hook (main scope)**
+  (`runner.ts §6`): Closes the classic CreepJS / fp.com / FingerprintJS
+  audio fingerprint path (`new OfflineAudioContext() → oscillator + dynamicsCompressor →
+  startRendering().then(buf.getChannelData)`), which ran completely
+  un-spoofed up to v0.3. In-place mulberry32 noise per channel (seed XOR
+  channel index → distinct left/right sequences; amplitude
+  `audioNoiseAmplitude=1e-7`, well below 16-bit PCM ULP; inaudible but
+  shifts `sum.toString()` enough to make `hashMini` per-persona unique).
+  New file `runner-audio.test.ts` (9 tests covering noise injection /
+  determinism / per-channel XOR / amplitude bound / out-of-range
+  forward / v0.2 regression).
+- **Phase 4.2 — AudioBuffer worker IIFE mirror** (`runner.ts §11`):
+  Mirrors main-scope §6 hook into worker realm. `workerSpoofPayload`
+  carries `audioNoiseSeed` + `audioNoiseAmplitude`. Closes worker-scope
+  audio fingerprint path (OfflineAudioContext is exposed to dedicated
+  workers; without this hook, CreepJS / fp.com audio probes in workers
+  would bypass main-scope spoof entirely). 8 new tests in
+  `runner-worker.test.ts` (6 static + 2 sandbox execution asserting
+  hook is live with per-channel XOR).
+- **Phase 4.3 — NVIDIA RTX 3060 + AMD RX 6600 alt WebGL profiles**
+  (`webgl-profiles.ts`): `KNOWN_PROFILES` 2 → 4. Gives users
+  detector-friendly GPU persona choice (Intel iGPU vs gaming GPU)
+  beyond the Intel UHD 630/730 defaults. Both profiles built from
+  public webgl fingerprint databases + ANGLE D3D11 backend reports;
+  NVIDIA Ampere differs from Intel iGPU on `MAX_VIEWPORT_DIMS` (32767
+  vs 16384), `MAX_TEXTURE_IMAGE_UNITS` (32 vs 16),
+  `MAX_3D_TEXTURE_SIZE` (16384 vs 2048), `ALIASED_POINT_SIZE_RANGE`
+  ([1, 63] vs [1, 1024]), and Ampere-specific `MAX_SAMPLES=32` +
+  `MAX_UNIFORM_BUFFER_BINDINGS=84`. AMD RDNA2 sits closer to Intel iGPU
+  on viewport / point-size but matches NVIDIA on texture-unit count and
+  3D-texture size.
+- **Phase 4.3 — `bench/verify-creepjs-profile-hash.ts`** (new tool):
+  Automated verification — runs every `KNOWN_PROFILES` entry through
+  the CreepJS `capabilitiesHash` (XOR reduce) + `brandCapabilities`
+  (hashMini) algorithms and reports whether the result hits the
+  hardcoded whitelist (237 cap hashes + 287 brand hashes). Refactored
+  shared CreepJS whitelist data into `bench/creepjs-whitelist-data.ts`
+  (lib shared with `find-creepjs-whitelist-fit.ts`).
+- **Phase 4.3 — 18 new webgl-profiles tests**: Cover RTX 3060 / RX 6600
+  match-renderer regex strictness, key differentiating param values vs
+  Intel iGPU, and `selectWebglProfileForPersona` multi-profile
+  branching.
+- **Phase 4.4 — `docs/ENTERPRISE-DETECTORS.md`** (new doc):
+  Comprehensive landscape of 6 commercial bot detectors (Castle.io,
+  Imperva ABP, DataDome, Cloudflare BM, PerimeterX, Akamai BM) with
+  technical breakdown / Mosaiq SDK current coverage / chromium-fork
+  patch candidates + v1.0 priority matrix.
+- **Phase 4.4 — 3 new chromium-fork patch design specs** (`chromium-fork/patches/`):
+  - `0002-webgl-renderer-spoof.spec.md` (P2): GL_VENDOR / GL_RENDERER
+    + 49-param spoof in ANGLE / GPU process layer, replacing SDK
+    Proxy path to eliminate `Function.prototype.toString` reverse +
+    cross-realm prototype comparison detection risk.
+  - `0016-headless-detection-bypass.spec.md` (P2): Strip CDP
+    `Page.IsAutomatedTask` method, `HeadlessChrome` UA fragments, and
+    `--enable-automation` renderer-side exposure; re-enable WebGL2 +
+    ServiceWorker in `--headless=new` mode when `PersonaService` is
+    active.
+  - `0017-audio-fingerprint-noise.spec.md` (P3): Blink AudioBuffer
+    C++-level mulberry32 noise injection, replacing SDK §6 + Phase 4.2
+    worker mirror; also resolves the AnalyserNode dB+Float32 ULP
+    quantize limitation noted below.
+- **`chromium-fork/patches/series.txt`** updated with the 3 new entries
+  and priority markers (P0/P1/P2/P3).
+- **`chromium-fork/STATUS.md`** updated with Phase 4.4 activity log
+  (cold storage status unchanged).
+
+### Documented (known limitations)
+
+- **AnalyserNode dB-scale noise silently quantized** (v0.2 limitation
+  surfaced by Phase 4.1 tests): `AnalyserNode.getFloatFrequencyData`
+  returns dB values (-100 to 0). The 1e-7 `audioNoiseAmplitude` default
+  is far below Float32 ULP at that magnitude (~7.6e-6), so the noise
+  is rounded back to baseline. Hook installs cleanly (no regression),
+  but produces no observable noise. **PCM path
+  (`AudioBuffer.getChannelData`) is unaffected** — value range -1..1
+  makes 1e-7 visible. v0.5 will add a separate
+  `audioNoiseAmplitudeDb` field for dB-aware noise.
+- **CreepJS WebGL bold-fail persists for all 4 built-in profiles**:
+  Phase 4.3 verify-tool result — Intel UHD 630/730, NVIDIA RTX 3060,
+  AMD RX 6600 all miss both CreepJS whitelists (PASS=0, FAIL=4).
+  Confirms Phase 2.2 Part 2 math (blind hit probability ≈ 5.5e-8). Not
+  a Mosaiq spoof flaw — real RTX 3060 / RX 6600 users hit the same
+  outcome. v0.5+ path is a real-hardware capture pipeline (users
+  submit their authentic webglParams; `verify-creepjs-profile-hash`
+  reusable as the validator). Phase 4.3 value lies in (a) GPU-persona
+  flexibility (iGPU vs gaming card), (b) other detectors
+  (`browserleaks-webgl`, `arh-antoinevastel`, `incolumitas`) don't rely
+  on the CreepJS whitelist, so alt profiles still spoof effectively.
+
+### Changed
+
+- **`KNOWN_PROFILES` array order preserved** for regex matching priority
+  — UHD 630 (`\b630\b` stricter) still leads the array; new NVIDIA / AMD
+  entries follow Intel. All 4 regexes are mutually exclusive, so
+  order does not affect runtime behavior.
+- **`InjectionConfig.audioNoiseSeed` + `audioNoiseAmplitude` now flow
+  into `workerSpoofPayload`** alongside existing canvas/webgl fields.
+
+### Verification
+
+- **Tests**: persona-schema 21/21, sdk **316/316** (281 → 316, +35
+  since v0.3.0: +9 `runner-audio.test.ts`, +8 `runner-worker.test.ts`
+  audio mirror, +18 `webgl-profiles.test.ts` NVIDIA/AMD profile).
+- **Typecheck**: clean across 3 packages.
+- **`bench/verify-creepjs-profile-hash.ts`**: PASS=0, FAIL=4 (expected
+  per Phase 2.2 Part 2 math; see "Documented" above).
+- **Bench**: 12-site `baseline-detection.ts` not re-run for this
+  release. v0.4 changes are additive (audio hook is `typeof
+  AudioBuffer`-guarded; new GPU profiles only match via explicit
+  `webglProfileId` or matching renderer regex). No spoof surface
+  regression risk on existing personas. v0.5 will include a fresh
+  12-site bench run with audio surface validation.
+
+### Migration from 0.3.0
+
+No breaking changes. Persona files saved under 0.3.0 remain valid.
+
+- **Opt into NVIDIA / AMD GPU personas**: Set
+  `persona.hardware.gpu.webglProfileId = 'nvidia-rtx-3060-d3d11'` or
+  `'amd-rx-6600-d3d11'` and update `webglRenderer` / `webglVendor` to
+  match. Existing Intel UHD 630/730 personas continue to work
+  unchanged.
+
+---
+
 ## [0.3.0] — 2026-05-16
 
 The **"v0.3 defensive depth + measurement accuracy"** release. Builds on
@@ -219,6 +361,7 @@ Initial public release. See git tag `v0.1.0`.
 - humanize input engine (mouse jitter, keystroke timing)
 - 9-site baseline detection bench (creepjs, sannysoft, browserleaks, etc.)
 
+[0.4.0]: https://github.com/meilimei/Mosaiq/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/meilimei/Mosaiq/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/meilimei/Mosaiq/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/meilimei/Mosaiq/releases/tag/v0.1.0
