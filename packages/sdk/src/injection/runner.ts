@@ -1359,7 +1359,14 @@ export function injectAll(config: InjectionConfig): void {
         '["languages",Object.freeze(P.languages.slice())],' +
         '["hardwareConcurrency",P.hardwareConcurrency],' +
         '["deviceMemory",P.deviceMemory],' +
-        '["maxTouchPoints",P.maxTouchPoints]' +
+        '["maxTouchPoints",P.maxTouchPoints],' +
+        // Phase 2.6.1（Phase 2.5 bench finding）：worker scope `navigator.webdriver`
+        // 必须强制 false。chromium 启 `--enable-automation` flag 时 worker realm 也
+        // 继承 webdriver=true，main scope spoof 仅在 main 生效。incolumitas modified
+        // fp-collect 通过 worker realm 取 navigator.webdriver 检测我们 → 命中 bot
+        // 信号 (`Fp-collect (Modified by Me).webDriver = true`)。把 webdriver 加进
+        // defs，与 main scope §2 (defineProtoGetter `webdriver`, false) 对称。
+        '["webdriver",false]' +
         '];' +
         'defs.forEach(function(pair){var k=pair[0],v=pair[1];' +
         'try{Object.defineProperty(navigator,k,{get:function(){return v;},configurable:true});}catch(e){}' +

@@ -273,6 +273,52 @@ if (IS_BLINK && !KnownImageData.BLINK.includes(imageDataLowEntropy)) {
 
 ---
 
+### Phase 2.6.1 — Worker webdriver + bench extractor fixes ✅ 完成 (2026-05-16)
+
+**触发**：Phase 2.5 全 12 站 bench 真实命中数据（results/2026-05-16T12-25-27-125Z/）暴露 3 个问题：
+
+1. **incolumitas `Fp-collect (Modified by Me).webDriver = true`** —— Phase 2.6 worker IIFE
+   `defs` 数组遗漏 `webdriver`。Chromium 启 `--enable-automation` flag 时 worker realm
+   navigator.webdriver 默认继承 true，main scope spoof 仅在 main world 生效。fix:
+   defs 加 `["webdriver", false]`（与 main scope §2 对称）。
+2. **arh-antoinevastel extractor 0 rows** —— fp-scanner 实际 DOM 是
+   `<table id="scanner"><tr><td>RULE</td><td>Result</td><td>{json}</td></tr>`，tr.textContent
+   形如 `RULENameConsistent{...}`，td 之间无分隔符。我用 `\b(Consistent|Unsure|Inconsistent)\b`
+   regex 不匹配（"e" 和 "C" 都是 word char，无 word boundary）。fix: 主路径改用
+   `table#scanner tbody tr` 直接 3-td 解析；保留 fallback 走更宽松的冒号分隔正则。
+3. **fingerprint-scan score=N/A** —— 后端 async 算分超 8s。fix: settleMs 8 → 14s。
+
+#### 验证
+
+3 站重跑（results/2026-05-16T12-37-20-360Z/）：
+- ✅ **arh-antoinevastel**：21 rows 抓到，20 consistent + 1 inconsistent (WEBDRIVER)
+- ✅ **incolumitas Web Worker Navigatory Property**：`webdriver: false`（Phase 2.6.1 worker
+  fix 生效）
+- ⚠️ **incolumitas Fp-collect (Modified by Me).webDriver = true**：仍 true，但**不是**
+  worker scope 漏洞。modified fp-collect 用了 advanced detection —— raw JSON 显示
+  `"webDriver": true, "webDriverValue": false, "errorsGenerated": ["azeaze is not defined", ...]`
+  暗示通过 ReferenceError stack frame 内的 puppeteer/playwright/automation 字符串反查。
+  这是 v0.3+ 范围（参见 v0.3 plan 新增项 "ReferenceError stack hardening"）。
+- ⚠️ **arh-antoinevastel WEBDRIVER Inconsistent**：同一信号源 —— fp-scanner 用 fp-collect
+  webDriver 字段；fp-collect 内部用 advanced detection 绕开我们的 navigator.webdriver
+  spoof。同样推 v0.3+。
+- ⚠️ **fingerprint-scan score=N/A**：14s 仍不够，site 后端算分耗时不可控。属于 measurement
+  限制；不是我们 spoof 的问题（attrsTotal=135 fingerprint 已收齐，WebDriver: false 等正常）。
+
+#### 已修与未修区分
+
+| Item | Phase 2.6.1 status | v0.3+ 范围 |
+|---|---|---|
+| Worker scope `navigator.webdriver` | ✅ 修了 | - |
+| arh-antoinevastel extractor | ✅ 修了 | - |
+| fingerprint-scan settleMs | ✅ 改了（仍不够，但合理上限） | - |
+| Advanced webdriver detection (Error stack) | ❌ 未修 | v0.3+ "stack frame poisoning" |
+| modified fp-collect.webDriver true | ❌ 未修 | 同上 |
+
+**估时**：1.5h（含 bench 跑 + 分析 + 修 + 重跑验证）
+
+---
+
 ### Phase 2.6 — Worker scope full mirror ✅ 完成 (2026-05-16)
 
 **重新定义**：原计划"worker audio/font 加固"，实施时发现更严重 gap —— worker scope

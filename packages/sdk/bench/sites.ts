@@ -162,8 +162,10 @@ export const SITES: SiteSpec[] = [
     id: 'fingerprint-scan',
     name: 'fingerprint-scan.com',
     url: 'https://fingerprint-scan.com/',
-    // 商业风格 bot risk score 站，前端跑 fingerprint 收集 + 服务器算分，要 5-8s。
-    settleMs: 8_000,
+    // 商业风格 bot risk score 站。fingerprint upload + 服务器算分是异步的；
+    // Phase 2.5 实测 8s settle 仅拿到 fingerprint 属性表，score 还在 backend
+    // 算 → 抓不到。提到 14s 给 score 充足渲染窗口。
+    settleMs: 14_000,
     extract: extractFingerprintScan,
   },
 ];
@@ -639,6 +641,13 @@ async function extractAntoinevastel(page: Page): Promise<Record<string, unknown>
     const result: Record<string, unknown> = {};
 
     // ── 1. 检测项三态结果 ──
+    //
+    // 实战教训（Phase 2.5 bench 2026-05-16）：fp-scanner 实际 DOM 是
+    // `<table id="scanner"><tr><td>RULE</td><td>Result</td><td>{json}</td></tr>`，
+    // tr.textContent 形如 `RULENameConsistent{...}` —— td 之间无分隔符。
+    // 之前用 `\b(Consistent|Unsure|Inconsistent)\b` regex 在 textContent 上跑
+    // 完全不匹配（"r" 和 "C" 都是 word char，无 word boundary）→ 0 rows。
+    // 现在直接对 `table#scanner tbody tr` 解析 3 个 td，可靠很多。
     interface FpsRow {
       name: string;
       status: 'consistent' | 'unsure' | 'inconsistent' | 'unknown';
@@ -646,26 +655,18 @@ async function extractAntoinevastel(page: Page): Promise<Record<string, unknown>
     }
     const rows: FpsRow[] = [];
     const seenNames = new Set<string>();
-    // Fp-Scanner 用 <li> / <tr> / <p> 渲染每项；为兼容多版本，全部扫一遍
-    const candidates = Array.from(
-      document.querySelectorAll('li, tr, p, div'),
-    ) as HTMLElement[];
-    for (const el of candidates) {
-      const text = (el.textContent ?? '').trim();
-      if (text.length < 5 || text.length > 300) continue;
-      // 三态关键字必须命中其一
-      const m = text.match(/\b(Consistent|Unsure|Inconsistent)\b/i);
-      if (!m) continue;
-      const verdict = (m[1] ?? '').toLowerCase();
-      // 把 verdict 之前的部分当 name；去掉冒号 / 减号 / 数字下划线噪声
-      const namePart = text
-        .slice(0, m.index ?? 0)
-        .replace(/[:\-–—]+\s*$/, '')
-        .trim();
-      // 跳过过长的（很可能整段说明） + 过短的（只剩标点）
-      if (namePart.length < 2 || namePart.length > 80) continue;
-      if (seenNames.has(namePart)) continue;
-      seenNames.add(namePart);
+
+    // 1a. 主路径：fp-scanner table#scanner
+    document.querySelectorAll('table#scanner tbody tr').forEach((tr) => {
+      const tds = Array.from(tr.querySelectorAll('td')) as HTMLTableCellElement[];
+      if (tds.length < 2) return;
+      const nameCell = tds[0];
+      const resultCell = tds[1];
+      const dataCell = tds[2];
+      if (!nameCell || !resultCell) return;
+      const name = (nameCell.textContent ?? '').trim();
+      const verdict = (resultCell.textContent ?? '').trim().toLowerCase();
+      if (!name || seenNames.has(name)) return;
       const status =
         verdict === 'consistent'
           ? 'consistent'
@@ -674,8 +675,29 @@ async function extractAntoinevastel(page: Page): Promise<Record<string, unknown>
             : verdict === 'inconsistent'
               ? 'inconsistent'
               : 'unknown';
-      rows.push({ name: namePart, status, raw: text.slice(0, 200) });
+      if (status === 'unknown') return;
+      seenNames.add(name);
+      const dataPart = (dataCell?.textContent ?? '').trim().slice(0, 200);
+      rows.push({ name, status, raw: dataPart });
+    });
+
+    // 1b. fallback：旧版 / 多版兼容，扫所有 li/tr/p 找形如 `name: Verdict` 的
+    //     冒号分隔行（不再假设 word boundary，匹配冒号 + 空格）
+    if (rows.length === 0) {
+      const candidates = Array.from(document.querySelectorAll('li, tr, p')) as HTMLElement[];
+      for (const el of candidates) {
+        const text = (el.textContent ?? '').trim();
+        if (text.length < 5 || text.length > 300) continue;
+        const m = text.match(/^(.{2,80}?)[:\s]+(Consistent|Unsure|Inconsistent)\b/i);
+        if (!m || !m[1] || !m[2]) continue;
+        const name = m[1].trim();
+        if (!name || seenNames.has(name)) continue;
+        seenNames.add(name);
+        const status = m[2].toLowerCase() as FpsRow['status'];
+        rows.push({ name, status, raw: text.slice(0, 200) });
+      }
     }
+
     result.rows = rows;
     result.rowsTotal = rows.length;
     result.consistent = rows.filter((r) => r.status === 'consistent').length;
