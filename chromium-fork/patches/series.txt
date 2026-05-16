@@ -18,14 +18,18 @@
 # 实施时（A.2/A.3/A.4）每完成一个 patch，就把对应文件名加到下面，
 # 并在仓库内生成真 .patch 文件（git format-patch 产生）。
 
-# ── Phase A 待实施 ─────────────────────────────────────────────
-# 0014-persona-bridge.patch       # 见 patches/0014-persona-bridge.spec.md
-# 0001-canvas-noise.patch         # 见 patches/0001-canvas-noise.spec.md
-# 0011-tls-ja4-spoof.patch        # 见 patches/0011-tls-ja4-spoof.spec.md
+# ── Phase A 待实施（v1.0 解冻后） ──────────────────────────────
+# 0014-persona-bridge.patch       # 见 patches/0014-persona-bridge.spec.md   P0
+# 0001-canvas-noise.patch         # 见 patches/0001-canvas-noise.spec.md     P1
+# 0011-tls-ja4-spoof.patch        # 见 patches/0011-tls-ja4-spoof.spec.md    P0
 
-# ── Phase B+ 规划中（不在 v0.3 范围）──────────────────────────
-# 0002-webgl-renderer-spoof.patch
-# 0003-audio-noise.patch
+# ── Phase A+ 新增（v0.4 Phase 4.4 spec，v1.0 实施候选）─────────
+# 0002-webgl-renderer-spoof.patch # 见 patches/0002-webgl-renderer-spoof.spec.md  P2
+# 0016-headless-detection-bypass.patch # 见 patches/0016-headless-detection-bypass.spec.md  P2
+# 0017-audio-fingerprint-noise.patch   # 见 patches/0017-audio-fingerprint-noise.spec.md    P3
+
+# ── Phase B+ 规划中（v1.5+ defer）──────────────────────────────
+# 0003-audio-noise.patch          # 被 0017 取代
 # 0004-navigator-id.patch
 # 0005-client-hints.patch
 # 0006-screen-spoof.patch

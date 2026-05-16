@@ -71,9 +71,14 @@
 ## 上次活动
 
 - **2026-05-11** — Phase A.0 环境验证 + A.1.a fetch 启动
-- **2026-05-13 06:56:51** — sync-resume 又因 DNS 失败 exit 1（最后一次活动）
+- **2026-05-13 06:56:51** — sync-resume 又因 DNS 失败 exit 1（最后一次 build activity）
 - **2026-05-13 21:13** — 用户反馈电脑卡死，决定 pivot
 - **2026-05-13 21:30** — 写本 STATUS.md，进入冷藏
+- **2026-05-16** — v0.4 Phase 4.4：补 3 个新 patch spec（不实施 build）：
+  - `0002-webgl-renderer-spoof.spec.md` — ANGLE / GPU process 层 vendor/renderer 字符串 + 49-param caps
+  - `0016-headless-detection-bypass.spec.md` — 删除 CDP `Page.IsAutomatedTask` / `HeadlessChrome` UA / `--enable-automation` 暴露面
+  - `0017-audio-fingerprint-noise.spec.md` — Blink AudioBuffer C++ 层加 noise，取代 SDK 注入版
+  - 同时写 `docs/ENTERPRISE-DETECTORS.md` 综合调研 6 大商业 detector + 候选 patch 优先级
 
 ## 联系
 
