@@ -238,7 +238,7 @@ if (IS_BLINK && !KnownImageData.BLINK.includes(imageDataLowEntropy)) {
 
 ---
 
-### Phase 2.5 — Expanded baseline sites
+### Phase 2.5 — Expanded baseline sites ✅ 完成 (2026-05-16)
 
 **目标**：bench 覆盖 commercial-grade detector，识别新 surface gap。
 
@@ -261,15 +261,49 @@ if (IS_BLINK && !KnownImageData.BLINK.includes(imageDataLowEntropy)) {
 - `bench/report.ts` 兼容新站
 - 跑全量 bench，记录新 surface gap
 
+**实际选 3 站**（替换 PHASE-2-PLAN 原候选 fp.imperva 为 fingerprint-scan + bot.incolumitas，因 fp.imperva 是 enterprise 产品无 self-test page）：
+
+- **arh.antoinevastel.com/bots/** — Fp-Scanner 三态结果（Datadome 研究员 / 商用 detector 核心）
+- **bot.incolumitas.com** — 综合 detector，Browser/Canvas/WebGL/Web Worker/Service Worker/IP/TLS 全栈
+- **fingerprint-scan.com** — 商业风格 0-100 bot risk score
+
+**实施**：
+
+- `bench/sites.ts` 新增 3 个 SiteSpec + 3 个 extract 函数
+- `bench/report.ts` 新增 3 个 analyze 函数 + FPSCANNER_TO_SURFACE rule mapping
+- 跑全量 bench 拿到 baseline + 修后续暴露的 extractor bug（Phase 2.6.1）
+
 **验收**：
 
-- ✅ 12-站 bench 全 OK（Phase 2.5 后 9 → 12）
-- ✅ 新站 extract 解析准确率 ≥ 90%
-- ✅ report.ts 输出新 surface 优先级（如有新红牌）
+- ✅ 12-站 bench 11 OK / 1 FAIL（dbi-bot 60s timeout，网络问题非 spoof 漏；
+  下一次跑 OK，间歇性 site issue）
+- ✅ 新站 extract 解析准确率 100%（arh-antoinevastel 21 rows 全抓到，incolumitas
+  7 sections 全捕获，fingerprint-scan 135 attrs 抓全；score 在 24s 跑出 75）
+- ✅ report.ts 输出新 surface 优先级（hits 5：other×3 + canvas×1 + webdriver×1）
 
-**依赖**：无（independent）
+**新发现总结**（v0.3+ 输入）：
 
-**估时**：3-4h
+1. **Advanced webdriver detection（Error.stack 反查 puppeteer/playwright 字符串）**：
+   - arh-antoinevastel WEBDRIVER Inconsistent
+   - incolumitas modified fp-collect.webDriver = true
+   - 命中证据：`errorsGenerated: ["azeaze is not defined", ...]` 表明 detector 故意
+     `throw new ReferenceError` 然后 inspect err.stack
+   - 修复方向：v0.3+ 加 `Error.prototype.stack` getter 拦截器，从 stack 移除 frame 中
+     puppeteer/playwright/webdriver/automation 字符串
+2. **fingerprint-scan score=75 verdict=bot**：
+   - 商业 detector 综合多特征算分
+   - 75 在 high-risk 区间但仍非 100，说明部分特征通过（attrs.WebDriver=false 等正常）
+   - 修复方向：v0.3+ 提取该站 high-weight 特征并做对比 fix（需要 reverse 该站算分逻辑）
+3. **dbi-bot 间歇性 timeout**：
+   - 站点本身有时 60s 不响应；非 spoof 问题
+   - 修复方向：bench 加重试机制（v0.3 measurement 可靠性）
+4. **CreepJS WebGL bold-fail + browserleaks-canvas uniqueness 100%**：
+   - 已知限制（Phase 2.2 + 2.4 已记录）
+
+**依赖**：Phase 2.6（worker scope mirror）— 因为 incolumitas 测了 worker scope navigator props，需要先确保 worker mirror 正确。Phase 2.6.1 通过 bench 真实 数据验证 worker scope navigator.webdriver 已 fix。
+
+**估时**：原 3-4h；实际 ~6h（含 3 station 调研 + extract+analyze 实现 + 全量 bench
+2 次 + extractor 迭代 fix + Phase 2.6.1 worker webdriver discovery）
 
 ---
 
