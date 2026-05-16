@@ -783,13 +783,25 @@ async function extractIncolumitas(page: Page): Promise<Record<string, unknown>> 
 
     // ── 2. 提取关键布尔/数值 ──
     // incolumitas 关心的"红色信号"字段（命中 = bot 检出）
+    //
+    // ⚠️ 关键 false-positive 经验（Phase 3.1 调查，2026-05-16）：
+    // 我们曾经把 `'webdriver'` 加进 knownBadKeys，结果 modified fp-collect 字段
+    // `webDriver: () => 'webdriver' in navigator` 对**所有现代 Chrome 用户都是 true**
+    // —— WebDriver Recommendation (W3C, 2018+) 强制要求 `navigator.webdriver` 必须
+    // 存在（普通用户返回 false，自动化下返回 true）。所以 `'webdriver' in navigator`
+    // 是 spec-required，**不是** bot 信号。incolumitas 的 modified fp-collect 这个
+    // 字段更接近 informational 而非判定。真正区分 bot 的是 `webDriverValue`
+    // (= `navigator.webdriver`)，我们已通过 §1 + §11 spoof 为 false。
+    //
+    // 同理 `'webdriver'` substring 也会误捕 `webdriverValue`/`webDriverPresent`
+    // 等 OK 字段。所以 webdriver 类完全靠 webDriverValue 这条 ground-truth 路径，
+    // 这里不再扫 'webdriver' substring。
     const knownBadKeys = [
       'intoli',
       'isHeadlessChrome',
       'detected',
       'areYouHeadless',
       'hasHeadlessUA',
-      'webdriver',
       'phantomjs',
       'selenium',
       'iframeChrome',

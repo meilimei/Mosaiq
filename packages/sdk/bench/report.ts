@@ -494,20 +494,48 @@ function analyzeAntoinevastel(
     return { surface: 'other' as Surface, severity: 'medium' as const };
   };
 
+  // ⚠️ 已知 detector 过时 / spec-incompatible 的规则白名单（Phase 3.1 发现）：
+  // 这些 fp-scanner rule 对**所有现代 Chrome 用户**都报 Inconsistent —— detector
+  // 本身过时，不是 Mosaiq 的 spoof 漏洞。列在这里时只显示为 ℹ️ note，不入 hits。
+  //
+  // - **WEBDRIVER**：fp-scanner (2017) 检测 `fingerprint.webDriver`，fp-collect 用
+  //   `'webdriver' in navigator`。但 W3C WebDriver Recommendation (2018+) 强制要求
+  //   `navigator.webdriver` 必须存在（无论 bot 还是 human），所以 `in` 操作符 = true。
+  //   真正区分的是 `navigator.webdriver` 的**值**（我们 spoof = false）。fp-scanner
+  //   2017 版本未跟进 spec 更新，对所有现代 Chrome 用户都判 Inconsistent。
+  const KNOWN_OUTDATED_RULES = new Set(['WEBDRIVER']);
+
   if (inconsistent > 0) {
-    md += `**🔴 Inconsistent（强 bot 信号）**：\n\n`;
+    const reportable: string[] = [];
+    const outdated: string[] = [];
     for (const name of inconsistentTests) {
-      const route = resolveRoute(name);
-      md += `- 🔴 **\`${name}\`** → surface: \`${route.surface}\`\n`;
-      hits.push({
-        surface: route.surface,
-        site: 'arh-antoinevastel',
-        detector: `fp-scanner inconsistent: ${name}`,
-        evidence: 'Inconsistent',
-        severity: 'high',
-      });
+      const upper = name.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      if (KNOWN_OUTDATED_RULES.has(upper)) outdated.push(name);
+      else reportable.push(name);
     }
-    md += `\n`;
+
+    if (reportable.length > 0) {
+      md += `**🔴 Inconsistent（强 bot 信号）**：\n\n`;
+      for (const name of reportable) {
+        const route = resolveRoute(name);
+        md += `- 🔴 **\`${name}\`** → surface: \`${route.surface}\`\n`;
+        hits.push({
+          surface: route.surface,
+          site: 'arh-antoinevastel',
+          detector: `fp-scanner inconsistent: ${name}`,
+          evidence: 'Inconsistent',
+          severity: 'high',
+        });
+      }
+      md += `\n`;
+    }
+    if (outdated.length > 0) {
+      md += `**ℹ️ 已知过时规则（不入 hits）**：\n\n`;
+      for (const name of outdated) {
+        md += `- ℹ️ **\`${name}\`** — detector 早于 W3C spec 更新，对所有现代 Chrome 用户都报 Inconsistent\n`;
+      }
+      md += `\n`;
+    }
   }
   if (unsure > 0) {
     md += `**🟡 Unsure（模糊信号）**：\n\n`;
