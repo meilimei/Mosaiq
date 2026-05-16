@@ -8,12 +8,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AMD_RX_6600_D3D11,
   FLOAT32_ARRAY_PARAMS,
   GL,
   INT32_ARRAY_PARAMS,
   INTEL_UHD_630_D3D11,
   INTEL_UHD_730_D3D11,
   KNOWN_PROFILES,
+  NVIDIA_RTX_3060_D3D11,
   STRING_PARAMS,
   selectWebglProfile,
   selectWebglProfileById,
@@ -321,10 +323,91 @@ describe('selectWebglProfile', () => {
 
   it('KNOWN_PROFILES 数组顺序决定优先级（specificity 高的在前）', () => {
     // Phase 2.2: UHD 630 的 regex `\b630\b` 更严格（留字界避免抑 730 中含 630三字的问题），
-    // 所以排在 UHD 730 之前。当前两 regex 互斥，顺序不影响行为。
-    expect(KNOWN_PROFILES.length).toBeGreaterThanOrEqual(2);
-    expect(KNOWN_PROFILES.map((p) => p.id)).toContain('intel-uhd-630-d3d11');
-    expect(KNOWN_PROFILES.map((p) => p.id)).toContain('intel-uhd-730-d3d11');
+    // 所以排在 UHD 730 之前。当前 4 个 regex 互斥，顺序不影响行为。
+    expect(KNOWN_PROFILES.length).toBeGreaterThanOrEqual(4);
+    const ids = KNOWN_PROFILES.map((p) => p.id);
+    expect(ids).toContain('intel-uhd-630-d3d11');
+    expect(ids).toContain('intel-uhd-730-d3d11');
+    expect(ids).toContain('nvidia-rtx-3060-d3d11');
+    expect(ids).toContain('amd-rx-6600-d3d11');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 4.3: NVIDIA RTX 3060 + AMD RX 6600 alt profile static checks
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 4.3: NVIDIA RTX 3060 D3D11 profile', () => {
+  it('matchRenderer 匹配 ANGLE D3D11 RTX 3060 字符串', () => {
+    const realisticRenderer =
+      'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    expect(NVIDIA_RTX_3060_D3D11.matchRenderer.test(realisticRenderer)).toBe(true);
+  });
+
+  it('matchRenderer 不应匹配 RTX 3070 / 4060 等邻近型号（regex 严谨度）', () => {
+    expect(NVIDIA_RTX_3060_D3D11.matchRenderer.test('RTX 3070')).toBe(false);
+    expect(NVIDIA_RTX_3060_D3D11.matchRenderer.test('RTX 4060')).toBe(false);
+  });
+
+  it('knownInCreepjsWhitelist=false（Phase 2.2 Part 2 数学结论：hit 几率 5.5e-8）', () => {
+    expect(NVIDIA_RTX_3060_D3D11.knownInCreepjsWhitelist).toBe(false);
+  });
+
+  it('与 Intel iGPU 区分点：MAX_VIEWPORT_DIMS=[32767,32767]', () => {
+    expect(NVIDIA_RTX_3060_D3D11.webgl1.get(GL.MAX_VIEWPORT_DIMS)).toEqual([32767, 32767]);
+  });
+
+  it('与 Intel iGPU 区分点：MAX_TEXTURE_IMAGE_UNITS=32（Intel=16）', () => {
+    expect(NVIDIA_RTX_3060_D3D11.webgl1.get(GL.MAX_TEXTURE_IMAGE_UNITS)).toBe(32);
+    expect(NVIDIA_RTX_3060_D3D11.webgl1.get(GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS)).toBe(32);
+  });
+
+  it('与 Intel iGPU 区分点：MAX_3D_TEXTURE_SIZE=16384（Intel=2048）', () => {
+    expect(NVIDIA_RTX_3060_D3D11.webgl2.get(GL.MAX_3D_TEXTURE_SIZE)).toBe(16384);
+    expect(NVIDIA_RTX_3060_D3D11.webgl2.get(GL.MAX_ARRAY_TEXTURE_LAYERS)).toBe(16384);
+  });
+
+  it('与 Intel iGPU 区分点：ALIASED_POINT_SIZE_RANGE=[1,63]（Intel=[1,1024]）', () => {
+    expect(NVIDIA_RTX_3060_D3D11.webgl1.get(GL.ALIASED_POINT_SIZE_RANGE)).toEqual([1, 63]);
+  });
+
+  it('NVIDIA Ampere-specific：MAX_SAMPLES=32（Intel/AMD=16）+ uniform bindings=84', () => {
+    expect(NVIDIA_RTX_3060_D3D11.webgl2.get(GL.MAX_SAMPLES)).toBe(32);
+    expect(NVIDIA_RTX_3060_D3D11.webgl2.get(GL.MAX_UNIFORM_BUFFER_BINDINGS)).toBe(84);
+  });
+});
+
+describe('Phase 4.3: AMD RX 6600 D3D11 profile', () => {
+  it('matchRenderer 匹配 ANGLE D3D11 RX 6600 字符串', () => {
+    const realisticRenderer =
+      'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    expect(AMD_RX_6600_D3D11.matchRenderer.test(realisticRenderer)).toBe(true);
+  });
+
+  it('matchRenderer 不应匹配 RX 6700 / 7600 等邻近型号', () => {
+    expect(AMD_RX_6600_D3D11.matchRenderer.test('RX 6700')).toBe(false);
+    expect(AMD_RX_6600_D3D11.matchRenderer.test('RX 7600')).toBe(false);
+  });
+
+  it('knownInCreepjsWhitelist=false（与 NVIDIA 同理：blind hit 几率极低）', () => {
+    expect(AMD_RX_6600_D3D11.knownInCreepjsWhitelist).toBe(false);
+  });
+
+  it('AMD RDNA2 D3D11：MAX_VIEWPORT_DIMS=[16384,16384]（与 Intel 同）', () => {
+    expect(AMD_RX_6600_D3D11.webgl1.get(GL.MAX_VIEWPORT_DIMS)).toEqual([16384, 16384]);
+  });
+
+  it('AMD vs Intel：MAX_TEXTURE_IMAGE_UNITS=32（与 NVIDIA 同 ≠ Intel）', () => {
+    expect(AMD_RX_6600_D3D11.webgl1.get(GL.MAX_TEXTURE_IMAGE_UNITS)).toBe(32);
+  });
+
+  it('AMD vs NVIDIA：ALIASED_POINT_SIZE_RANGE=[1,1024]（与 Intel 同 ≠ NVIDIA）', () => {
+    expect(AMD_RX_6600_D3D11.webgl1.get(GL.ALIASED_POINT_SIZE_RANGE)).toEqual([1, 1024]);
+  });
+
+  it('AMD RDNA2-specific：MAX_SAMPLES=16 + uniform bindings=72', () => {
+    expect(AMD_RX_6600_D3D11.webgl2.get(GL.MAX_SAMPLES)).toBe(16);
+    expect(AMD_RX_6600_D3D11.webgl2.get(GL.MAX_UNIFORM_BUFFER_BINDINGS)).toBe(72);
   });
 });
 
@@ -401,9 +484,40 @@ describe('selectWebglProfileForPersona', () => {
 
   it('webglProfileId 未提供 + renderer 不 match → null', () => {
     const profile = selectWebglProfileForPersona({
-      webglRenderer: 'ANGLE (NVIDIA, GeForce RTX 4090, D3D11)',
+      webglRenderer: 'ANGLE (NVIDIA, GeForce RTX 4090, D3D11)', // 4090 不在 KNOWN_PROFILES
     });
     expect(profile).toBeNull();
+  });
+
+  it('Phase 4.3: RTX 3060 renderer 字符串 → NVIDIA profile', () => {
+    const profile = selectWebglProfileForPersona({
+      webglRenderer:
+        'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    });
+    expect(profile).toBe(NVIDIA_RTX_3060_D3D11);
+  });
+
+  it('Phase 4.3: RX 6600 renderer 字符串 → AMD profile', () => {
+    const profile = selectWebglProfileForPersona({
+      webglRenderer:
+        'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    });
+    expect(profile).toBe(AMD_RX_6600_D3D11);
+  });
+
+  it('Phase 4.3: 显式 webglProfileId 选 NVIDIA / AMD 都生效', () => {
+    expect(
+      selectWebglProfileForPersona({
+        webglRenderer: 'irrelevant',
+        webglProfileId: 'nvidia-rtx-3060-d3d11',
+      }),
+    ).toBe(NVIDIA_RTX_3060_D3D11);
+    expect(
+      selectWebglProfileForPersona({
+        webglRenderer: 'irrelevant',
+        webglProfileId: 'amd-rx-6600-d3d11',
+      }),
+    ).toBe(AMD_RX_6600_D3D11);
   });
 
   it('webglProfileId 显式 + 同 id → 等同于 regex 选择结果', () => {

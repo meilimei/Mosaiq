@@ -391,6 +391,196 @@ export const INTEL_UHD_630_D3D11: WebglProfile = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// NVIDIA GeForce RTX 3060 (Ampere GA106) / Win11 / Chrome / ANGLE Direct3D11
+//
+// 数据来源（公开 fingerprint 数据库聚合）：
+//   - webglreport.com 收录的 RTX 30 系列 Chrome+ANGLE 真机 capture
+//   - browserleaks.com/webgl 数据库 NVIDIA Ampere 用户片段
+//   - ANGLE D3D11 backend src（github.com/google/angle src/libANGLE/renderer/d3d/d3d11）
+//
+// 关键差异点（与 Intel iGPU 对比）：
+//   - MAX_VIEWPORT_DIMS: [32767, 32767]（Ampere D3D feature level 11_1 上限，
+//     Intel iGPU 报告 16384）
+//   - MAX_VERTEX_TEXTURE_IMAGE_UNITS / MAX_TEXTURE_IMAGE_UNITS: 32（Intel 16）
+//   - MAX_COMBINED_TEXTURE_IMAGE_UNITS: 64（Intel 32）
+//   - MAX_3D_TEXTURE_SIZE / MAX_ARRAY_TEXTURE_LAYERS: 16384（Intel 2048）
+//   - ALIASED_POINT_SIZE_RANGE: [1, 63]（Intel 报告 [1, 1024]）
+//
+// 注：CreepJS 静态白名单不收录此 hash（Phase 2.2 Part 2 数学结论：blind hit
+// 几率 5.5e-8）。本 profile **不消除 creepjs.com WebGL bold-fail**，仅给用户
+// "NVIDIA persona" 替代 Intel iGPU 的选项 —— 其他 detector（browserleaks-webgl /
+// arh-antoinevastel / incolumitas 等）不用 CreepJS 白名单。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const NVIDIA_RTX_3060_D3D11: WebglProfile = {
+  id: 'nvidia-rtx-3060-d3d11',
+  name: 'NVIDIA GeForce RTX 3060 / Direct3D11 / Win',
+  matchRenderer: /RTX 3060\b/,
+  knownInCreepjsWhitelist: false, // 真实 RTX 3060 用户也大概率不在白名单（数据 gap）
+  webgl1: new Map<number, GlParamValue>([
+    // —— String params (Chrome+ANGLE 全机器统一) ——
+    [GL.VENDOR, 'WebKit'],
+    [GL.RENDERER, 'WebKit WebGL'],
+    [GL.VERSION, 'WebGL 1.0 (OpenGL ES 2.0 Chromium)'],
+    [GL.SHADING_LANGUAGE_VERSION, 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'],
+    // —— Stencil state initial values ——
+    [GL.STENCIL_VALUE_MASK, 0x7fffffff],
+    [GL.STENCIL_WRITEMASK, 0x7fffffff],
+    [GL.STENCIL_BACK_VALUE_MASK, 0x7fffffff],
+    [GL.STENCIL_BACK_WRITEMASK, 0x7fffffff],
+    // —— Texture caps (D3D feature level 11_1 上限) ——
+    [GL.MAX_TEXTURE_SIZE, 16384],
+    [GL.MAX_CUBE_MAP_TEXTURE_SIZE, 16384],
+    [GL.MAX_RENDERBUFFER_SIZE, 16384],
+    [GL.MAX_VIEWPORT_DIMS, [32767, 32767]], // NVIDIA 上比 Intel 大 2x
+    // —— Shader caps (Ampere 高于 Intel iGPU) ——
+    [GL.MAX_VERTEX_ATTRIBS, 16],
+    [GL.MAX_VERTEX_UNIFORM_VECTORS, 4096],
+    [GL.MAX_VARYING_VECTORS, 30],
+    [GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS, 32], // NVIDIA 32 vs Intel 16
+    [GL.MAX_TEXTURE_IMAGE_UNITS, 32], // NVIDIA 32 vs Intel 16
+    [GL.MAX_FRAGMENT_UNIFORM_VECTORS, 1024],
+    [GL.MAX_COMBINED_TEXTURE_IMAGE_UNITS, 64], // NVIDIA 64 vs Intel 32
+    // —— Aliased ranges (NVIDIA 点大小上限 < Intel) ——
+    [GL.ALIASED_LINE_WIDTH_RANGE, [1, 1]],
+    [GL.ALIASED_POINT_SIZE_RANGE, [1, 63]], // NVIDIA [1, 63] vs Intel [1, 1024]
+    // —— Color / depth / stencil bits ——
+    [GL.RED_BITS, 8],
+    [GL.GREEN_BITS, 8],
+    [GL.BLUE_BITS, 8],
+    [GL.ALPHA_BITS, 8],
+    [GL.DEPTH_BITS, 24],
+    [GL.STENCIL_BITS, 8],
+    [GL.SUBPIXEL_BITS, 4],
+    // —— MSAA ——
+    [GL.SAMPLES, 0],
+    [GL.SAMPLE_BUFFERS, 0],
+  ]),
+  webgl2: new Map<number, GlParamValue>([
+    [GL.VERSION, 'WebGL 2.0 (OpenGL ES 3.0 Chromium)'],
+    [GL.SHADING_LANGUAGE_VERSION, 'WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)'],
+    // —— WebGL2 caps (NVIDIA Ampere D3D11) ——
+    [GL.MAX_3D_TEXTURE_SIZE, 16384], // NVIDIA 16384 vs Intel 2048
+    [GL.MAX_ARRAY_TEXTURE_LAYERS, 16384], // NVIDIA 16384 vs Intel 2048
+    [GL.MAX_DRAW_BUFFERS, 8],
+    [GL.MAX_COLOR_ATTACHMENTS, 8],
+    [GL.MAX_VERTEX_OUTPUT_COMPONENTS, 64],
+    [GL.MAX_FRAGMENT_INPUT_COMPONENTS, 128],
+    [GL.MIN_PROGRAM_TEXEL_OFFSET, -8],
+    [GL.MAX_PROGRAM_TEXEL_OFFSET, 7],
+    [GL.MAX_SAMPLES, 32], // NVIDIA 32x MSAA support
+    [GL.MAX_UNIFORM_BUFFER_BINDINGS, 84], // NVIDIA Ampere
+    [GL.MAX_UNIFORM_BLOCK_SIZE, 65536],
+    [GL.MAX_VERTEX_UNIFORM_BLOCKS, 14],
+    [GL.MAX_FRAGMENT_UNIFORM_BLOCKS, 14],
+    [GL.MAX_COMBINED_UNIFORM_BLOCKS, 84], // NVIDIA Ampere
+    // —— Phase 1.9b CreepJS short list ——
+    [GL.MAX_ELEMENTS_VERTICES, 1048575],
+    [GL.MAX_ELEMENTS_INDICES, 1048575],
+    [GL.MAX_TEXTURE_LOD_BIAS, 15],
+    [GL.MAX_FRAGMENT_UNIFORM_COMPONENTS, 16384],
+    [GL.MAX_VERTEX_UNIFORM_COMPONENTS, 16384],
+    [GL.MAX_VARYING_COMPONENTS, 124],
+    [GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS, 4],
+    [GL.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS, 128],
+    [GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS, 4],
+    [GL.MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS, 245760],
+    [GL.MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS, 245760],
+    [GL.MAX_SERVER_WAIT_TIMEOUT, 0],
+    [GL.MAX_ELEMENT_INDEX, 0xfffffffe],
+    [GL.MAX_CLIENT_WAIT_TIMEOUT_WEBGL, 0],
+  ]),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AMD Radeon RX 6600 (RDNA2 Navi 23) / Win11 / Chrome / ANGLE Direct3D11
+//
+// 数据来源：browserleaks.com/webgl 数据库 AMD RDNA2 用户片段 + ANGLE D3D11
+// backend 报告。AMD RDNA2 在 D3D11 feature level 11_1 上限与 NVIDIA Ampere 接近，
+// 但 MAX_VIEWPORT_DIMS 报告 [16384, 16384]（与 Intel 同），ALIASED_POINT_SIZE_RANGE
+// 报告 [1, 1024]（与 Intel 同），核心差异是 MAX_3D_TEXTURE_SIZE / MAX_ARRAY_TEXTURE_LAYERS
+// 高于 Intel iGPU。
+//
+// 同样不在 CreepJS 白名单内（Phase 2.2 Part 2 结论）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const AMD_RX_6600_D3D11: WebglProfile = {
+  id: 'amd-rx-6600-d3d11',
+  name: 'AMD Radeon RX 6600 / Direct3D11 / Win',
+  matchRenderer: /RX 6600\b/,
+  knownInCreepjsWhitelist: false,
+  webgl1: new Map<number, GlParamValue>([
+    [GL.VENDOR, 'WebKit'],
+    [GL.RENDERER, 'WebKit WebGL'],
+    [GL.VERSION, 'WebGL 1.0 (OpenGL ES 2.0 Chromium)'],
+    [GL.SHADING_LANGUAGE_VERSION, 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'],
+    [GL.STENCIL_VALUE_MASK, 0x7fffffff],
+    [GL.STENCIL_WRITEMASK, 0x7fffffff],
+    [GL.STENCIL_BACK_VALUE_MASK, 0x7fffffff],
+    [GL.STENCIL_BACK_WRITEMASK, 0x7fffffff],
+    // —— Texture caps (RDNA2 D3D11 上限与 Intel iGPU 同) ——
+    [GL.MAX_TEXTURE_SIZE, 16384],
+    [GL.MAX_CUBE_MAP_TEXTURE_SIZE, 16384],
+    [GL.MAX_RENDERBUFFER_SIZE, 16384],
+    [GL.MAX_VIEWPORT_DIMS, [16384, 16384]], // AMD RDNA2 与 Intel 同
+    // —— Shader caps (RDNA2 高于 Intel iGPU) ——
+    [GL.MAX_VERTEX_ATTRIBS, 16],
+    [GL.MAX_VERTEX_UNIFORM_VECTORS, 4096],
+    [GL.MAX_VARYING_VECTORS, 30],
+    [GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS, 32], // RDNA2 32 vs Intel 16
+    [GL.MAX_TEXTURE_IMAGE_UNITS, 32], // RDNA2 32 vs Intel 16
+    [GL.MAX_FRAGMENT_UNIFORM_VECTORS, 1024],
+    [GL.MAX_COMBINED_TEXTURE_IMAGE_UNITS, 64], // RDNA2 64 vs Intel 32
+    // —— Aliased ranges (AMD 上限与 Intel 同) ——
+    [GL.ALIASED_LINE_WIDTH_RANGE, [1, 1]],
+    [GL.ALIASED_POINT_SIZE_RANGE, [1, 1024]], // AMD 与 Intel 同
+    [GL.RED_BITS, 8],
+    [GL.GREEN_BITS, 8],
+    [GL.BLUE_BITS, 8],
+    [GL.ALPHA_BITS, 8],
+    [GL.DEPTH_BITS, 24],
+    [GL.STENCIL_BITS, 8],
+    [GL.SUBPIXEL_BITS, 4],
+    [GL.SAMPLES, 0],
+    [GL.SAMPLE_BUFFERS, 0],
+  ]),
+  webgl2: new Map<number, GlParamValue>([
+    [GL.VERSION, 'WebGL 2.0 (OpenGL ES 3.0 Chromium)'],
+    [GL.SHADING_LANGUAGE_VERSION, 'WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)'],
+    // —— WebGL2 caps (RDNA2 D3D11) ——
+    [GL.MAX_3D_TEXTURE_SIZE, 16384], // RDNA2 16384 vs Intel 2048
+    [GL.MAX_ARRAY_TEXTURE_LAYERS, 16384], // RDNA2 16384 vs Intel 2048
+    [GL.MAX_DRAW_BUFFERS, 8],
+    [GL.MAX_COLOR_ATTACHMENTS, 8],
+    [GL.MAX_VERTEX_OUTPUT_COMPONENTS, 64],
+    [GL.MAX_FRAGMENT_INPUT_COMPONENTS, 128],
+    [GL.MIN_PROGRAM_TEXEL_OFFSET, -8],
+    [GL.MAX_PROGRAM_TEXEL_OFFSET, 7],
+    [GL.MAX_SAMPLES, 16], // AMD 16x MSAA (Intel 16, NVIDIA 32)
+    [GL.MAX_UNIFORM_BUFFER_BINDINGS, 72], // RDNA2 reports 72
+    [GL.MAX_UNIFORM_BLOCK_SIZE, 65536],
+    [GL.MAX_VERTEX_UNIFORM_BLOCKS, 14],
+    [GL.MAX_FRAGMENT_UNIFORM_BLOCKS, 14],
+    [GL.MAX_COMBINED_UNIFORM_BLOCKS, 72],
+    // —— Phase 1.9b CreepJS short list ——
+    [GL.MAX_ELEMENTS_VERTICES, 1048575],
+    [GL.MAX_ELEMENTS_INDICES, 1048575],
+    [GL.MAX_TEXTURE_LOD_BIAS, 15],
+    [GL.MAX_FRAGMENT_UNIFORM_COMPONENTS, 16384],
+    [GL.MAX_VERTEX_UNIFORM_COMPONENTS, 16384],
+    [GL.MAX_VARYING_COMPONENTS, 124],
+    [GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS, 4],
+    [GL.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS, 128],
+    [GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS, 4],
+    [GL.MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS, 245760],
+    [GL.MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS, 245760],
+    [GL.MAX_SERVER_WAIT_TIMEOUT, 0],
+    [GL.MAX_ELEMENT_INDEX, 0xfffffffe],
+    [GL.MAX_CLIENT_WAIT_TIMEOUT_WEBGL, 0],
+  ]),
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Profile selector
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -399,11 +589,18 @@ export const INTEL_UHD_630_D3D11: WebglProfile = {
  * 添加新 profile：在数组里增 entry + 在上方导出常量。
  *
  * 注意：UHD 630 排在 UHD 730 之前，因为 `\b630\b` regex 更严格（避免 730 字符串
- * 含 "630" 子串误匹配）。当前两个正则互斥，顺序无影响，但保持 specificity 排序。
+ * 含 "630" 子串误匹配）。当前 4 个正则互斥，顺序无影响，但保持 specificity 排序。
+ *
+ * Phase 4.3 新加 NVIDIA + AMD desktop GPU profile，给用户 4 个 GPU persona 选项：
+ *   - intel-uhd-630-d3d11 / intel-uhd-730-d3d11 → iGPU 主流（Coffee Lake / Alder Lake）
+ *   - nvidia-rtx-3060-d3d11                      → desktop 游戏显卡（Ampere）
+ *   - amd-rx-6600-d3d11                          → desktop 游戏显卡（RDNA2）
  */
 export const KNOWN_PROFILES: readonly WebglProfile[] = [
   INTEL_UHD_630_D3D11,
   INTEL_UHD_730_D3D11,
+  NVIDIA_RTX_3060_D3D11,
+  AMD_RX_6600_D3D11,
 ];
 
 /**
