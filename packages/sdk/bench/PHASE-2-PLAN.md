@@ -273,23 +273,90 @@ if (IS_BLINK && !KnownImageData.BLINK.includes(imageDataLowEntropy)) {
 
 ---
 
-### Phase 2.6 — Worker audio/font 加固（lite）
+### Phase 2.6 — Worker scope full mirror ✅ 完成 (2026-05-16)
 
-**注**：v0.3 仅做 audio (font 推 v0.4)。当前 audio 已 baseline OK（browserleaks-audio 无 hits），但 worker scope 内 audio 注入未覆盖。
+**重新定义**：原计划"worker audio/font 加固"，实施时发现更严重 gap —— worker scope
+**只 spoof 2 个 WebGL param**（UNMASKED_VENDOR / UNMASKED_RENDERER），main scope
+49-param 完整覆盖。跨 scope capability hash 一致性检测立刻暴露 spoof。同时
+worker 内 `OffscreenCanvasRenderingContext2D` 完全裸奔。优先级倒置：先补 WebGL +
+canvas，audio 推 v0.3。
 
-**范围**：
+#### 实施
 
-- runner.ts worker scope 加 `OfflineAudioContext` getChannelData spoof
-- 与 main scope 同 PRNG seed（保 cross-context 一致性）
+`runner.ts` §11 工作做了两项扩展：
 
-**验收**：
+**1. WebGL 49-param 镜像（main scope §4 对称）**
 
-- ✅ creepjs Worker section audio fingerprint 不被标 lies
-- ✅ browserleaks-audio 仍无 hits
+`workerSpoofPayload` 加 `webgl1Profile` / `webgl2Profile` 两个 hex-keyed map
+字段，直接透传 `config.webglProfile.webgl1/webgl2`。
 
-**依赖**：无
+worker IIFE 内复刻 main scope:
+- `_buildSpoofMap(obj)`：parse hex → pname，按 INT32_PNAMES / FLOAT32_PNAMES /
+  STRING_PNAMES 重建 Int32Array / Float32Array / number / string。
+- `_gl2Merged`：WebGL1 map 先入再覆盖 WebGL2 map（spec 上 WebGL2 inherits +
+  overrides，VERSION/SHADING_LANGUAGE_VERSION 必须 webgl2 优先）。
+- `_makeGP(orig, spoofMap)`：替换 prototype.getParameter。先查 UNMASKED_*，
+  再查 spoofMap，否则 `orig.call(this, pname)`。
+- WebGL1: 直接替换 `WebGLRenderingContext.prototype.getParameter`。
+- WebGL2: 用 `Object.getOwnPropertyDescriptor` 取 own slot（若 inherit 自 WebGL1
+  则上一步已替换），独立替换避免 inheritance 漏。
+- `_cloneSpoofVal`：每次返回新 typed array（避免 CreepJS 检"返回相同对象"）。
 
-**估时**：2-3h
+**2. OffscreenCanvas 镜像（main scope §5 对称）**
+
+`workerSpoofPayload` 加 `canvasNoiseSeed` / `canvasNoiseStrength` 字段。
+
+worker IIFE 内复刻 main scope:
+- `_mkPrng(seed)`：mulberry32 PRNG，常量 `0x6d2b79f5` 与 main scope 一致。
+- `_isProbeOC(c)` (`c.width<=16 && c.height<=16`)：处理 CreepJS 2x2 probe。
+- `_isAllZeroOC(d)`：处理 cleared region read。
+- `_perturbOC(imageData)`：双 guard 内置 + R/G/B noise，alpha 不动。
+- 替换 `OffscreenCanvasRenderingContext2D.prototype.getImageData`：probe canvas
+  直接返原 ImageData，否则跑 perturb。
+
+注：`convertToBlob` 是 async API，正确包装需复刻 main scope toDataURL 的
+read-perturb-writeback 流程，复杂度高。暂不 hook（绝大多数 worker fingerprinter
+通过 getImageData 读 hash，convertToBlob 优化推 v0.3+）。
+
+#### 测试覆盖
+
+`runner-worker.test.ts`（新文件，23 tests）：
+
+- happy-dom 无 `Worker` / `OffscreenCanvasRenderingContext2D`，本文件 polyfill
+  Worker 后 injectAll，触发 wrap，通过 mock `URL.createObjectURL` 捕获 blob
+  inline 内容（即 worker IIFE 字符串）
+- **Group 1**：静态断言 Phase 1.5 内容仍存在（regression guard）
+- **Group 2**：Phase 2.6 WebGL 49-param 标志性内容（`_buildSpoofMap`、
+  `_gl2Merged`、INT32/FLOAT32/STRING pname sets、`Object.getOwnPropertyDescriptor(WebGL2)`
+  ...）
+- **Group 3**：Phase 2.6 OffscreenCanvas 标志性内容（`_isProbeOC`、`_isAllZeroOC`、
+  mulberry32 常量、alpha 不动）
+- **Group 4**：执行断言 — 在 sandbox 内 polyfill 必要 globals + eval IIFE（strip
+  尾部 importScripts），断言 navigator.userAgent 被覆盖、WebGL getParameter
+  spoof 生效、OffscreenCanvas getImageData 在 50x50 正常 noise 在 2x2 不 noise
+
+- sdk 测试：248 → **271** (+23)
+
+#### 副作用分析
+
+- ✅ Phase 1.5 主 scope hook（Worker / SharedWorker 构造 + ServiceWorker register）
+  零改动，回归零风险
+- ✅ Phase 1.5 worker IIFE 内 navigator + UA-CH spoof 保留，仅扩展 WebGL + 新增
+  OffscreenCanvas
+- ✅ Worker IIFE 体积：从 ~3.5KB → ~5.5KB，blob spawn 一次性 cost，可忽略
+- ✅ WebGL 49-param spoofMap 在 worker IIFE 内是 JSON literal 嵌入（payload 序列化），
+  no eval / no closure capture issues
+- ⚠️ 序列化 typed array 限制：webgl1/webgl2 profile 在 InjectionConfig 已是
+  `number | readonly number[] | string`（无 typed array），可直接 JSON.stringify
+  入 worker payload。worker IIFE 内 `_buildSpoofMap` 重建 Int32Array/Float32Array
+
+#### 未覆盖（推 v0.3+）
+
+- ❌ `OfflineAudioContext` worker spoof（main scope §6 audio noise 未镜像 worker）
+- ❌ `FontFaceSet` worker spoof（main scope §7 font whitelist 未镜像 worker）
+- ❌ `OffscreenCanvas.convertToBlob` worker spoof（async API，hook 复杂）
+
+**估时**：原 3-4h；实际 ~4h（含 WebGL + Canvas 双扩展 + 23 测试 + sandbox 执行验证）
 
 ---
 

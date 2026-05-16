@@ -1306,6 +1306,21 @@ export function injectAll(config: InjectionConfig): void {
         maxTouchPoints: config.maxTouchPoints,
         webglVendor: config.webglVendor,
         webglRenderer: config.webglRenderer,
+        // Phase 2.6: 完整 49-param WebGL spoof 镜像（main scope §4）。worker 内
+        // CreepJS 通过 OffscreenCanvas 拿 WebGL/WebGL2 context，读 49 个 capability
+        // 参数。仅靠 UNMASKED_VENDOR/RENDERER 两个字符串 spoof 不够 —— 跨 scope
+        // capability hash 一致性失败立刻被 CreepJS 标 `does not match worker scope`。
+        // 这里把 main scope hex-keyed webgl1/webgl2 profile 原样透传给 worker，
+        // worker IIFE 内部重建 spoofMap + 替换 prototype.getParameter。
+        webgl1Profile: config.webglProfile?.webgl1 ?? null,
+        webgl2Profile: config.webglProfile?.webgl2 ?? null,
+        // Phase 2.6: OffscreenCanvas spoof params（main scope §5 canvas 镜像）。
+        // worker 内 fingerprinter 可用 OffscreenCanvasRenderingContext2D 跑 canvas
+        // fingerprinting 完全绕开 main scope HTMLCanvasElement spoof。这里把
+        // canvas noise seed/strength 透传，worker IIFE 复刻 isProbeCanvas /
+        // isAllZero / perturbImageData 三件套 + hook getImageData / convertToBlob。
+        canvasNoiseSeed: config.canvasNoiseSeed,
+        canvasNoiseStrength: config.canvasNoiseStrength,
         uaCh: {
           brands: config.uaCh.brands.map((b) => ({ brand: b.brand, version: b.version })),
           fullVersionList: config.uaCh.fullVersionList.map((b) => ({
@@ -1380,20 +1395,92 @@ export function injectAll(config: InjectionConfig): void {
         '}' +
         '}}catch(e){}' +
         '}' +
-        // WebGL 1/2 getParameter UNMASKED_VENDOR/RENDERER 覆盖
-        'var ctxs=[];' +
-        'if(typeof WebGLRenderingContext!=="undefined")ctxs.push(WebGLRenderingContext);' +
-        'if(typeof WebGL2RenderingContext!=="undefined")ctxs.push(WebGL2RenderingContext);' +
-        'ctxs.forEach(function(Ctx){' +
+        // ── Phase 2.6: WebGL 49-param 完整镜像（main scope §4 对称） ──
+        //
+        // 复刻 main scope buildSpoofMap + makeGetParameterProxy 逻辑。
+        // INT32_PNAMES / FLOAT32_PNAMES / STRING_PNAMES 三个 set 必须与
+        // main scope (runner.ts:685-701) 保持同步 —— 若 main 增删 pname，
+        // 这里也要同步更新（无 import 共享，纯字符串复刻）。
         'try{' +
-        'var origGP=Ctx.prototype.getParameter;' +
-        'Ctx.prototype.getParameter=function(pname){' +
+        'var I32S={};I32S[0x0d3a]=1;' + // MAX_VIEWPORT_DIMS
+        'var F32S={};F32S[0x846e]=1;F32S[0x846d]=1;' + // ALIASED_LINE_WIDTH_RANGE, ALIASED_POINT_SIZE_RANGE
+        'var STRS={};STRS[0x1f00]=1;STRS[0x1f01]=1;STRS[0x1f02]=1;STRS[0x8b8c]=1;' + // VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION
+        'function _buildSpoofMap(obj){var m=new Map();if(!obj)return m;' +
+        'var keys=Object.keys(obj);for(var i=0;i<keys.length;i++){' +
+        'var k=keys[i];var pname=parseInt(k,16);var val=obj[k];' +
+        'if(Array.isArray(val)){' +
+        'if(I32S[pname])m.set(pname,new Int32Array(val));' +
+        'else if(F32S[pname])m.set(pname,new Float32Array(val));' +
+        'else m.set(pname,new Int32Array(val));' +
+        '}else if(typeof val==="number"||typeof val==="string"){m.set(pname,val);}' +
+        '}return m;}' +
+        'var _gl1Map=_buildSpoofMap(P.webgl1Profile);' +
+        'var _gl2Merged=new Map();' +
+        '_gl1Map.forEach(function(v,k){_gl2Merged.set(k,v);});' +
+        'var _gl2Map=_buildSpoofMap(P.webgl2Profile);' +
+        '_gl2Map.forEach(function(v,k){_gl2Merged.set(k,v);});' +
+        'function _cloneSpoofVal(v){' +
+        'if(typeof v==="number"||typeof v==="string")return v;' +
+        'if(v instanceof Int32Array)return new Int32Array(v);' +
+        'return new Float32Array(v);' +
+        '}' +
+        'function _makeGP(orig,spoofMap){' +
+        'return function getParameter(pname){' +
         'if(pname===0x9245)return P.webglVendor;' +
         'if(pname===0x9246)return P.webglRenderer;' +
-        'return origGP.call(this,pname);' +
+        'var v=spoofMap.get(pname);' +
+        'if(v!==undefined)return _cloneSpoofVal(v);' +
+        'return orig.call(this,pname);' +
         '};' +
+        '}' +
+        'try{if(typeof WebGLRenderingContext!=="undefined"){' +
+        'var _origGP1=WebGLRenderingContext.prototype.getParameter;' +
+        'WebGLRenderingContext.prototype.getParameter=_makeGP(_origGP1,_gl1Map);' +
+        '}}catch(e){}' +
+        'try{if(typeof WebGL2RenderingContext!=="undefined"){' +
+        'var _d2=Object.getOwnPropertyDescriptor(WebGL2RenderingContext.prototype,"getParameter");' +
+        'if(_d2&&typeof _d2.value==="function"){' +
+        'WebGL2RenderingContext.prototype.getParameter=_makeGP(_d2.value,_gl2Merged);' +
+        '}}}catch(e){}' +
         '}catch(e){}' +
-        '});' +
+        // ── Phase 2.6: OffscreenCanvas 镜像（main scope §5 canvas spoof 对称） ──
+        //
+        // Worker 内 fingerprinter 可用 new OffscreenCanvas(w,h).getContext("2d")
+        // 跑 canvas 探测，完全绕开 main scope HTMLCanvasElement spoof。
+        // 双 guard 同 main scope：isProbeCanvas (≤16x16) + isAllZero (cleared region)。
+        // 不 hook convertToBlob —— OffscreenCanvas 用 getImageData 已可被指纹化，
+        // 而 convertToBlob 是 async 调用，正确包装它需要复刻 main scope toDataURL
+        // 的 read-perturb-writeback 流程；optimization 留 v0.3。
+        'try{' +
+        'if(typeof OffscreenCanvasRenderingContext2D!=="undefined"&&P.canvasNoiseStrength>0){' +
+        'function _mkPrng(seed){' +
+        'var a=seed>>>0;' +
+        'return function(){' +
+        'a=(a+0x6d2b79f5)>>>0;var t=a;' +
+        't=Math.imul(t^(t>>>15),t|1);' +
+        't^=t+Math.imul(t^(t>>>7),t|61);' +
+        'return((t^(t>>>14))>>>0)/4294967296;' +
+        '};}' +
+        'function _isProbeOC(c){return c&&c.width<=16&&c.height<=16;}' +
+        'function _isAllZeroOC(d){for(var i=0;i<d.length;i++){if(d[i]!==0)return false;}return true;}' +
+        'function _perturbOC(imageData){' +
+        'if(_isAllZeroOC(imageData.data))return imageData;' +
+        'var prng=_mkPrng(P.canvasNoiseSeed);' +
+        'var data=imageData.data;var s=P.canvasNoiseStrength;' +
+        'for(var i=0;i<data.length;i+=4){' +
+        'var delta=Math.floor((prng()-0.5)*2*s);' +
+        'if(delta!==0){' +
+        'data[i]=Math.max(0,Math.min(255,(data[i]||0)+delta));' +
+        'data[i+1]=Math.max(0,Math.min(255,(data[i+1]||0)+delta));' +
+        'data[i+2]=Math.max(0,Math.min(255,(data[i+2]||0)+delta));' +
+        '}}return imageData;}' +
+        'var _origGID=OffscreenCanvasRenderingContext2D.prototype.getImageData;' +
+        'OffscreenCanvasRenderingContext2D.prototype.getImageData=function(x,y,w,h,settings){' +
+        'var imageData=_origGID.call(this,x,y,w,h,settings);' +
+        'if(this.canvas&&_isProbeOC(this.canvas))return imageData;' +
+        'return _perturbOC(imageData);' +
+        '};' +
+        '}}catch(e){}' +
         // ── CDP detection hardening (mirror of main scope §12) ──
         // dbi-bot `isAutomatedWithCDPInWebWorker` 会在 worker 内复刻同一探测：
         //   var e=new Error();Object.defineProperty(e,"stack",{get:...});console.log(e);
