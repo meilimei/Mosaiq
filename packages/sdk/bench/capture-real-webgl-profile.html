@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mosaiq · Real WebGL Profile Capture</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --card: #161b22;
+        --border: #30363d;
+        --accent: #58a6ff;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --err: #f85149;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --fg: #1f2328;
+          --card: #f6f8fa;
+          --border: #d1d9e0;
+          --accent: #0969da;
+          --ok: #1a7f37;
+          --warn: #9a6700;
+          --err: #cf222e;
+        }
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+          monospace;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      body {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 24px 80px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      h2 {
+        font-size: 16px;
+        margin: 24px 0 8px;
+        font-weight: 600;
+        color: var(--accent);
+      }
+      .lead {
+        color: var(--fg);
+        opacity: 0.75;
+        margin: 0 0 24px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px 18px;
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        margin-bottom: 6px;
+      }
+      .row .k {
+        flex: 0 0 200px;
+        opacity: 0.7;
+      }
+      .row .v {
+        flex: 1;
+        word-break: break-all;
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .err {
+        color: var(--err);
+      }
+      button {
+        font: inherit;
+        background: var(--accent);
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.1);
+      }
+      button:active {
+        filter: brightness(0.95);
+      }
+      button.secondary {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        height: 320px;
+        background: var(--bg);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        font: inherit;
+        resize: vertical;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .notice {
+        font-size: 12px;
+        opacity: 0.6;
+        margin-top: 4px;
+      }
+      canvas {
+        display: none;
+      }
+      details {
+        margin-top: 8px;
+      }
+      summary {
+        cursor: pointer;
+        opacity: 0.7;
+      }
+      pre {
+        font: inherit;
+        white-space: pre-wrap;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Mosaiq · Real WebGL Profile Capture</h1>
+    <p class="lead">
+      Captures your real GPU's 49 WebGL capability parameters so the SDK can
+      ship a matching <code>WebglProfile</code>. <strong>No data leaves this
+      page</strong> — copy the JSON manually and paste it into
+      <code>node bench/convert-captured-profile.ts</code> on your dev machine.
+    </p>
+
+    <div class="card" id="status">
+      <div class="row">
+        <div class="k">UNMASKED_VENDOR</div>
+        <div class="v" id="vendor">— probing —</div>
+      </div>
+      <div class="row">
+        <div class="k">UNMASKED_RENDERER</div>
+        <div class="v" id="renderer">— probing —</div>
+      </div>
+      <div class="row">
+        <div class="k">User-Agent</div>
+        <div class="v" id="ua">—</div>
+      </div>
+      <div class="row">
+        <div class="k">WebGL1 params captured</div>
+        <div class="v" id="cap1">—</div>
+      </div>
+      <div class="row">
+        <div class="k">WebGL2 params captured</div>
+        <div class="v" id="cap2">—</div>
+      </div>
+      <div class="row">
+        <div class="k">CreepJS sorted-unique len</div>
+        <div class="v" id="paramcount">—</div>
+      </div>
+      <div class="row">
+        <div class="k">capabilitiesHash</div>
+        <div class="v" id="caphash">—</div>
+      </div>
+      <div class="row">
+        <div class="k">brandCapabilities</div>
+        <div class="v" id="brandhash">—</div>
+      </div>
+      <div class="notice">
+        These hashes are computed locally with the CreepJS algorithm to give a
+        preview. The final whitelist check runs in
+        <code>convert-captured-profile.ts</code>.
+      </div>
+    </div>
+
+    <h2>Captured JSON</h2>
+    <textarea id="output" readonly></textarea>
+    <div class="actions">
+      <button id="copy">Copy JSON</button>
+      <button id="download" class="secondary">Download .json</button>
+      <button id="recapture" class="secondary">Re-capture</button>
+    </div>
+
+    <details>
+      <summary>What gets captured?</summary>
+      <pre>
+- UNMASKED_VENDOR_WEBGL / UNMASKED_RENDERER_WEBGL via WEBGL_debug_renderer_info
+- ~30 WebGL1 capability params (MAX_TEXTURE_SIZE, MAX_VIEWPORT_DIMS, ...)
+- ~25 WebGL2 capability params (MAX_3D_TEXTURE_SIZE, MAX_SAMPLES, ...)
+- VERSION / SHADING_LANGUAGE_VERSION (WebGL1 + WebGL2 strings)
+
+Not captured:
+- Any context-dependent state (current buffer / texture / framebuffer)
+- Canvas pixel content
+- Screen / window / cookies / storage
+</pre>
+    </details>
+
+    <canvas id="cv1" width="2" height="2"></canvas>
+    <canvas id="cv2" width="2" height="2"></canvas>
+
+    <script>
+      // ─────────────────────────────────────────────────────────────────────
+      // GL constants — must stay in lock-step with
+      // packages/sdk/src/injection/webgl-profiles.ts `GL`.
+      // ─────────────────────────────────────────────────────────────────────
+      const GL = {
+        VENDOR: 0x1f00,
+        RENDERER: 0x1f01,
+        VERSION: 0x1f02,
+        SHADING_LANGUAGE_VERSION: 0x8b8c,
+        STENCIL_VALUE_MASK: 0x0b93,
+        STENCIL_WRITEMASK: 0x0b98,
+        STENCIL_BACK_VALUE_MASK: 0x8ca4,
+        STENCIL_BACK_WRITEMASK: 0x8ca5,
+        RED_BITS: 0x0d52,
+        GREEN_BITS: 0x0d53,
+        BLUE_BITS: 0x0d54,
+        ALPHA_BITS: 0x0d55,
+        DEPTH_BITS: 0x0d56,
+        STENCIL_BITS: 0x0d57,
+        SUBPIXEL_BITS: 0x0d50,
+        SAMPLES: 0x80a9,
+        SAMPLE_BUFFERS: 0x80a8,
+        MAX_TEXTURE_SIZE: 0x0d33,
+        MAX_VIEWPORT_DIMS: 0x0d3a,
+        MAX_CUBE_MAP_TEXTURE_SIZE: 0x851c,
+        MAX_RENDERBUFFER_SIZE: 0x84e8,
+        MAX_VERTEX_ATTRIBS: 0x8869,
+        MAX_VERTEX_UNIFORM_VECTORS: 0x8dfb,
+        MAX_VARYING_VECTORS: 0x8dfc,
+        MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c,
+        MAX_TEXTURE_IMAGE_UNITS: 0x8872,
+        MAX_FRAGMENT_UNIFORM_VECTORS: 0x8dfd,
+        MAX_COMBINED_TEXTURE_IMAGE_UNITS: 0x8b4d,
+        ALIASED_LINE_WIDTH_RANGE: 0x846e,
+        ALIASED_POINT_SIZE_RANGE: 0x846d,
+        UNMASKED_VENDOR_WEBGL: 0x9245,
+        UNMASKED_RENDERER_WEBGL: 0x9246,
+        // WebGL2 only
+        MAX_3D_TEXTURE_SIZE: 0x8073,
+        MAX_ARRAY_TEXTURE_LAYERS: 0x88ff,
+        MAX_DRAW_BUFFERS: 0x8824,
+        MAX_COLOR_ATTACHMENTS: 0x8cdf,
+        MAX_VERTEX_OUTPUT_COMPONENTS: 0x9122,
+        MAX_FRAGMENT_INPUT_COMPONENTS: 0x9125,
+        MIN_PROGRAM_TEXEL_OFFSET: 0x8904,
+        MAX_PROGRAM_TEXEL_OFFSET: 0x8905,
+        MAX_SAMPLES: 0x8d57,
+        MAX_UNIFORM_BUFFER_BINDINGS: 0x8a2f,
+        MAX_UNIFORM_BLOCK_SIZE: 0x8a30,
+        MAX_VERTEX_UNIFORM_BLOCKS: 0x8a2b,
+        MAX_FRAGMENT_UNIFORM_BLOCKS: 0x8a2d,
+        MAX_COMBINED_UNIFORM_BLOCKS: 0x8a2e,
+        MAX_ELEMENTS_VERTICES: 0x80e8,
+        MAX_ELEMENTS_INDICES: 0x80e9,
+        MAX_TEXTURE_LOD_BIAS: 0x84fd,
+        MAX_FRAGMENT_UNIFORM_COMPONENTS: 0x8b49,
+        MAX_VERTEX_UNIFORM_COMPONENTS: 0x8b4a,
+        MAX_VARYING_COMPONENTS: 0x8b4b,
+        MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS: 0x8c80,
+        MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS: 0x8c8a,
+        MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: 0x8c8b,
+        MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS: 0x8a31,
+        MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS: 0x8a33,
+        MAX_SERVER_WAIT_TIMEOUT: 0x9111,
+        MAX_ELEMENT_INDEX: 0x8d6b,
+        MAX_CLIENT_WAIT_TIMEOUT_WEBGL: 0x9247,
+      };
+
+      // Lists of params per context. Order doesn't matter (Map preserves
+      // insertion but capabilitiesHash sorts).
+      const WEBGL1_PARAMS = [
+        GL.VERSION,
+        GL.SHADING_LANGUAGE_VERSION,
+        GL.STENCIL_VALUE_MASK,
+        GL.STENCIL_WRITEMASK,
+        GL.STENCIL_BACK_VALUE_MASK,
+        GL.STENCIL_BACK_WRITEMASK,
+        GL.RED_BITS,
+        GL.GREEN_BITS,
+        GL.BLUE_BITS,
+        GL.ALPHA_BITS,
+        GL.DEPTH_BITS,
+        GL.STENCIL_BITS,
+        GL.SUBPIXEL_BITS,
+        GL.SAMPLES,
+        GL.SAMPLE_BUFFERS,
+        GL.MAX_TEXTURE_SIZE,
+        GL.MAX_VIEWPORT_DIMS,
+        GL.MAX_CUBE_MAP_TEXTURE_SIZE,
+        GL.MAX_RENDERBUFFER_SIZE,
+        GL.MAX_VERTEX_ATTRIBS,
+        GL.MAX_VERTEX_UNIFORM_VECTORS,
+        GL.MAX_VARYING_VECTORS,
+        GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS,
+        GL.MAX_TEXTURE_IMAGE_UNITS,
+        GL.MAX_FRAGMENT_UNIFORM_VECTORS,
+        GL.MAX_COMBINED_TEXTURE_IMAGE_UNITS,
+        GL.ALIASED_LINE_WIDTH_RANGE,
+        GL.ALIASED_POINT_SIZE_RANGE,
+      ];
+
+      const WEBGL2_PARAMS = [
+        GL.VERSION,
+        GL.SHADING_LANGUAGE_VERSION,
+        GL.MAX_3D_TEXTURE_SIZE,
+        GL.MAX_ARRAY_TEXTURE_LAYERS,
+        GL.MAX_DRAW_BUFFERS,
+        GL.MAX_COLOR_ATTACHMENTS,
+        GL.MAX_VERTEX_OUTPUT_COMPONENTS,
+        GL.MAX_FRAGMENT_INPUT_COMPONENTS,
+        GL.MIN_PROGRAM_TEXEL_OFFSET,
+        GL.MAX_PROGRAM_TEXEL_OFFSET,
+        GL.MAX_SAMPLES,
+        GL.MAX_UNIFORM_BUFFER_BINDINGS,
+        GL.MAX_UNIFORM_BLOCK_SIZE,
+        GL.MAX_VERTEX_UNIFORM_BLOCKS,
+        GL.MAX_FRAGMENT_UNIFORM_BLOCKS,
+        GL.MAX_COMBINED_UNIFORM_BLOCKS,
+        GL.MAX_ELEMENTS_VERTICES,
+        GL.MAX_ELEMENTS_INDICES,
+        GL.MAX_TEXTURE_LOD_BIAS,
+        GL.MAX_FRAGMENT_UNIFORM_COMPONENTS,
+        GL.MAX_VERTEX_UNIFORM_COMPONENTS,
+        GL.MAX_VARYING_COMPONENTS,
+        GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS,
+        GL.MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS,
+        GL.MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS,
+        GL.MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS,
+        GL.MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS,
+        GL.MAX_SERVER_WAIT_TIMEOUT,
+        GL.MAX_ELEMENT_INDEX,
+        GL.MAX_CLIENT_WAIT_TIMEOUT_WEBGL,
+      ];
+
+      function normalize(v) {
+        // typed arrays → plain number[] so JSON.stringify works
+        if (v && typeof v === "object" && "length" in v && !Array.isArray(v)) {
+          return Array.from(v);
+        }
+        return v;
+      }
+
+      function captureContext(gl, paramList) {
+        const out = {};
+        for (const p of paramList) {
+          try {
+            const v = gl.getParameter(p);
+            if (v !== null && v !== undefined) {
+              const hex = "0x" + p.toString(16).padStart(4, "0");
+              out[hex] = normalize(v);
+            }
+          } catch (_e) {
+            /* getParameter may throw on invalid param under some drivers */
+          }
+        }
+        return out;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // CreepJS hash preview (mirrors creepjs-whitelist-data.ts)
+      // ─────────────────────────────────────────────────────────────────────
+
+      function hashMini(x) {
+        const json = "" + JSON.stringify(x);
+        let h = 0x811c9dc5;
+        for (let i = 0; i < json.length; i++) {
+          h = (Math.imul(31, h) + json.charCodeAt(i)) | 0;
+        }
+        return ("0000000" + (h >>> 0).toString(16)).slice(-8);
+      }
+
+      function capabilitiesHash(sortedUnique) {
+        return sortedUnique.reduce((acc, v, i) => acc ^ ((v + i) | 0), 0);
+      }
+
+      function extractParams(webgl1, webgl2) {
+        const merged = { ...webgl1, ...webgl2 };
+        const all = [];
+        for (const v of Object.values(merged)) {
+          if (!v || typeof v === "string") continue;
+          if (Array.isArray(v)) {
+            for (const n of v) if (n) all.push(Number(n));
+          } else if (typeof v === "number" && v) {
+            all.push(v);
+          }
+        }
+        return [...new Set(all)].sort((a, b) => a - b);
+      }
+
+      function getGpuBrand(unmaskedRenderer) {
+        const r = unmaskedRenderer || "";
+        if (/Intel/i.test(r)) return "Intel";
+        if (/NVIDIA/i.test(r)) return "NVIDIA";
+        if (/AMD|Radeon/i.test(r)) return "AMD";
+        if (/Apple/i.test(r)) return "Apple";
+        if (/Google/i.test(r)) return "Google";
+        if (/Adreno|Qualcomm/i.test(r)) return "Qualcomm";
+        if (/Mali/i.test(r)) return "Mali";
+        if (/PowerVR/i.test(r)) return "PowerVR";
+        return "";
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+      // Main capture
+      // ─────────────────────────────────────────────────────────────────────
+
+      function capture() {
+        const cv1 = document.getElementById("cv1");
+        const cv2 = document.getElementById("cv2");
+        const gl1 = cv1.getContext("webgl") || cv1.getContext("experimental-webgl");
+        const gl2 = cv2.getContext("webgl2");
+
+        if (!gl1) {
+          document.getElementById("status").innerHTML =
+            '<div class="err">WebGL1 unavailable. Cannot capture profile.</div>';
+          return;
+        }
+
+        const dbg1 = gl1.getExtension("WEBGL_debug_renderer_info");
+        let vendor = "(WEBGL_debug_renderer_info unavailable)";
+        let renderer = "(WEBGL_debug_renderer_info unavailable)";
+        if (dbg1) {
+          try {
+            vendor = gl1.getParameter(dbg1.UNMASKED_VENDOR_WEBGL) || "";
+            renderer = gl1.getParameter(dbg1.UNMASKED_RENDERER_WEBGL) || "";
+          } catch (_e) {
+            /* extension may revoke after first call on some browsers */
+          }
+        }
+
+        const webgl1 = captureContext(gl1, WEBGL1_PARAMS);
+        const webgl2 = gl2 ? captureContext(gl2, WEBGL2_PARAMS) : {};
+
+        const params = extractParams(webgl1, webgl2);
+        const capHash = capabilitiesHash(params);
+        const brand = getGpuBrand(renderer);
+        const brandH = hashMini([brand, "" + params]);
+
+        const payload = {
+          schemaVersion: "mosaiq-webgl-capture/1",
+          captureDate: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          vendor,
+          renderer,
+          webgl1,
+          webgl2,
+          preview: {
+            sortedUniqueParamCount: params.length,
+            capabilitiesHashInt32: capHash,
+            brandCapabilitiesHex: brandH,
+            gpuBrand: brand,
+            webgl2Available: !!gl2,
+          },
+        };
+
+        document.getElementById("vendor").textContent = vendor;
+        document.getElementById("renderer").textContent = renderer;
+        document.getElementById("ua").textContent = navigator.userAgent;
+        document.getElementById("cap1").textContent =
+          Object.keys(webgl1).length + " params";
+        document.getElementById("cap2").textContent = gl2
+          ? Object.keys(webgl2).length + " params"
+          : '<span class="warn">WebGL2 unavailable</span>';
+        document.getElementById("paramcount").textContent = params.length;
+        document.getElementById("caphash").textContent = capHash;
+        document.getElementById("brandhash").textContent = brandH;
+
+        document.getElementById("output").value = JSON.stringify(payload, null, 2);
+      }
+
+      document.getElementById("copy").addEventListener("click", async () => {
+        const ta = document.getElementById("output");
+        ta.select();
+        try {
+          await navigator.clipboard.writeText(ta.value);
+          const btn = document.getElementById("copy");
+          const orig = btn.textContent;
+          btn.textContent = "Copied ✓";
+          setTimeout(() => {
+            btn.textContent = orig;
+          }, 1500);
+        } catch {
+          document.execCommand("copy");
+        }
+      });
+
+      document.getElementById("download").addEventListener("click", () => {
+        const blob = new Blob([document.getElementById("output").value], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download =
+          "mosaiq-webgl-capture-" + Date.now() + ".json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      });
+
+      document.getElementById("recapture").addEventListener("click", capture);
+
+      capture();
+    </script>
+  </body>
+</html>

@@ -31,6 +31,8 @@
     "bench:report": "tsx bench/report.ts",
     "bench:all": "pnpm bench && pnpm bench:report",
     "bench:canvas": "tsx bench/canvas-cross-check.ts",
+    "bench:verify-creepjs": "tsx bench/verify-creepjs-profile-hash.ts",
+    "bench:convert-profile": "tsx bench/convert-captured-profile.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {
