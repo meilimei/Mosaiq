@@ -34,6 +34,7 @@
     "bench:verify-creepjs": "tsx bench/verify-creepjs-profile-hash.ts",
     "bench:convert-profile": "tsx bench/convert-captured-profile.ts",
     "bench:integrate-profiles": "tsx bench/integrate-captured-profiles.ts",
+    "bench:capture-self": "tsx bench/capture-self-webgl-profile.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {

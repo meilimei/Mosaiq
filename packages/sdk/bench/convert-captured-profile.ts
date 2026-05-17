@@ -253,14 +253,21 @@ export function verifyCapture(payload: CapturePayload): VerifyResult {
 export function suggestProfileId(brand: string, renderer: string): string {
   const lower = renderer.toLowerCase();
 
-  // Extract model fragment
+  // Extract model fragment. Order matters — prefer the more specific
+  // patterns first (uhd before plain hd, iris-xe before iris).
   let model = '';
   let mGeneric: RegExpMatchArray | null;
   if ((mGeneric = lower.match(/rtx\s*(\d{4})/))) model = `rtx-${mGeneric[1]}`;
   else if ((mGeneric = lower.match(/gtx\s*(\d{3,4})/))) model = `gtx-${mGeneric[1]}`;
   else if ((mGeneric = lower.match(/rx\s*(\d{4})/))) model = `rx-${mGeneric[1]}`;
   else if ((mGeneric = lower.match(/uhd\s*(?:graphics\s*)?(\d{3})/))) model = `uhd-${mGeneric[1]}`;
+  // Plain "HD Graphics ###" — Intel iGPU pre-Skylake naming (HD 520, HD 4000…).
+  // Word-boundary on left avoids matching the "HD" inside "UHD".
+  else if ((mGeneric = lower.match(/(?:^|[^a-z])hd\s*graphics\s*(\d{3,4})/)))
+    model = `hd-${mGeneric[1]}`;
   else if ((mGeneric = lower.match(/iris\s*xe/))) model = 'iris-xe';
+  else if ((mGeneric = lower.match(/iris\s*pro/))) model = 'iris-pro';
+  else if ((mGeneric = lower.match(/iris\s*plus/))) model = 'iris-plus';
   else if ((mGeneric = lower.match(/apple\s*m(\d)/))) model = `m${mGeneric[1]}`;
   else if ((mGeneric = lower.match(/adreno\s*(\d{3,4})/))) model = `adreno-${mGeneric[1]}`;
   else if ((mGeneric = lower.match(/mali-?(\w+)/))) model = `mali-${mGeneric[1]}`;
@@ -316,10 +323,19 @@ function buildGlNameMap(): Map<number, string> {
 
 const GL_NAMES = buildGlNameMap();
 
-function glKey(numKey: number): string {
+function glKey(numKey: number, inline: boolean): string {
   const name = GL_NAMES.get(numKey);
-  if (name) return `GL.${name}`;
-  return `0x${numKey.toString(16).padStart(4, '0')}`;
+  // `inline` mode (used by integrate-captured-profiles auto-gen) emits the
+  // hex literal with the name as a trailing comment, so the auto-generated
+  // file does NOT need a runtime import of `GL` from webgl-profiles.ts —
+  // that runtime import causes an ESM circular dependency because
+  // webgl-profiles.ts itself imports KNOWN_PROFILES_CAPTURED from the
+  // generated file (during init `GL` is still `undefined`).
+  // The hand-paste path keeps the readable `GL.NAME` form because the
+  // user is splicing into webgl-profiles.ts where `GL` is in scope.
+  const hex = `0x${numKey.toString(16).padStart(4, '0')}`;
+  if (inline) return name ? `${hex} /* ${name} */` : hex;
+  return name ? `GL.${name}` : hex;
 }
 
 function valueLiteral(numKey: number, v: number | readonly number[] | string): string {
@@ -337,6 +353,7 @@ function valueLiteral(numKey: number, v: number | readonly number[] | string): s
 function emitMap(
   varName: string,
   obj: Readonly<Record<string, number | readonly number[] | string>>,
+  inlineGlKeys: boolean,
 ): string {
   const lines: string[] = [];
   // Sort entries by hex key for stable diff-friendly output
@@ -344,7 +361,7 @@ function emitMap(
     .map(([k, v]) => ({ k, n: hexKeyToNumber(k), v }))
     .sort((a, b) => a.n - b.n);
   for (const e of entries) {
-    lines.push(`    [${glKey(e.n)}, ${valueLiteral(e.n, e.v)}],`);
+    lines.push(`    [${glKey(e.n, inlineGlKeys)}, ${valueLiteral(e.n, e.v)}],`);
   }
   return `  ${varName}: new Map<number, GlParamValue>([\n${lines.join('\n')}\n  ])`;
 }
@@ -356,6 +373,14 @@ export interface EmissionOptions {
   readonly matchRenderer?: RegExp;
   /** Override knownInCreepjsWhitelist (default: verify-driven) */
   readonly knownInCreepjsWhitelist?: boolean;
+  /**
+   * When true, emit GL constants as `0xHEX /* NAME *\/` literal pairs
+   * instead of `GL.NAME` references. Used by the auto-generated
+   * `webgl-profiles-captured.ts` to remain self-contained (avoids ESM
+   * circular imports with `webgl-profiles.ts`). Default false — the
+   * hand-paste workflow targets the file where `GL` is in scope.
+   */
+  readonly inlineGlKeys?: boolean;
 }
 
 export function emitProfileTypeScript(
@@ -381,6 +406,7 @@ export function emitProfileTypeScript(
     `//   CreepJS verdict: ${verify.verdict === 'PASS' ? 'PASS (cap ∧ brand)' : 'FAIL (LowerEntropy.WEBGL)'}\n` +
     `// ─────────────────────────────────────────────────────────────────────────────`;
 
+  const inline = opts.inlineGlKeys ?? false;
   return (
     `${banner}\n\n` +
     `export const ${constName}: WebglProfile = {\n` +
@@ -388,8 +414,8 @@ export function emitProfileTypeScript(
     `  name: ${JSON.stringify(payload.renderer)},\n` +
     `  matchRenderer: ${match.toString()},\n` +
     `  knownInCreepjsWhitelist: ${known},\n` +
-    `${emitMap('webgl1', payload.webgl1)},\n` +
-    `${emitMap('webgl2', payload.webgl2)},\n` +
+    `${emitMap('webgl1', payload.webgl1, inline)},\n` +
+    `${emitMap('webgl2', payload.webgl2, inline)},\n` +
     `};\n`
   );
 }

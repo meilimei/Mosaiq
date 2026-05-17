@@ -134,7 +134,6 @@ export function renderGeneratedSource(profiles: readonly IntegratedProfile[]): s
 
   if (sorted.length === 0) {
     // Empty: only `WebglProfile` type is referenced (for the array annotation).
-    // Skipping `GL` + `GlParamValue` imports avoids unused-import noise.
     return (
       headerComment +
       `import type { WebglProfile } from './webgl-profiles.js';\n\n` +
@@ -143,9 +142,15 @@ export function renderGeneratedSource(profiles: readonly IntegratedProfile[]): s
     );
   }
 
+  // Type-only import (erased at compile time) — avoids the ESM circular
+  // dependency that would otherwise arise because webgl-profiles.ts itself
+  // imports `KNOWN_PROFILES_CAPTURED` from this file. With a runtime
+  // `import { GL }` the captured module would evaluate while
+  // webgl-profiles.ts is still initializing, leaving `GL` as undefined.
+  // We therefore emit GL constants inline as `0xHEX /* NAME */` literals
+  // (see emitProfileTypeScript({ inlineGlKeys: true })).
   const header =
     headerComment +
-    `import { GL } from './webgl-profiles.js';\n` +
     `import type { GlParamValue, WebglProfile } from './webgl-profiles.js';\n\n`;
 
   const blocks: string[] = [];
@@ -154,6 +159,7 @@ export function renderGeneratedSource(profiles: readonly IntegratedProfile[]): s
       emitProfileTypeScript(p.payload, p.verify, {
         id: p.id,
         matchRenderer: p.matchRenderer,
+        inlineGlKeys: true,
       }),
     );
   }

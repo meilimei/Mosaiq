@@ -172,13 +172,20 @@ describe('renderGeneratedSource', () => {
     expect(out).toContain('export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [];');
   });
 
-  it('non-empty input includes both runtime + type imports', () => {
+  it('non-empty input emits type-only imports + inline GL hex literals (avoids ESM cycle)', () => {
     const profile = integrateOne('intel-uhd-730-d3d11-test.json', freshCapture());
     const out = renderGeneratedSource([profile]);
-    expect(out).toContain(`import { GL } from './webgl-profiles.js';`);
+    // Type-only import — erased at compile time, no runtime cycle with
+    // webgl-profiles.ts (which imports KNOWN_PROFILES_CAPTURED from here).
     expect(out).toContain(
       `import type { GlParamValue, WebglProfile } from './webgl-profiles.js';`,
     );
+    // MUST NOT have a runtime `import { GL }` — that triggers the cycle.
+    expect(out).not.toMatch(/^import \{ GL \}/m);
+    // GL constants must appear as `0xHEX /* NAME */` literals so the file
+    // is self-contained.
+    expect(out).toMatch(/0x0d33 \/\* MAX_TEXTURE_SIZE \*\//);
+    expect(out).toMatch(/0x0d3a \/\* MAX_VIEWPORT_DIMS \*\//);
     expect(out).toContain('INTEL_UHD_730_D3D11_TEST');
     expect(out).toContain(
       'export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [',

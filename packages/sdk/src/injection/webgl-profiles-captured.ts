@@ -10,8 +10,86 @@
  * between the on-disk JSONs and this file.
  */
 
-import type { WebglProfile } from './webgl-profiles.js';
+import type { GlParamValue, WebglProfile } from './webgl-profiles.js';
 
-// (no captured profiles yet — see bench/captured-profiles/README.md)
+// ─────────────────────────────────────────────────────────────────────────────
+// Intel — captured via bench/capture-real-webgl-profile.html
+//   userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36
+//   captureDate: 2026-05-17T09:02:15.622Z
+//   capabilitiesHash: 2147382110   in whitelist? NO
+//   brandCapabilities: f3b8034e   in whitelist? NO
+//   CreepJS verdict: FAIL (LowerEntropy.WEBGL)
+// ─────────────────────────────────────────────────────────────────────────────
 
-export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [];
+export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
+  id: "intel-hd-520-d3d11-self",
+  name: "ANGLE (Intel, Intel(R) HD Graphics 520 (0x00001916) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  matchRenderer: /ANGLE \(Intel, Intel\(R\) HD Graphics 520 \(0x00001916\) Direct3D11 vs_5_0 ps_5_0, D3D11\)/,
+  knownInCreepjsWhitelist: false,
+  webgl1: new Map<number, GlParamValue>([
+    [0x0b93 /* STENCIL_VALUE_MASK */, 4294967295],
+    [0x0b98 /* STENCIL_WRITEMASK */, 4294967295],
+    [0x0d33 /* MAX_TEXTURE_SIZE */, 16384],
+    [0x0d3a /* MAX_VIEWPORT_DIMS */, [32767, 32767]],
+    [0x0d50 /* SUBPIXEL_BITS */, 4],
+    [0x0d52 /* RED_BITS */, 8],
+    [0x0d53 /* GREEN_BITS */, 8],
+    [0x0d54 /* BLUE_BITS */, 8],
+    [0x0d55 /* ALPHA_BITS */, 8],
+    [0x0d56 /* DEPTH_BITS */, 24],
+    [0x0d57 /* STENCIL_BITS */, 0],
+    [0x1f02 /* VERSION */, "WebGL 1.0 (OpenGL ES 2.0 Chromium)"],
+    [0x80a8 /* SAMPLE_BUFFERS */, 1],
+    [0x80a9 /* SAMPLES */, 4],
+    [0x846d /* ALIASED_POINT_SIZE_RANGE */, [1, 1024]],
+    [0x846e /* ALIASED_LINE_WIDTH_RANGE */, [1, 1]],
+    [0x84e8 /* MAX_RENDERBUFFER_SIZE */, 16384],
+    [0x851c /* MAX_CUBE_MAP_TEXTURE_SIZE */, 16384],
+    [0x8869 /* MAX_VERTEX_ATTRIBS */, 16],
+    [0x8872 /* MAX_TEXTURE_IMAGE_UNITS */, 16],
+    [0x8b4c /* MAX_VERTEX_TEXTURE_IMAGE_UNITS */, 16],
+    [0x8b4d /* MAX_COMBINED_TEXTURE_IMAGE_UNITS */, 32],
+    [0x8b8c /* SHADING_LANGUAGE_VERSION */, "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)"],
+    [0x8ca4 /* STENCIL_BACK_VALUE_MASK */, 4294967295],
+    [0x8ca5 /* STENCIL_BACK_WRITEMASK */, 4294967295],
+    [0x8dfb /* MAX_VERTEX_UNIFORM_VECTORS */, 4096],
+    [0x8dfc /* MAX_VARYING_VECTORS */, 30],
+    [0x8dfd /* MAX_FRAGMENT_UNIFORM_VECTORS */, 1024],
+  ]),
+  webgl2: new Map<number, GlParamValue>([
+    [0x1f02 /* VERSION */, "WebGL 2.0 (OpenGL ES 3.0 Chromium)"],
+    [0x8073 /* MAX_3D_TEXTURE_SIZE */, 2048],
+    [0x80e8 /* MAX_ELEMENTS_VERTICES */, 0x7fffffff],
+    [0x80e9 /* MAX_ELEMENTS_INDICES */, 0x7fffffff],
+    [0x84fd /* MAX_TEXTURE_LOD_BIAS */, 2],
+    [0x8824 /* MAX_DRAW_BUFFERS */, 8],
+    [0x88ff /* MAX_ARRAY_TEXTURE_LAYERS */, 2048],
+    [0x8904 /* MIN_PROGRAM_TEXEL_OFFSET */, -8],
+    [0x8905 /* MAX_PROGRAM_TEXEL_OFFSET */, 7],
+    [0x8a2b /* MAX_VERTEX_UNIFORM_BLOCKS */, 12],
+    [0x8a2d /* MAX_FRAGMENT_UNIFORM_BLOCKS */, 12],
+    [0x8a2e /* MAX_COMBINED_UNIFORM_BLOCKS */, 24],
+    [0x8a2f /* MAX_UNIFORM_BUFFER_BINDINGS */, 24],
+    [0x8a30 /* MAX_UNIFORM_BLOCK_SIZE */, 65536],
+    [0x8a31 /* MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS */, 212992],
+    [0x8a33 /* MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS */, 200704],
+    [0x8b49 /* MAX_FRAGMENT_UNIFORM_COMPONENTS */, 4096],
+    [0x8b4a /* MAX_VERTEX_UNIFORM_COMPONENTS */, 16384],
+    [0x8b4b /* MAX_VARYING_COMPONENTS */, 120],
+    [0x8b8c /* SHADING_LANGUAGE_VERSION */, "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"],
+    [0x8c80 /* MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS */, 4],
+    [0x8c8a /* MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS */, 120],
+    [0x8c8b /* MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS */, 4],
+    [0x8cdf /* MAX_COLOR_ATTACHMENTS */, 8],
+    [0x8d57 /* MAX_SAMPLES */, 16],
+    [0x8d6b /* MAX_ELEMENT_INDEX */, 0xfffffffe],
+    [0x9111 /* MAX_SERVER_WAIT_TIMEOUT */, 0],
+    [0x9122 /* MAX_VERTEX_OUTPUT_COMPONENTS */, 120],
+    [0x9125 /* MAX_FRAGMENT_INPUT_COMPONENTS */, 120],
+    [0x9247 /* MAX_CLIENT_WAIT_TIMEOUT_WEBGL */, 0],
+  ]),
+};
+
+export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [
+  INTEL_HD_520_D3D11_SELF,
+];
