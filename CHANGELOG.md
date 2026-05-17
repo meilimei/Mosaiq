@@ -5,6 +5,114 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [0.6.0] — 2026-05-17
+
+The **"v0.6 CreepJS audio trap closed"** release. Closes the v0.5.0
+documented "CreepJS Audio yellow-lies still fires (`trap` cross-check)"
+limit by reading the upstream CreepJS `src/audio/index.ts` to verify the
+exact `trap` formula and switching the runner audio noise model from
+per-call PRNG to per-`(buffer, channel)` memoization.
+
+After Phase 6.1 the v0.5.0 visible report hits collapse from **3 → 2**
+(only the 2 long-term known-limit reds remain: CreepJS WebGL bold-fail
++ browserleaks-canvas 100% uniqueness). The CreepJS Audio surface now
+renders with `<span class="hash">…</span>` instead of `<span class="lies
+hash">…</span>` — the yellow severity is gone.
+
+### Fixed
+
+- **Phase 6.1 — CreepJS Audio `trap` cross-check closed**
+  (`runner.ts §6` + `runner.ts §11` worker IIFE mirror).
+
+  **Root cause investigation** (read CreepJS upstream `src/audio/index.
+  ts`): the `trap` HTML field is rendered from CreepJS's `noise =
+  noiseFactor || sum(unique(bins.slice(0, 100)))`, and `if (noise) lied
+  = true` documents an `'AudioBuffer'` lies entry. `noiseFactor` is
+  computed by `getNoiseFactor()` which writes a canary
+  `AUDIO_TRAP = Math.random()` into 3 indices via
+  `getChannelData(0)[start/mid/end] = rand`, then cross-checks survival
+  via `copyFromChannel + repeated reads`. v0.5.4c's per-call PRNG
+  model meant subsequent reads overwrote the caller's writes with new
+  noise → `result Set` had many noise values → `noiseFactor != 0` →
+  yellow lies fired. Earlier hypotheses (`Function.prototype.toString`
+  proxy detection, sample-mismatch only) were both off the mark; the
+  actual surface was a `getNoiseFactor()` aggregate cross-check across
+  all three AudioBuffer access methods.
+
+  **Fix (Path A — per-`(buffer, channel)` memoization)**: module-level
+  `WeakMap<AudioBuffer, Set<number>>` (`noisedChannels`) tracks which
+  `(buffer, channel)` tuples have been noised. `ensureNoised(buf, ch,
+  underlying)` applies noise once (Phase 5.2b skip-zero rule
+  preserved); subsequent calls early-return. The 3 hooks share
+  `ensureNoised` with these rules:
+
+  - `getChannelData`: lazy noise on first read; subsequent reads
+    return underlying as-is (caller writes between reads survive).
+  - `copyFromChannel`: forces `ensureNoised` on underlying before
+    native copy → `dest` is byte-equal to `getChannelData(ch)`.
+  - `copyToChannel`: native call writes caller's source into
+    underlying; **no noise added**, just `set.add(channel)` to mark
+    the buffer as synced (subsequent `ensureNoised` early-returns
+    keep caller data canonical).
+
+  Worker IIFE mirrored with the same `_noisedChannels = new WeakMap()`
+  + `_ensureNoised(buf, ch, arr)` pattern; `WeakMap` and `Set` are
+  available in the Worker realm.
+
+  Bench-verified (`bench/results/2026-05-17T08-36-26-115Z`):
+  - `<span class="hash">02204f20</span>` (no `lies` class — yellow severity gone)
+  - `trap: 0.8392229921637789` (plain, no `<span class="bold-fail">`
+    digits → `noise = 0` → CreepJS renders raw `AUDIO_TRAP` value)
+  - `data: b0333c80 == copy: b0333c80` (cross-method byte-equal —
+    `getChannelData` and `copyFromChannel` return identical [4500..4600] sample window)
+
+### Documented (known limitations)
+
+- **CreepJS WebGL bold-fail persists for all 4 built-in profiles**
+  (carried over from v0.4 / v0.5, unchanged). Phase 5.3 capture +
+  convert pipeline remains the long-term path; user-contributed real-
+  hardware captures may hit a CreepJS-whitelisted hash. Blind brute-
+  force remains mathematically infeasible (per-attempt hit probability
+  ≈ 5.5e-8).
+- **browserleaks-canvas uniqueness 100%** (carried over): by-design
+  per-persona unique canvas hash; not a "leak" in any meaningful
+  sense, but still appears in the visible report.
+
+### Bench
+
+- **Phase 6.1 12-site re-run** (`bench/results/2026-05-17T08-36-26-115Z`).
+  12/12 sites OK. Total visible hits **3 → 2**. CreepJS Audio surface
+  hash now plain (no `lies` class); only the 2 long-term known-limit
+  reds remain.
+
+### Tests
+
+- **sdk**: 366 → 378 (+12). Breakdown:
+  - +8 `runner-audio` (Phase 6.1: idempotence, caller-write-survives,
+    CreepJS getNoiseFactor() replay → noiseFactor === 0, per-channel
+    isolation, copyFromChannel-as-entry, silent-buffer cross-method,
+    copyToChannel preserved cross-method, multi-buffer cache safety).
+  - +2 `runner-worker` static IIFE assertions (`_noisedChannels`
+    WeakMap + `_ensureNoised` early-return + `set.add(ch)` on
+    copyToChannel).
+  - +2 `runner-worker` sandbox execution (Phase 6.1 idempotent re-read,
+    caller-write-survives in worker IIFE).
+  - 1 outdated 5.4c test ("copyToChannel writes noise-baked source")
+    rewritten to the new 6.1 contract (caller data preserved).
+- **persona-schema**: 26 → 26 unchanged (no schema changes in 6.1).
+- **typecheck clean**: persona-schema + sdk + desktop all `tsc --noEmit`
+  pass.
+
+### Internal
+
+- **`bench/PHASE-6-PLAN.md`** added documenting the v0.6 plan with the
+  upstream-verified CreepJS trap formula, before/after trace of
+  `getCopyFrom` / `getCopyTo` / `getNoiseFactor` flows under both
+  v0.5.4c (broken) and v0.6.1 (fixed) hooks, and Path A vs Path B
+  rationale.
+
+---
+
 ## [0.5.0] — 2026-05-17
 
 The **"v0.5 audio dB-noise + bench-driven CreepJS audio fix + real-hardware
