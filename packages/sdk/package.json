@@ -33,6 +33,7 @@
     "bench:canvas": "tsx bench/canvas-cross-check.ts",
     "bench:verify-creepjs": "tsx bench/verify-creepjs-profile-hash.ts",
     "bench:convert-profile": "tsx bench/convert-captured-profile.ts",
+    "bench:integrate-profiles": "tsx bench/integrate-captured-profiles.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {

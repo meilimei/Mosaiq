@@ -39,6 +39,12 @@
  *   4. 加 vitest 覆盖
  */
 
+// Phase 7.0: Community-contributed real-hardware profiles, auto-generated
+// from `bench/captured-profiles/*.json` via `bench/integrate-captured-
+// profiles.ts`. The file is committed alongside its source JSONs; CI
+// verifies they stay in sync via `bench:integrate-profiles -- --check`.
+import { KNOWN_PROFILES_CAPTURED } from './webgl-profiles-captured.js';
+
 /**
  * GL 参数值。原生 getParameter 可能返回：
  *   - number（整数 / 浮点 capability，例 MAX_TEXTURE_SIZE）
@@ -596,11 +602,16 @@ export const AMD_RX_6600_D3D11: WebglProfile = {
  *   - nvidia-rtx-3060-d3d11                      → desktop 游戏显卡（Ampere）
  *   - amd-rx-6600-d3d11                          → desktop 游戏显卡（RDNA2）
  */
+// Hand-curated entries always take precedence on regex-match conflicts
+// (selectWebglProfile iterates in declaration order); captured profiles
+// from `KNOWN_PROFILES_CAPTURED` extend the registry without changing
+// existing behavior.
 export const KNOWN_PROFILES: readonly WebglProfile[] = [
   INTEL_UHD_630_D3D11,
   INTEL_UHD_730_D3D11,
   NVIDIA_RTX_3060_D3D11,
   AMD_RX_6600_D3D11,
+  ...KNOWN_PROFILES_CAPTURED,
 ];
 
 /**
