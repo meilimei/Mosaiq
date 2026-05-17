@@ -120,6 +120,7 @@ export function createUbuntu2204ChromeUsPersona(input: Ubuntu2204ChromeUsInput):
       audio: {
         noiseSeed: deriveSeed(master, 'audio'),
         noiseAmplitude: 1e-7,
+        noiseAmplitudeDb: 0.001,
       },
       fontList: {
         fonts: [...UBUNTU_2204_FONTS],

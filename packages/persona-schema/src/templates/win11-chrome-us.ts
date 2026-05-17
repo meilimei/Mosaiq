@@ -103,6 +103,7 @@ export function createWin11ChromeUsPersona(input: Win11ChromeUsInput): Persona {
       audio: {
         noiseSeed: deriveSeed(master, 'audio'),
         noiseAmplitude: 1e-7,
+        noiseAmplitudeDb: 0.001,
       },
       fontList: {
         fonts: [...WIN11_FONTS],

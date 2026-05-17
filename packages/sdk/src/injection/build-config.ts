@@ -162,6 +162,7 @@ export function buildInjectionConfig(persona: Persona): InjectionConfig {
     webglPerturbReadPixels: persona.fingerprint.webgl.perturbReadPixels,
     audioNoiseSeed: seedToUint32(persona.fingerprint.audio.noiseSeed),
     audioNoiseAmplitude: persona.fingerprint.audio.noiseAmplitude,
+    audioNoiseAmplitudeDb: persona.fingerprint.audio.noiseAmplitudeDb,
 
     // Fonts
     fontList: persona.fingerprint.fontList.fonts,

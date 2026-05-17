@@ -983,6 +983,10 @@ export function injectAll(config: InjectionConfig): void {
   try {
     const audioPrng = makePrng(config.audioNoiseSeed);
     const amplitude = config.audioNoiseAmplitude;
+    // Phase 5.1: dB-domain 独立 amplitude（v0.2 ~ v0.4 共用 1e-7 PCM 值
+    // 会被 Float32 ULP @ -50 dB ≈ 3.8e-6 round 清零；0.001 dB ≈ 250× ULP
+    // 远低于人耳 JND ~1 dB，但保证 hash 必变）
+    const amplitudeDb = config.audioNoiseAmplitudeDb;
 
     if (typeof AnalyserNode !== 'undefined') {
       const origGetFloat = AnalyserNode.prototype.getFloatFrequencyData;
@@ -991,7 +995,7 @@ export function injectAll(config: InjectionConfig): void {
           Reflect.apply(target, thisArg, args);
           const [array] = args;
           for (let i = 0; i < array.length; i++) {
-            array[i] = (array[i] ?? 0) + (audioPrng() - 0.5) * amplitude;
+            array[i] = (array[i] ?? 0) + (audioPrng() - 0.5) * amplitudeDb;
           }
         },
       });

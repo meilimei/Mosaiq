@@ -66,9 +66,26 @@ export type WebGlFingerprint = z.infer<typeof WebGlFingerprintSchema>;
 export const AudioFingerprintSchema = z.object({
   noiseSeed: NoiseSeedSchema,
   /**
-   * Float32Array 元素叠加幅度，1e-7 是 AudioContext 默认精度内不可察觉的等级。
+   * PCM (linear, -1..1) 域噪声幅度，作用于 `AudioBuffer.getChannelData`。
+   * 1e-7 远小于 16-bit PCM ULP (≈3e-5)，听感无差异；累积仍足以改 hashMini。
    */
   noiseAmplitude: z.number().min(0).max(1e-3).default(1e-7),
+  /**
+   * dB (logarithmic, -100..0) 域噪声幅度，作用于
+   * `AnalyserNode.getFloatFrequencyData` (spectrum analysis only)。
+   *
+   * v0.5 新增：v0.2 ~ v0.4 期间 AnalyserNode 共用 `noiseAmplitude=1e-7`，
+   * 但 dB 域 Float32 ULP @ -50 dB ≈ 3.8e-6，1e-7 远低于 ULP → 噪声被
+   * round 清零，hook 装上但无效。
+   *
+   * 默认 0.001 dB ≈ 250× ULP，远低于人耳 JND (~1 dB) 与 audio app 阈值
+   * (典型 ≥1 dB)，但保证 Float32 可见 → hash 必变。
+   *
+   * 仅影响 `AnalyserNode` 频谱分析输出，不影响实际播放音频；
+   * 上限 5 dB（即使开到顶 audio 应用也几乎无差异，因为 AnalyserNode
+   * 只用于 visualizer / VAD 等读取场景，不进 audio rendering pipeline）。
+   */
+  noiseAmplitudeDb: z.number().min(0).max(5).default(0.001),
 });
 export type AudioFingerprint = z.infer<typeof AudioFingerprintSchema>;
 

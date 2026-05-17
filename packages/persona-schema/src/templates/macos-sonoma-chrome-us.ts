@@ -98,6 +98,7 @@ export function createMacosSonomaChromeUsPersona(input: MacosSonomaChromeUsInput
       audio: {
         noiseSeed: deriveSeed(master, 'audio'),
         noiseAmplitude: 1e-7,
+        noiseAmplitudeDb: 0.001,
       },
       fontList: {
         fonts: [...MACOS_SONOMA_FONTS],

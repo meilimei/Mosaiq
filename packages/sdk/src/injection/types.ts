@@ -92,6 +92,7 @@ export interface InjectionConfig {
   webglPerturbReadPixels: boolean;
   audioNoiseSeed: number;
   audioNoiseAmplitude: number;
+  audioNoiseAmplitudeDb: number;
 
   // Fonts
   fontList: readonly string[];

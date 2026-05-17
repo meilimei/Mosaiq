@@ -126,6 +126,74 @@ describe('Persona template: ubuntu-2204-chrome-us', () => {
   });
 });
 
+describe('Phase 5.1: fingerprint.audio.noiseAmplitudeDb schema', () => {
+  it('4 个 templates 都填了默认 0.001 dB', () => {
+    const templates = [
+      createWin11ChromeUsPersona({ id: 'p51-w11', displayName: 'X' }),
+      createWin10ChromeUsPersona({ id: 'p51-w10', displayName: 'X' }),
+      createMacosSonomaChromeUsPersona({ id: 'p51-mac', displayName: 'X' }),
+      createUbuntu2204ChromeUsPersona({ id: 'p51-u22', displayName: 'X' }),
+    ];
+    for (const p of templates) {
+      expect(p.fingerprint.audio.noiseAmplitudeDb).toBe(0.001);
+    }
+  });
+
+  it('Zod default 在 parse 时填 0.001（input 可 omit）', () => {
+    const base = createWin11ChromeUsPersona({ id: 'p51-default', displayName: 'X' });
+    // 模拟 v0.4 持久化 persona 没有此字段的情况（向后兼容）
+    const legacy = {
+      ...base,
+      fingerprint: {
+        ...base.fingerprint,
+        audio: {
+          noiseSeed: base.fingerprint.audio.noiseSeed,
+          noiseAmplitude: 1e-7,
+          // noiseAmplitudeDb 缺失
+        },
+      },
+    };
+    const parsed = parsePersona(legacy);
+    expect(parsed.fingerprint.audio.noiseAmplitudeDb).toBe(0.001);
+  });
+
+  it('上限 5 dB 之外被拒', () => {
+    const base = createWin11ChromeUsPersona({ id: 'p51-max', displayName: 'X' });
+    const bad = {
+      ...base,
+      fingerprint: {
+        ...base.fingerprint,
+        audio: { ...base.fingerprint.audio, noiseAmplitudeDb: 6 },
+      },
+    };
+    expect(safeParsePersona(bad).success).toBe(false);
+  });
+
+  it('负数被拒（min 0）', () => {
+    const base = createWin11ChromeUsPersona({ id: 'p51-neg', displayName: 'X' });
+    const bad = {
+      ...base,
+      fingerprint: {
+        ...base.fingerprint,
+        audio: { ...base.fingerprint.audio, noiseAmplitudeDb: -0.001 },
+      },
+    };
+    expect(safeParsePersona(bad).success).toBe(false);
+  });
+
+  it('0（关闭噪声）合法', () => {
+    const base = createWin11ChromeUsPersona({ id: 'p51-zero', displayName: 'X' });
+    const ok = {
+      ...base,
+      fingerprint: {
+        ...base.fingerprint,
+        audio: { ...base.fingerprint.audio, noiseAmplitudeDb: 0 },
+      },
+    };
+    expect(() => parsePersona(ok)).not.toThrow();
+  });
+});
+
 describe('Phase 2.1: hardware.gpu.webglProfileId schema', () => {
   it('字段可选，默认 undefined（向后兼容）', () => {
     const p = createWin11ChromeUsPersona({ id: 'gpu-pid-default', displayName: 'X' });

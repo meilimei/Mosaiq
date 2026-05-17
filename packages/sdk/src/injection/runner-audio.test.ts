@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 
 /**
- * runner.ts §6 audio spoof — Phase 4.1 AudioBuffer.getChannelData 专测。
+ * runner.ts §6 audio spoof — Phase 4.1 AudioBuffer.getChannelData 专测，
+ * Phase 5.1 加 AnalyserNode dB-domain noise visibility 测试。
  *
  * happy-dom 默认无 `AudioBuffer` / `AnalyserNode` / `AudioContext`，runner §6
  * 整块被 `typeof` guard 跳过 —— 现有 60+ runner 测试无法覆盖 audio spoof 路径。
@@ -10,9 +11,11 @@
  *   1. AudioBuffer.getChannelData 返回值被打上 noise（per-channel deterministic）
  *   2. 同 persona + 同 channel → 两次读结果一致（PRNG 复位）
  *   3. 不同 channel → 不同 noise 序列（XOR seed）
- *   4. noise 量级 < 1e-5（不破坏 audio 实际播放）
+ *   4. PCM noise 量级 < 1e-5（不破坏 audio 实际播放）
  *   5. AudioBuffer.prototype.getChannelData.toString() = '[native code]'（stealth）
- *   6. AnalyserNode.getFloatFrequencyData 仍正常 spoof（v0.2 路径不退化）
+ *   6. **Phase 5.1**：AnalyserNode.getFloatFrequencyData dB-domain noise 真的可见
+ *      （Float32 ULP @ -100 dB ≈ 1.19e-5；amplitudeDb=0.001 → ±0.0005 ≈ 42×
+ *      ULP，远高于 quantize 阈值）
  *
  * 测试隔离：vitest 默认按文件隔离，本文件 polyfill 不污染 runner.test.ts。
  */
@@ -107,9 +110,11 @@ beforeAll(() => {
     masterSeed: 'cafebabe-audio',
   });
   config = buildInjectionConfig(persona);
-  // Sanity check：persona 模板默认 amplitude=1e-7
+  // Sanity check：persona 模板默认 amplitude=1e-7 (PCM)，amplitudeDb=0.001 (dB)
   expect(config.audioNoiseAmplitude).toBeGreaterThan(0);
   expect(config.audioNoiseAmplitude).toBeLessThanOrEqual(1e-3);
+  expect(config.audioNoiseAmplitudeDb).toBeGreaterThan(0);
+  expect(config.audioNoiseAmplitudeDb).toBeLessThanOrEqual(5);
   injectAll(config);
 });
 
@@ -212,24 +217,56 @@ describe('Phase 4.1: AudioBuffer.getChannelData noise injection', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// 测试：AnalyserNode.getFloatFrequencyData noise（v0.2 路径不退化）
+// Phase 5.1: AnalyserNode.getFloatFrequencyData dB-domain noise
 //
-// 已知 v0.2 limitation：getFloatFrequencyData 返回 dB 值（-100~0），noise
-// 量级 audioNoiseAmplitude=1e-7 远小于 Float32 在该 magnitude 的 ULP（~7.6e-6）
-// → noise quantize 回 baseline，读不出差异。这是 schema 默认值不适用于 dB
-// 量级的 silent failure，不属于 Phase 4.1 修复范围（PCM 路径 1e-7 是合理的，
-// 强行调大会破坏 16-bit PCM 听感）。本测试仅验证 **hook install 不抛错**。
-// 真实 dB-aware noise 推 v0.5 (audioNoiseAmplitudeDb 独立字段)。
+// 修 v0.2 ~ v0.4 silent-quantize bug：v0.4 之前 AnalyserNode hook 共用
+// audioNoiseAmplitude=1e-7（PCM 域设计），但 dB 域 Float32 ULP @ -100 dB ≈
+// 1.19e-5，1e-7 远低于 ULP → 全部 round 回 baseline。Phase 5.1 加独立
+// audioNoiseAmplitudeDb 字段（默认 0.001 ≈ 42× ULP）→ 保证可见。
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('§6 AnalyserNode regression (v0.2 path, hook install only)', () => {
-  it('getFloatFrequencyData 可被调用且不抛错 (hook stable)', () => {
+describe('Phase 5.1: AnalyserNode.getFloatFrequencyData dB-domain noise', () => {
+  it('hook 应用后 arr 与 baseline -100 有可见偏移（noise 不被 quantize）', () => {
     const an = new MockAnalyserNode();
     const arr = new Float32Array(1024);
-    expect(() => an.getFloatFrequencyData(arr)).not.toThrow();
-    // 已知限制：noise 在 dB+Float32 下被 quantize；读出值全 -100。
-    // 但 hook 本身 install 成功（不抛），证明 §6 AnalyserNode block 未退化。
-    expect(arr[0]).toBe(-100);
+    an.getFloatFrequencyData(arr);
+    // mock 写 -100 dB，hook 加 (prng - 0.5) * amplitudeDb 噪声
+    // amplitudeDb=0.001 → noise ±0.0005 → Float32 ULP @ -100 ≈ 1.19e-5 → 42× ULP，可见
+    let differences = 0;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] !== -100) differences++;
+    }
+    // 1024 bin 几乎全部应该 ≠ -100（prng 期望 0 概率极低，且 0 也会被 + 0 不变 ≈ 1/2^32 概率）
+    expect(differences).toBeGreaterThan(1000);
+  });
+
+  it('noise 量级 < audioNoiseAmplitudeDb（amplitude bound）', () => {
+    const an = new MockAnalyserNode();
+    const arr = new Float32Array(2048);
+    an.getFloatFrequencyData(arr);
+    let maxDelta = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const delta = Math.abs(arr[i]! - -100);
+      if (delta > maxDelta) maxDelta = delta;
+    }
+    // PRNG range = (-0.5, 0.5) * amplitudeDb → max delta < amplitudeDb
+    expect(maxDelta).toBeLessThan(config.audioNoiseAmplitudeDb);
+    // 远小于人耳 JND ~1 dB
+    expect(maxDelta).toBeLessThan(1);
+  });
+
+  it('PRNG 序列 deterministic（hook 内 audioPrng 共享，连续 call 推进序列）', () => {
+    // 注：runner §6 在 try 块内构造 audioPrng，一旦 wrapStealth 闭包就固定了。
+    // 连续两次 getFloatFrequencyData 共享同一 PRNG → 第二次 arr 是 PRNG 后半段
+    // 与第一次必不同；但**同一 persona 两次 injectAll** 才能复现完整 PRNG 重置
+    // （我们这里只 injectAll 一次，所以仅测连续两次结果 distinct）。
+    const an = new MockAnalyserNode();
+    const arr1 = new Float32Array(64);
+    const arr2 = new Float32Array(64);
+    an.getFloatFrequencyData(arr1);
+    an.getFloatFrequencyData(arr2);
+    // PRNG 推进，两次序列必不相同
+    expect(Array.from(arr1)).not.toEqual(Array.from(arr2));
   });
 });
 

@@ -179,6 +179,10 @@ describe('buildInjectionConfig', () => {
       const cfg = buildInjectionConfig(persona);
       expect(cfg.canvasNoiseStrength).toBe(persona.fingerprint.canvas.noiseStrength);
       expect(cfg.audioNoiseAmplitude).toBe(persona.fingerprint.audio.noiseAmplitude);
+      // Phase 5.1: 独立 dB 域 amplitude 字段
+      expect(cfg.audioNoiseAmplitudeDb).toBe(persona.fingerprint.audio.noiseAmplitudeDb);
+      expect(cfg.audioNoiseAmplitudeDb).toBeGreaterThan(0);
+      expect(cfg.audioNoiseAmplitudeDb).toBeLessThanOrEqual(5);
       expect(cfg.webglPerturbReadPixels).toBe(persona.fingerprint.webgl.perturbReadPixels);
     });
   });
