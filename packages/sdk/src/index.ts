@@ -72,6 +72,23 @@ export {
   type ProxyVerifyResult,
   type ProxyVerifyOptions,
 } from './proxy.js';
+export {
+  SITES,
+  extractCreepjsFromDocument,
+  emptyHitsBySurface,
+  type DetectionRun,
+  type DetectionRunRaw,
+  type DetectionScore,
+  type HitSeverity,
+  type HitsBySurface,
+  type RunProgressEvent,
+  type RunProgressPhase,
+  type RunStatus,
+  type SiteResult,
+  type SiteSpec,
+  type SurfaceHit,
+  type SurfaceName,
+} from './detection-lab/index.js';
 
 // Re-export persona-schema for convenience
 export type {

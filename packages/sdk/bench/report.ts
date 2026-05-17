@@ -17,45 +17,22 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type {
+  DetectionRunRaw,
+  SurfaceHit,
+  SurfaceName,
+} from '../src/detection-lab/index.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-interface RawSummary {
-  timestamp: string;
-  overallMs: number;
-  sitesAttempted: number;
-  sitesOk: number;
-  sitesFail: number;
-  /** Phase 3.2 — 重试统计（可选，旧 raw.json 不含此字段） */
-  sitesWithRetry?: number;
-  totalRetries?: number;
-  persona: {
-    id: string;
-    template: string;
-    browser: unknown;
-    system: unknown;
-    /** Persona 期望的硬件值，用于 cross-check spoof 是否真的让浏览器返回这些值。 */
-    hardware?: {
-      gpu?: { webglVendor?: string; webglRenderer?: string };
-    };
-    /** 指纹噪声配置（canvas/webgl/audio noise seed 等）。 */
-    fingerprint?: unknown;
-  };
-  results: Array<{
-    id: string;
-    name: string;
-    url: string;
-    ok: boolean;
-    error?: string;
-    durationMs: number;
-    title?: string;
-    bodyText?: string;
-    screenshot?: string;
-    html?: string;
-    extracted?: Record<string, unknown>;
-    /** Phase 3.2 — 实际重试次数（0 = 一次成功） */
-    retries?: number;
-  }>;
-}
+/**
+ * v0.8 起 raw.json 的 shape 类型从 SDK 的 detection-lab 模块复用，避免与
+ * `src/detection-lab/types.ts` 的 `DetectionRunRaw` 重复维护。
+ *
+ * 留 `RawSummary` 别名只是兼容老命名，函数签名仍可读。`SurfaceHit` /
+ * `Surface` 同样改成共享类型。
+ */
+type RawSummary = DetectionRunRaw;
 
 /**
  * 把 BrowserLeaks 显示出来的"包装值"（含括号注释）剥成核心字符串，便于和 persona 声称值对比。
@@ -69,38 +46,18 @@ function normalizeWebglString(s: string | undefined): string {
   return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-type Surface =
-  | 'canvas'
-  | 'webgl'
-  | 'audio'
-  | 'font'
-  | 'webrtc'
-  | 'navigator'
-  | 'screen'
-  | 'permissions'
-  | 'timezone'
-  | 'plugins'
-  | 'webdriver'
-  | 'other';
-
-interface SurfaceHit {
-  surface: Surface;
-  /** 哪个站检测到的 */
-  site: string;
-  /** 检测项名称 */
-  detector: string;
-  /** 状态文本 */
-  evidence: string;
-  /** 严重度：high = 一定要补，medium = 影响中，low = 边缘 */
-  severity: 'high' | 'medium' | 'low';
-}
+/**
+ * 老命名留作 alias，让本文件的函数签名/局部 generic 不必大改。本质等于
+ * `SurfaceName`（detection-lab/types.ts 中的公共契约）。
+ */
+type Surface = SurfaceName;
 
 /**
  * 关键词到 surface 的映射。键值优先级递减（越靠前越特异）。
  */
 const SURFACE_PATTERNS: Array<{
   pattern: RegExp;
-  surface: Surface;
+  surface: SurfaceName;
   severity: 'high' | 'medium' | 'low';
 }> = [
   { pattern: /\bwebdriver\b/i, surface: 'webdriver', severity: 'high' },
@@ -123,7 +80,7 @@ const SURFACE_PATTERNS: Array<{
 /**
  * 把一条 detector + evidence 文本归因到一个 surface。
  */
-function attributeSurface(detector: string, evidence: string): { surface: Surface; severity: 'high' | 'medium' | 'low' } {
+function attributeSurface(detector: string, evidence: string): { surface: SurfaceName; severity: 'high' | 'medium' | 'low' } {
   const text = `${detector} ${evidence}`.toLowerCase();
   for (const { pattern, surface, severity } of SURFACE_PATTERNS) {
     if (pattern.test(text)) return { surface, severity };
@@ -318,7 +275,7 @@ function parseUniquenessPct(s: string | undefined): number | null {
  * medium（弱信号 / 软可疑）按 detector 名分类。
  */
 const DBI_KEY_TO_SURFACE: Readonly<
-  Record<string, { surface: Surface; severity: 'high' | 'medium' | 'low' }>
+  Record<string, { surface: SurfaceName; severity: 'high' | 'medium' | 'low' }>
 > = {
   hasBotUserAgent: { surface: 'navigator', severity: 'high' },
   hasWebdriverTrue: { surface: 'webdriver', severity: 'high' },
@@ -360,7 +317,7 @@ function analyzeDbiBot(extracted: Record<string, unknown>, hits: SurfaceHit[]): 
     md += `**触发的信号**：\n\n`;
     for (const key of triggered) {
       const route = DBI_KEY_TO_SURFACE[key] ?? {
-        surface: 'other' as Surface,
+        surface: 'other' as SurfaceName,
         severity: 'medium' as const,
       };
       const icon =
