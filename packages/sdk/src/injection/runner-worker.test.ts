@@ -418,9 +418,14 @@ describe('Phase 4.2 worker IIFE: AudioBuffer audio spoof mirror (static)', () =>
     expect(capturedIIFE).toMatch(/_mkAudioPrng/);
   });
 
-  it('IIFE noise lookup is in-place: buf[i] = (buf[i]||0) + (prng()-0.5)*_audioAmp', () => {
-    // 关键 noise pattern —— 保证 hook 真的修改返回 buffer 数据
-    expect(capturedIIFE).toMatch(/buf\[i\]=\(buf\[i\]\|\|0\)\+\(prng\(\)-0\.5\)\*_audioAmp/);
+  it('IIFE noise pattern: per-sample PRNG advance + 条件 add (Phase 5.2b silent-skip)', () => {
+    // Phase 5.2b：silent samples 保留 exact 0，避免 CreepJS unique:5000 bold-fail。
+    // 关键不变量：
+    //   1. 每样本 PRNG advance 一次（保 deterministic 序列） → `(prng()-0.5)*_audioAmp`
+    //   2. 仅当 sample !== 0 时把 noise 写回 buf[i]                → `if(s!==0)buf[i]=s+n`
+    expect(capturedIIFE).toMatch(/var s=buf\[i\]\|\|0/);
+    expect(capturedIIFE).toMatch(/var n=\(prng\(\)-0\.5\)\*_audioAmp/);
+    expect(capturedIIFE).toMatch(/if\(s!==0\)buf\[i\]=s\+n/);
   });
 });
 

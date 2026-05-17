@@ -1011,8 +1011,17 @@ export function injectAll(config: InjectionConfig): void {
           // 左右声道用不同 noise 序列，避免 detector 比对左右相关性
           const channel = (args[0] ?? 0) | 0;
           const channelPrng = makePrng((config.audioNoiseSeed ^ channel) >>> 0);
+          // Phase 5.2b：silent (==0) samples 保留原值，仅给 non-zero samples 加 noise。
+          // CreepJS audio test 跑 OfflineAudioContext + DynamicsCompressor 5000-sample
+          // 渲染，attack ramp 之前样本应该是 exact 0（real Chrome 行为）。如果给所有
+          // 样本加 noise，5000 样本全 unique → CreepJS unique:5000 → bold-fail。
+          // 跳过 0 让 silence pattern 与 real Chrome 一致；non-zero 样本仍带 PRNG noise，
+          // sum/hash 仍 per-persona unique，跨 persona 区分依然成立。
           for (let i = 0; i < buffer.length; i++) {
-            buffer[i] = (buffer[i] ?? 0) + (channelPrng() - 0.5) * amplitude;
+            const sample = buffer[i] ?? 0;
+            // PRNG advance 不受 skip 影响（保 deterministic 序列），noise 仅条件 add
+            const noise = (channelPrng() - 0.5) * amplitude;
+            if (sample !== 0) buffer[i] = sample + noise;
           }
           return buffer;
         },
@@ -1577,7 +1586,9 @@ export function injectAll(config: InjectionConfig): void {
         'var buf=_origGCD.call(this,channel);' +
         'var ch=(channel|0);' +
         'var prng=_mkAudioPrng((_audioSeed^ch)>>>0);' +
-        'for(var i=0;i<buf.length;i++){buf[i]=(buf[i]||0)+(prng()-0.5)*_audioAmp;}' +
+        // Phase 5.2b mirror：silent samples 保留 exact 0，避免 CreepJS unique:5000 bold-fail。
+        // PRNG 仍每样本 advance 一次保 deterministic，noise 条件 add。
+        'for(var i=0;i<buf.length;i++){var s=buf[i]||0;var n=(prng()-0.5)*_audioAmp;if(s!==0)buf[i]=s+n;}' +
         'return buf;' +
         '};' +
         '}}catch(e){}' +

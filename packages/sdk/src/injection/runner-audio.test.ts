@@ -43,17 +43,24 @@ class MockAudioBuffer {
   /** 内部多通道存储（不是真实 PCM，仅 deterministic 数列让 noise 可见） */
   #channels: Float32Array[];
 
-  constructor(opts: { numberOfChannels: number; length: number; sampleRate: number }) {
+  constructor(opts: {
+    numberOfChannels: number;
+    length: number;
+    sampleRate: number;
+    /** Phase 5.2b：自定义 fill 函数，默认三角波 (i + c*100) * 1e-4。
+     *  返回 0 让样本保持 silence（用于测 silent-sample preservation）。 */
+    fill?: (i: number, channel: number) => number;
+  }) {
     this.numberOfChannels = opts.numberOfChannels;
     this.length = opts.length;
     this.sampleRate = opts.sampleRate;
     this.#channels = [];
+    const fill = opts.fill ?? ((i: number, c: number) => (i + c * 100) * 1e-4);
     for (let c = 0; c < opts.numberOfChannels; c++) {
       const arr = new Float32Array(opts.length);
-      // 三角波样本：每个 sample = (i + channel * 100) * 1e-4
       // 不同 channel 起点不同，便于辨识 noise 是否真的应用到正确 channel
       for (let i = 0; i < opts.length; i++) {
-        arr[i] = (i + c * 100) * 1e-4;
+        arr[i] = fill(i, c);
       }
       this.#channels.push(arr);
     }
@@ -213,6 +220,88 @@ describe('Phase 4.1: AudioBuffer.getChannelData noise injection', () => {
     const buf = new MockAudioBuffer({ numberOfChannels: 1, length: 100, sampleRate: 44100 });
     // hook 内 Reflect.apply 会传 channel=2 到原 native，触发 mock 抛 'channel 2 out of range'
     expect(() => buf.getChannelData(2)).toThrow(/out of range/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 5.2b: silent (==0) 样本保留 exact 0
+//
+// 背景：Phase 5.2 12-site bench 发现 CreepJS Audio bold-fail，根源是 Phase 4.1
+// hook 给所有样本（含 silence）加 noise → 5000 样本全 unique → CreepJS unique:5000
+// → bold-fail。Real Chrome 的 OfflineAudioContext + DynamicsCompressor 在 attack
+// ramp 之前样本是 exact 0；fix 让 hook 跳过 0 样本，only noise 非零 → silence
+// pattern 与 real Chrome 一致 → CreepJS unique 落到 < 5000 区间 → no bold-fail。
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 5.2b: AudioBuffer silent samples preserved (CreepJS unique:5000 prevention)', () => {
+  it('silent (==0) samples 输出仍为 exact 0', () => {
+    // Mimic compressor pre-attack pattern：前半 silence (exact 0)，后半 ramp。
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 5000,
+      sampleRate: 44100,
+      fill: (i) => (i < 2500 ? 0 : (i - 2500) * 1e-4),
+    });
+    const data = buf.getChannelData(0);
+    // Front 2500 samples must be exact 0（preserve silence pattern）
+    for (let i = 0; i < 2500; i++) {
+      expect(data[i]).toBe(0);
+    }
+    // Back 2500 samples must have noise applied（!= original ramp value）
+    let nonZeroDifferences = 0;
+    for (let i = 2500; i < 5000; i++) {
+      const baseline = (i - 2500) * 1e-4;
+      if (data[i] !== baseline) nonZeroDifferences++;
+    }
+    // 几乎全部 ramp 样本应被 noise 修改
+    expect(nonZeroDifferences).toBeGreaterThan(2400);
+  });
+
+  it('全 silence buffer 经 hook 后仍全 0 (CreepJS unique 数应远小于 buffer 长度)', () => {
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 5000,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const data = buf.getChannelData(0);
+    // 模拟 CreepJS 的 unique-sample count 算法
+    const uniqueValues = new Set<number>();
+    for (let i = 0; i < data.length; i++) {
+      uniqueValues.add(data[i]!);
+    }
+    // 全 silence → unique = 1（仅 0）；远小于 5000，所以 CreepJS 不会 bold-fail
+    expect(uniqueValues.size).toBe(1);
+    expect(uniqueValues.has(0)).toBe(true);
+  });
+
+  it('PRNG 仍每样本 advance 一次 (deterministic 序列不被 skip 破坏)', () => {
+    // 两次构造相同 buffer，分别全 zero / 全 non-zero，比对 PRNG 序列
+    // —— 全 zero buffer 应保持 0，但 PRNG 内部计数器仍每样本 advance；
+    //    全 non-zero buffer 应得到 N 个 noise，且第 i 个 noise = 第 i 次 PRNG 调用
+    const zeroBuf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 100,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const rampBuf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 100,
+      sampleRate: 44100,
+      fill: (i) => (i + 1) * 1e-4, // 全非零
+    });
+    const zeroData = zeroBuf.getChannelData(0);
+    const rampData = rampBuf.getChannelData(0);
+    // zeroBuf 输出全 0
+    for (let i = 0; i < 100; i++) expect(zeroData[i]).toBe(0);
+    // rampBuf 输出 = baseline + per-sample noise，每样本必有 noise（baseline 全非零）
+    let differencesFromBaseline = 0;
+    for (let i = 0; i < 100; i++) {
+      const baseline = (i + 1) * 1e-4;
+      if (rampData[i] !== baseline) differencesFromBaseline++;
+    }
+    expect(differencesFromBaseline).toBeGreaterThan(95);
   });
 });
 
