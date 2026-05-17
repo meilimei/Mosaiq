@@ -5,6 +5,82 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [Unreleased]
+
+Post-v0.7.0 follow-ups — closing the loops that v0.7.0 left open
+("Ready to be wired into `.github/workflows/` once CI lands"; "No bench
+re-run for v0.7.0 — empty captured-profiles/ directory"). All atomic,
+non-breaking changes accumulating toward v0.7.1 / v0.8.0.
+
+### Added
+
+- **Phase 7.1 — First real-hardware capture + capture-self automation**
+  - **`bench/capture-self-webgl-profile.ts`** (new Playwright tsx
+    script, exposed as `pnpm --filter @mosaiq/sdk run bench:capture-self`):
+    drives the headed Chromium capture HTML on the contributor's own
+    machine, extracts the JSON payload, rejects software renderers via
+    `detectSoftwareRenderer`, derives a clean filename stem via
+    `suggestProfileId`, and prints the integrate hint. Closes the manual
+    "open browser, click button, copy JSON" step from v0.7.0's contributor
+    flow for users who already have Mosaiq installed.
+  - **First captured profile**:
+    `bench/captured-profiles/intel-hd-520-d3d11-self.json` →
+    `INTEL_HD_520_D3D11_SELF` (Intel HD Graphics 520 / ANGLE D3D11 /
+    Win10+11). `capabilitiesHash` 2147382110, **NOT in CreepJS upstream
+    whitelist** (same fate as Intel UHD 730 — common Skylake iGPU not
+    yet covered upstream; profile is still valid for non-CreepJS
+    detectors and grows the registry organically).
+- **Phase 7.3 — GitHub Actions CI**
+  - First `.github/workflows/ci.yml`. Runs on every push to `main` and
+    every PR. ubuntu-latest, Node from `.nvmrc` (v20.18.0), pnpm 9.12.0
+    matching `packageManager`. Steps: install (frozen lockfile), build
+    workspace packages (so desktop typecheck resolves dist `.d.ts`),
+    typecheck all 3 packages, vitest persona-schema, vitest sdk, and
+    **`bench:integrate-profiles -- --check`** drift detection — fulfilling
+    the v0.7.0 promise that contributor JSONs and the auto-generated TS
+    must stay in lock-step on PRs. Concurrency-cancels superseded runs.
+
+### Tests
+
+- **Phase 7.2 — Regression coverage for `KNOWN_PROFILES_CAPTURED`
+  wiring**: 8 new tests in `webgl-profiles.test.ts` (394 → 402)
+  guarding the contract between `selectWebglProfile*` selectors and the
+  auto-generated registry. Asserts: captured registry is spread *after*
+  the 4 hand-curated entries (precedence rule); ids unique vs hand-curated
+  and follow `[a-z0-9-]` convention; reachable via
+  `selectWebglProfileById`; `matchRenderer.test(name)` self-matches;
+  `selectWebglProfileForPersona` honors `webglProfileId` override for
+  captured ids; `knownInCreepjsWhitelist` always boolean (verify-derived);
+  serialization non-empty. All tests degrade to no-ops when the registry
+  is empty.
+
+### Fixed
+
+- **ESM circular dependency** in `webgl-profiles.ts ↔
+  webgl-profiles-captured.ts`: the auto-generated file previously emitted
+  `import { GL } from './webgl-profiles.js'` (runtime), creating a load
+  cycle because `webgl-profiles.ts` itself imports `KNOWN_PROFILES_CAPTURED`
+  back from the generated file. The cycle manifested as `ReferenceError:
+  Cannot access 'GL' before initialization` and broke 8 test suites + the
+  integrate CLI's own ability to bootstrap. The auto-generated file is now
+  fully self-contained: type-only `import type { GlParamValue, WebglProfile }`
+  (erased at compile time) plus `0xHEX /* NAME */` literal pairs for GL
+  constants. The hand-paste convert path (`bench:convert-profile`) still
+  emits the readable `GL.NAME` form because it targets `webgl-profiles.ts`
+  where `GL` is in scope.
+- **`suggestProfileId` regex gap**: now recognizes plain `"HD Graphics NNN"`
+  (Skylake-era Intel iGPU, no `UHD` prefix) → `hd-NNN`, plus `iris-pro` /
+  `iris-plus`. Without this, a Skylake/Broadwell capture's filename and
+  internal id fell back to `intel-unknown-d3d11`.
+
+### Internal
+
+- **`emitProfileTypeScript` gains `inlineGlKeys` opt-in**: when true,
+  emits hex literals with name comments instead of `GL.NAME` references.
+  The integrate CLI passes `true`; the convert CLI keeps the default
+  `false`. Single source of truth in `convert-captured-profile.ts`
+  preserved — no parallel rendering paths.
+
 ## [0.7.0] — 2026-05-17
 
 The **"v0.7 captured WebGL profiles contributor pipeline"** release.
