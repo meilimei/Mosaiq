@@ -9,10 +9,13 @@ import type { PersonaId } from '@mosaiq/persona-schema';
 
 import {
   IPC_CHANNELS,
+  IPC_EVENTS,
   type ClonePersonaInput,
   type CreatePersonaInput,
+  type DetectionLabProgressMessage,
   type ExportPersonaOptions,
   type MosaiqApi,
+  type MosaiqEvents,
   type ProxyVerifyInput,
   type UpdatePersonaInput,
 } from './ipc-types.js';
@@ -36,15 +39,32 @@ const api: MosaiqApi = {
     ipcRenderer.invoke(IPC_CHANNELS.exportPersona, id, opts ?? {}),
   importPersona: () => ipcRenderer.invoke(IPC_CHANNELS.importPersona),
   appInfo: () => ipcRenderer.invoke(IPC_CHANNELS.appInfo),
+
+  // ── Phase 8.5 Detection Lab ──────────────────────────────────────────────
+  detectionLabRun: (personaId: PersonaId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectionLabRun, personaId),
+  detectionLabCancel: (runId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectionLabCancel, runId),
+  detectionLabListRuns: (personaId: PersonaId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectionLabListRuns, personaId),
+  detectionLabGetRun: (personaId: PersonaId, runId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectionLabGetRun, personaId, runId),
+  detectionLabDeleteRun: (personaId: PersonaId, runId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectionLabDeleteRun, personaId, runId),
+};
+
+const events: MosaiqEvents = {
+  onPersonaStopped: (cb: (id: PersonaId) => void) => {
+    const listener = (_evt: unknown, id: PersonaId) => cb(id);
+    ipcRenderer.on(IPC_EVENTS.personaStopped, listener);
+    return () => ipcRenderer.off(IPC_EVENTS.personaStopped, listener);
+  },
+  onDetectionLabProgress: (cb: (msg: DetectionLabProgressMessage) => void) => {
+    const listener = (_evt: unknown, msg: DetectionLabProgressMessage) => cb(msg);
+    ipcRenderer.on(IPC_EVENTS.detectionLabProgress, listener);
+    return () => ipcRenderer.off(IPC_EVENTS.detectionLabProgress, listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('mosaiq', api);
-
-// Event: persona 被用户手动关闭浏览器时的通知
-contextBridge.exposeInMainWorld('mosaiqEvents', {
-  onPersonaStopped: (cb: (id: PersonaId) => void) => {
-    const listener = (_evt: unknown, id: PersonaId) => cb(id);
-    ipcRenderer.on('mosaiq:personaStopped', listener);
-    return () => ipcRenderer.off('mosaiq:personaStopped', listener);
-  },
-});
+contextBridge.exposeInMainWorld('mosaiqEvents', events);

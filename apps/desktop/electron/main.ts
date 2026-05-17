@@ -18,11 +18,24 @@ import {
 } from '@mosaiq/persona-schema/templates';
 import {
   type BrowserSession,
+  type DetectionRun,
+  type DetectionRunRaw,
+  type DetectionScore,
+  type RunProgressEvent,
+  type RunStatus,
+  SDK_VERSION,
+  deleteDetectionRun,
   exportPersonaJson,
+  getDetectionRunArtifactDir,
+  getInstalledChromeVersion,
   importPersonaJson,
+  listDetectionRuns,
+  loadDetectionRun,
   loadPersona,
   personaExists,
   recordLaunch,
+  runDetection,
+  saveDetectionRun,
   savePersona,
   clonePersona as sdkClonePersona,
   deletePersona as sdkDeletePersona,
@@ -35,9 +48,12 @@ import {
 import {
   type ClonePersonaInput,
   type CreatePersonaInput,
+  type DetectionLabProgressMessage,
+  type DetectionRunStartResult,
   type ExportPersonaOptions,
   type ExportPersonaResult,
   IPC_CHANNELS,
+  IPC_EVENTS,
   type ImportPersonaResult,
   type PersonaSummary,
   type ProxyVerifyInput,
@@ -80,6 +96,32 @@ async function createWindow() {
 
 const runningSessions = new Map<PersonaId, BrowserSession>();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Detection Lab — in-flight run 注册表
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 当前在跑的 detection run。**约束：单 persona 串行**——同一 personaId 只能
+ * 有一个 in-flight run，第二次启动同步返回错误（避免两套 Playwright 抢同一个
+ * user-data-dir）。键设计成 `PersonaId` 而非 `runId` 就是为了 O(1) 命中此约束。
+ *
+ * `cancel` 路径需要按 `runId` 查找——`activeRunsByRunId` 是反向索引。
+ *
+ * Phase 8.5 选择 fire-and-forget：启动 IPC 同步返回 runId 之后 detection 异步
+ * 跑，进度走 `IPC_EVENTS.detectionLabProgress`。promise 收在 `activeRunPromises`
+ * 里，window-all-closed 时统一 abort（不 await，避免 60s page.goto 卡住关窗）。
+ */
+interface ActiveRunEntry {
+  runId: string;
+  personaId: PersonaId;
+  abort: AbortController;
+  startedAt: string;
+  startedAtMs: number;
+}
+
+const activeRuns = new Map<PersonaId, ActiveRunEntry>();
+const activeRunsByRunId = new Map<string, ActiveRunEntry>();
+
 function buildSummary(
   personaId: PersonaId,
   persona: ReturnType<typeof loadPersona>,
@@ -96,6 +138,180 @@ function buildSummary(
     launchCount: persona.metadata.launchCount,
     isRunning: runningSessions.has(personaId),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Detection Lab — helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 容错读 chromium 版本（chromium 没装时 SDK 也会扔，但保 detection 失败路径能写盘）。 */
+function safeChromiumVersion(): string | undefined {
+  try {
+    return getInstalledChromeVersion();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * SDK 的 progress 事件分两类：
+ *   - **中间态**（init / site-start / site-end / site-retry）— main 直接透传
+ *   - **终态**（done / canceled / error）— main 不透传 SDK 自己发的；改由 main
+ *     在 `await runDetection` 返回 / 抛错后构造 `DetectionRun` 并自己 emit 带
+ *     `finalRun` 字段的终态，让 renderer 收到唯一一个终态事件。
+ *
+ * 这么做的动机：SDK 的 done 不知道 `DetectionRun.startedAt / finishedAt / meta`，
+ * 也不能 `saveDetectionRun`（SDK 不该依赖 storage 决定持久化路径）；这些是 main
+ * 的责任。统一在 main 这层 finalize 让进度流更干净。
+ */
+const FORWARD_PHASES: ReadonlySet<RunProgressEvent['phase']> = new Set([
+  'init',
+  'site-start',
+  'site-end',
+  'site-retry',
+]);
+
+function emitProgress(runId: string, progress: RunProgressEvent): void {
+  const msg: DetectionLabProgressMessage = { runId, progress };
+  mainWindow?.webContents.send(IPC_EVENTS.detectionLabProgress, msg);
+}
+
+function buildCompletedRun(
+  runId: string,
+  entry: ActiveRunEntry,
+  raw: DetectionRunRaw,
+  score: DetectionScore,
+  status: 'completed' | 'canceled',
+): DetectionRun {
+  return {
+    id: runId,
+    personaId: entry.personaId,
+    startedAt: entry.startedAt,
+    finishedAt: new Date().toISOString(),
+    status,
+    sitesAttempted: raw.results.map((r) => r.id),
+    durationMs: Date.now() - entry.startedAtMs,
+    score,
+    error: null,
+    meta: {
+      sdkVersion: SDK_VERSION,
+      chromiumVersion: safeChromiumVersion(),
+    },
+  };
+}
+
+function buildFailedRun(
+  runId: string,
+  entry: ActiveRunEntry,
+  error: string,
+): DetectionRun {
+  return {
+    id: runId,
+    personaId: entry.personaId,
+    startedAt: entry.startedAt,
+    finishedAt: new Date().toISOString(),
+    status: 'failed',
+    sitesAttempted: [],
+    durationMs: Date.now() - entry.startedAtMs,
+    score: null,
+    error,
+    meta: {
+      sdkVersion: SDK_VERSION,
+      chromiumVersion: safeChromiumVersion(),
+    },
+  };
+}
+
+/** 终态 phase 字符串映射：RunStatus → progress phase。 */
+function statusToTerminalPhase(status: RunStatus): RunProgressEvent['phase'] {
+  if (status === 'completed') return 'done';
+  if (status === 'canceled') return 'canceled';
+  return 'error';
+}
+
+/**
+ * Fire-and-forget 跑一次 detection run。
+ *
+ * 控制流：
+ *   1. await runDetection（中间 progress 透传，SDK 的终态被 FORWARD_PHASES 过滤掉）
+ *   2. 检查 abort.signal 决定 status: completed | canceled（runDetection 自身 abort 不抛）
+ *   3. saveDetectionRun + emit 自己的终态事件（带 finalRun）
+ *   4. catch: launch 失败 / 不可恢复异常 → status=failed
+ *   5. finally: activeRuns.delete + activeRunsByRunId.delete
+ *
+ * 不 await 此函数本身——调用方拿到 promise 后丢进 activeRunPromises，window-all-
+ * closed 时统一 abort（不强求等完，进程会被强杀）。
+ */
+async function executeDetectionRunAsync(
+  entry: ActiveRunEntry,
+  persona: Persona,
+): Promise<void> {
+  const { runId, personaId, abort } = entry;
+  try {
+    const result = await runDetection(persona, {
+      runId,
+      personaTemplate: getPersonaTemplate(persona),
+      signal: abort.signal,
+      artifactDir: getDetectionRunArtifactDir(personaId, runId),
+      launchOptions: { headless: true },
+      onProgress: (evt) => {
+        if (FORWARD_PHASES.has(evt.phase)) {
+          emitProgress(runId, evt);
+        }
+      },
+    });
+    const status: RunStatus = abort.signal.aborted ? 'canceled' : 'completed';
+    const run = buildCompletedRun(runId, entry, result.raw, result.score, status);
+    saveDetectionRun(personaId, run);
+    emitProgress(runId, {
+      runId,
+      personaId,
+      phase: statusToTerminalPhase(status),
+      finalRun: run,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const run = buildFailedRun(runId, entry, message);
+    try {
+      saveDetectionRun(personaId, run);
+    } catch (saveErr) {
+      // 保存失败本身不冒泡——detection 已经失败，让 renderer 拿到 error event
+      // 比"沉默崩溃"重要。saveErr 落日志即可。
+      console.error('[mosaiq] saveDetectionRun on failed run also failed:', saveErr);
+    }
+    emitProgress(runId, {
+      runId,
+      personaId,
+      phase: 'error',
+      error: message,
+      finalRun: run,
+    });
+  } finally {
+    activeRuns.delete(personaId);
+    activeRunsByRunId.delete(runId);
+  }
+}
+
+/**
+ * Persona 不在 schema 里持久化 template id（创建时 caller 传入 win11-chrome-us 之类）。
+ * 这里反推：tags 里如果有 known template id，作为 best-effort 的 metadata 注入；
+ * 否则填 'unknown'。失败不影响 detection 结果，只是 `raw.persona.template` 不
+ * informative。
+ */
+function getPersonaTemplate(persona: Persona): string {
+  const knownTemplates = [
+    'win11-chrome-us',
+    'win10-chrome-us',
+    'macos-sonoma-chrome-us',
+    'ubuntu-2204-chrome-us',
+  ];
+  const tag = persona.metadata.tags.find((t) => knownTemplates.includes(t));
+  return tag ?? 'unknown';
+}
+
+/** ISO timestamp folder-safe（替换 `:` / `.` 为 `-`），与 bench 时间戳同风格。 */
+function newRunId(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,7 +442,7 @@ function registerIpcHandlers() {
       // 当浏览器被用户关闭时，清理注册表
       session.context.on('close', () => {
         runningSessions.delete(id);
-        mainWindow?.webContents.send('mosaiq:personaStopped', id);
+        mainWindow?.webContents.send(IPC_EVENTS.personaStopped, id);
       });
       return { ok: true as const };
     } catch (err) {
@@ -347,6 +563,102 @@ function registerIpcHandlers() {
       version: app.getVersion(),
     };
   });
+
+  // ── Phase 8.5 Detection Lab ──────────────────────────────────────────────
+
+  /**
+   * 启动一次 detection run（fire-and-forget）。
+   *
+   * 守卫顺序：
+   *   1. persona 存在 → 不存在直接 ok:false
+   *   2. 该 persona 没有 in-flight run → 有则 ok:false（单 persona 串行约束）
+   *
+   * 通过后：生成 runId、注册到 activeRuns 双索引、kick off async run、立刻返回。
+   * Renderer 拿到 runId 后订阅 `onDetectionLabProgress` 接收进度。
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabRun,
+    (_evt, personaId: PersonaId): DetectionRunStartResult => {
+      if (!personaExists(personaId)) {
+        return { ok: false, error: `Persona not found: ${personaId}` };
+      }
+      const existing = activeRuns.get(personaId);
+      if (existing) {
+        return {
+          ok: false,
+          error: `Persona ${personaId} already has an in-flight run (${existing.runId}). Cancel it first or wait.`,
+        };
+      }
+
+      let persona: Persona;
+      try {
+        persona = loadPersona(personaId);
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
+
+      const runId = newRunId();
+      const startedAtMs = Date.now();
+      const entry: ActiveRunEntry = {
+        runId,
+        personaId,
+        abort: new AbortController(),
+        startedAt: new Date(startedAtMs).toISOString(),
+        startedAtMs,
+      };
+      activeRuns.set(personaId, entry);
+      activeRunsByRunId.set(runId, entry);
+
+      // Fire-and-forget。`void` 标记给 TS / lint 看：故意不 await。错误兜底
+      // 全部走 executeDetectionRunAsync 内部 catch + saveDetectionRun + emit error。
+      void executeDetectionRunAsync(entry, persona);
+
+      return { ok: true, runId };
+    },
+  );
+
+  /** 中断 in-flight run；abort 后 SDK 会让当前站结束（goto timeout 内），下站起短路。 */
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabCancel,
+    (_evt, runId: string): boolean => {
+      const entry = activeRunsByRunId.get(runId);
+      if (!entry) return false;
+      entry.abort.abort();
+      return true;
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabListRuns,
+    (_evt, personaId: PersonaId) => {
+      return listDetectionRuns(personaId);
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabGetRun,
+    (_evt, personaId: PersonaId, runId: string): DetectionRun => {
+      return loadDetectionRun(personaId, runId);
+    },
+  );
+
+  /**
+   * 删除一次 run（含 artifacts 子目录）。
+   *
+   * 不允许删 in-flight run——会把还在写的文件删了 / artifact 子目录被占用 rm 失败。
+   * Renderer 如果想删 in-flight，应先 cancel 等终态事件，再删。
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabDeleteRun,
+    (_evt, personaId: PersonaId, runId: string): boolean => {
+      if (activeRunsByRunId.has(runId)) {
+        throw new Error(
+          `Cannot delete in-flight run ${runId}; cancel it first then retry.`,
+        );
+      }
+      return deleteDetectionRun(personaId, runId);
+    },
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -359,6 +671,15 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', async () => {
+  // 中断所有 in-flight detection run。Fire-and-forget 的 saveDetectionRun 可能
+  // 来不及完成——这是可接受的：listDetectionRuns 看到坏 JSON 会 warn skip，下次
+  // run 不受影响。强行 await 这些 promise 会让关窗体验差（最坏 60s page.goto）。
+  for (const [, entry] of activeRuns) {
+    entry.abort.abort();
+  }
+  activeRuns.clear();
+  activeRunsByRunId.clear();
+
   // 关闭所有运行中的 persona session
   for (const [, session] of runningSessions) {
     await session.close().catch(() => {});

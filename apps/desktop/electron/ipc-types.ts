@@ -4,9 +4,19 @@
  */
 
 import type { Persona, PersonaId } from '@mosaiq/persona-schema';
-import type { ProxyVerifyResult } from '@mosaiq/sdk';
+import type {
+  DetectionRun,
+  DetectionRunSummary,
+  ProxyVerifyResult,
+  RunProgressEvent,
+} from '@mosaiq/sdk';
 
-export type { ProxyVerifyResult };
+export type {
+  DetectionRun,
+  DetectionRunSummary,
+  ProxyVerifyResult,
+  RunProgressEvent,
+};
 
 export interface ProxyVerifyInput {
   protocol: 'http' | 'https' | 'socks5';
@@ -115,6 +125,30 @@ export interface ExportPersonaOptions {
   stripSecrets?: boolean;
 }
 
+/**
+ * Detection Lab run 启动结果。
+ *   - ok:true → run 已成功 kicked off（fire-and-forget），runId 是新生成的标识，
+ *     调用方接下来订阅 `onDetectionLabProgress` 接收进度
+ *   - ok:false → 通常因为该 persona 已有 in-flight run（单 persona 串行约束）
+ *     或 persona 不存在
+ */
+export type DetectionRunStartResult =
+  | { ok: true; runId: string }
+  | { ok: false; error: string };
+
+/**
+ * 推送给 renderer 的进度消息。
+ *
+ * `runId` 由 main.ts fire-and-forget 时生成 + IPC 启动响应同步返回，所以 renderer
+ * 收到第一个 progress 事件前已经知道 runId（避免「不知道是哪次 run 的进度」的
+ * race）。`progress.runId` 与 wrapper 的 `runId` 永远相等——重复字段是 belt-and-
+ * suspenders，方便上层直接转发。
+ */
+export interface DetectionLabProgressMessage {
+  runId: string;
+  progress: RunProgressEvent;
+}
+
 export interface MosaiqApi {
   listPersonas(): Promise<PersonaSummary[]>;
   getPersona(id: PersonaId): Promise<Persona>;
@@ -130,11 +164,36 @@ export interface MosaiqApi {
   exportPersona(id: PersonaId, opts?: ExportPersonaOptions): Promise<ExportPersonaResult>;
   importPersona(): Promise<ImportPersonaResult>;
   appInfo(): Promise<{ runtimeRoot: string; version: string }>;
+
+  // ── Phase 8.5 Detection Lab ────────────────────────────────────────────
+  /** 启动一次 detection run（fire-and-forget）。立刻返回 runId；进度走 events。 */
+  detectionLabRun(personaId: PersonaId): Promise<DetectionRunStartResult>;
+  /** 中断 in-flight run；返回 true 表示找到并 abort 成功，false = 该 runId 不在 active 列表。 */
+  detectionLabCancel(runId: string): Promise<boolean>;
+  /** 列出 persona 的历史 run 摘要（按 startedAt 降序）。 */
+  detectionLabListRuns(personaId: PersonaId): Promise<DetectionRunSummary[]>;
+  /** 读取单次 run 完整数据；缺文件或 shape mismatch 抛错。 */
+  detectionLabGetRun(personaId: PersonaId, runId: string): Promise<DetectionRun>;
+  /** 删除单次 run（含 artifacts 子目录）；false = 文件本来就不存在。 */
+  detectionLabDeleteRun(personaId: PersonaId, runId: string): Promise<boolean>;
+}
+
+/**
+ * 主进程推送给 renderer 的事件 API（contextBridge 单独 expose，与 invoke API 分开）。
+ *
+ * 每个订阅函数返回 cleanup 函数，调用即取消订阅（避免 effect unmount 后还在收事件）。
+ */
+export interface MosaiqEvents {
+  /** Persona 浏览器被用户手动关闭时触发。 */
+  onPersonaStopped(cb: (id: PersonaId) => void): () => void;
+  /** Detection Lab run 进度事件（init / site-start / site-retry / site-end / done / canceled / error）。 */
+  onDetectionLabProgress(cb: (msg: DetectionLabProgressMessage) => void): () => void;
 }
 
 declare global {
   interface Window {
     mosaiq: MosaiqApi;
+    mosaiqEvents: MosaiqEvents;
   }
 }
 
@@ -153,4 +212,18 @@ export const IPC_CHANNELS = {
   exportPersona: 'mosaiq:exportPersona',
   importPersona: 'mosaiq:importPersona',
   appInfo: 'mosaiq:appInfo',
+  detectionLabRun: 'mosaiq:detectionLab:run',
+  detectionLabCancel: 'mosaiq:detectionLab:cancel',
+  detectionLabListRuns: 'mosaiq:detectionLab:listRuns',
+  detectionLabGetRun: 'mosaiq:detectionLab:getRun',
+  detectionLabDeleteRun: 'mosaiq:detectionLab:deleteRun',
+} as const;
+
+/**
+ * 主进程 → renderer 的单向 push 事件 channel。与 IPC_CHANNELS（invoke/handle）
+ * 分开命名避免误用。
+ */
+export const IPC_EVENTS = {
+  personaStopped: 'mosaiq:personaStopped',
+  detectionLabProgress: 'mosaiq:detectionLab:progress',
 } as const;

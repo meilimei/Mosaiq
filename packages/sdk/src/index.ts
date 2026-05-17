@@ -15,6 +15,11 @@
 
 export { launchPersona, type LaunchPersonaOptions } from './launcher.js';
 export { BrowserSession } from './browser-session.js';
+export { SDK_VERSION } from './version.js';
+export {
+  getInstalledChromeVersion,
+  getInstalledChromeMajor,
+} from './chromium-version.js';
 export {
   savePersona,
   loadPersona,
@@ -41,6 +46,9 @@ export {
   getUserDataDir,
   getPersonaDir,
   getPersonaFile,
+  getDetectionRunsRoot,
+  getDetectionRunsDir,
+  getDetectionRunFile,
   type PathConfig,
 } from './paths.js';
 export { buildUserAgent, buildAcceptLanguage } from './ua.js';
@@ -81,11 +89,23 @@ export {
   weightHit,
   weightedHitsSum,
   SEVERITY_WEIGHT,
+  runDetection,
+  runOnePage,
+  snapshotPersona,
+  saveDetectionRun,
+  loadDetectionRun,
+  listDetectionRuns,
+  deleteDetectionRun,
+  getDetectionRunArtifactDir,
   type DetectionRun,
   type DetectionRunRaw,
+  type DetectionRunSummary,
   type DetectionScore,
   type HitSeverity,
   type HitsBySurface,
+  type RunDetectionOptions,
+  type RunDetectionResult,
+  type RunDetectionDeps,
   type RunProgressEvent,
   type RunProgressPhase,
   type RunStatus,

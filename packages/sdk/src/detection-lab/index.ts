@@ -16,9 +16,20 @@
  * } from '@mosaiq/sdk';
  * ```
  *
- * 设计选择：所有运行时函数在这一层都 pure（无 side-effect、无 IO），便于 main / renderer
- * 双向 import 而不引入 Node-only 依赖。需要 IO 的 runner / storage 之后再
- * 增量加进来（v0.8 后续锤）；scorer 已落位，输出 `DetectionScore`。
+ * 设计选择（v0.8 演进）：
+ *   - 8.1 / 8.2 — 类型 + sites + scorer 是 pure（无 side-effect / 无 IO），
+ *     renderer 可以 import 这些子模块做卡片预览算分。
+ *   - 8.3 — 加入 `runDetection` / `runOnePage`：依赖 `playwright-core` 与 fs，
+ *     **Node-only**。renderer 不能直接 import 这层，必须走 main process IPC。
+ *   - 8.4 — storage（`saveDetectionRun` / `loadDetectionRun` / `listDetectionRuns`
+ *     / `deleteDetectionRun` / `getDetectionRunArtifactDir`）：也 Node-only，但
+ *     8.5 main 进程的 IPC handler 直接 import；renderer 通过 preload bridge 拿
+ *     `DetectionRunSummary[]` / `DetectionRun`（两者都是 POJO，IPC-safe）。
+ *
+ * 实操上 `@mosaiq/sdk` 整体已经是 Node-only 包（launcher 用 chromium），所以
+ * renderer 永远走 preload bridge；这里的 pure / impure 区分主要影响 desktop
+ * main process 的依赖图清晰度，以及未来若要把 scorer 单独打包给 web 用时的
+ * 拆分点（`@mosaiq/sdk/detection-lab/scorer` 直接出 ESM）。
  */
 
 export { SITES, extractCreepjsFromDocument } from './sites.js';
@@ -38,6 +49,24 @@ export {
   type SurfaceHit,
   type SurfaceName,
 } from './types.js';
+
+export {
+  runDetection,
+  runOnePage,
+  snapshotPersona,
+  type RunDetectionOptions,
+  type RunDetectionResult,
+  type RunDetectionDeps,
+} from './runner.js';
+
+export {
+  saveDetectionRun,
+  loadDetectionRun,
+  listDetectionRuns,
+  deleteDetectionRun,
+  getDetectionRunArtifactDir,
+  type DetectionRunSummary,
+} from './run-store.js';
 
 export {
   // 主入口
