@@ -1,0 +1,75 @@
+# CI — runs on every PR + push to main
+#
+# Guards:
+#   1. typecheck across the whole workspace (persona-schema, sdk, desktop)
+#   2. unit tests for persona-schema + sdk (vitest)
+#   3. captured-WebGL-profiles drift check — bench/captured-profiles/*.json
+#      must stay in lock-step with src/injection/webgl-profiles-captured.ts
+#      (Phase 7.0 contributor pipeline). Re-run
+#      `pnpm --filter @mosaiq/sdk run bench:integrate-profiles` locally and
+#      commit the regenerated TS to fix a drift failure.
+#
+# We run on ubuntu-latest. Mosaiq desktop runs on Windows, but the test
+# surface (pure functions, vitest) is platform-agnostic. Windows-specific
+# behavior is exercised manually.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress CI for the same PR / branch when a new commit lands —
+# saves runner minutes during rapid iteration.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck + test + drift check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm must be installed BEFORE setup-node so the node cache key picks
+      # up the correct package manager hash. Version pinned to match
+      # `packageManager` in root package.json.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Desktop's typecheck imports workspace packages through their built
+      # dist `.d.ts` files (per DEVELOPMENT.md). Build the packages first so
+      # the resolution succeeds. SDK + persona-schema build is fast (<10s).
+      - name: Build workspace packages
+        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" build
+
+      - name: Typecheck (all packages)
+        run: pnpm -r typecheck
+
+      - name: Test — persona-schema
+        run: pnpm --filter @mosaiq/persona-schema test
+
+      - name: Test — sdk
+        run: pnpm --filter @mosaiq/sdk test
+
+      # Phase 7.0 drift detection: regenerate the captured-profiles TS in
+      # `--check` mode and fail if the on-disk file differs. This is the
+      # exact contract documented in docs/CAPTURING-WEBGL-PROFILES.md.
+      - name: Drift check — captured WebGL profiles
+        run: pnpm --filter @mosaiq/sdk run bench:integrate-profiles -- --check
