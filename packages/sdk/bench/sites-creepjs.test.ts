@@ -120,13 +120,16 @@ describe('extractCreepjsFromDocument — synthetic DOM', () => {
 // This is the exact HTML that produced the 23 phantom `<unknown>` entries in
 // the v0.5.0 report. After the v0.5.1 fix it must collapse to just the 2 real
 // surface markers (WebGL bold-fail, Audio lies).
+//
+// The snapshot lives at `bench/fixtures/creepjs-v0.5.0-snapshot.html` (committed
+// to the repo) — NOT under `bench/results/` which is gitignored. Without the
+// committed snapshot CI cannot reproduce the regression check.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const FIXTURE_PATH = resolve(
   __dirname,
-  'results',
-  '2026-05-17T01-27-18-536Z',
-  'creepjs.html',
+  'fixtures',
+  'creepjs-v0.5.0-snapshot.html',
 );
 
 describe('extractCreepjsFromDocument — v0.5.0 bench fixture', () => {
