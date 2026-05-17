@@ -22,6 +22,7 @@ import {
   selectWebglProfileForPersona,
   serializeProfile,
 } from './webgl-profiles.js';
+import { KNOWN_PROFILES_CAPTURED } from './webgl-profiles-captured.js';
 
 describe('GL constants', () => {
   it('hex 值与 WebGL spec 一致（不让 typo 静默生效）', () => {
@@ -527,6 +528,112 @@ describe('selectWebglProfileForPersona', () => {
     });
     const b = selectWebglProfileForPersona({ webglRenderer: UHD_730 });
     expect(a).toBe(b);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 7.0/7.2: KNOWN_PROFILES_CAPTURED — community/contributor pipeline
+//
+// The captured registry is auto-generated from `bench/captured-profiles/*.json`
+// via `bench:integrate-profiles`. These tests guard the wiring contract:
+//   - every captured profile is selectable by id and by its own name regex
+//   - hand-curated profiles in KNOWN_PROFILES still take precedence on
+//     overlapping regex matches (declaration order)
+//   - structural invariants of captured profiles match hand-curated ones
+//
+// All tests degrade gracefully to no-ops when KNOWN_PROFILES_CAPTURED is
+// empty (clean repo with no committed captures yet).
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 7.0: KNOWN_PROFILES_CAPTURED integration', () => {
+  it('captured registry spread into KNOWN_PROFILES (post-curated profiles)', () => {
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      expect(KNOWN_PROFILES).toContain(captured);
+    }
+    // The 4 hand-curated profiles MUST come first (precedence rule).
+    const handCuratedCount = 4; // UHD630, UHD730, RTX3060, RX6600
+    for (let i = 0; i < handCuratedCount; i++) {
+      expect(KNOWN_PROFILES_CAPTURED).not.toContain(KNOWN_PROFILES[i]);
+    }
+  });
+
+  it('captured profile ids are unique vs hand-curated and follow naming convention', () => {
+    const handCuratedIds = new Set(
+      [INTEL_UHD_630_D3D11, INTEL_UHD_730_D3D11, NVIDIA_RTX_3060_D3D11, AMD_RX_6600_D3D11].map(
+        (p) => p.id,
+      ),
+    );
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      expect(handCuratedIds.has(captured.id)).toBe(false);
+      // Same naming format constraint as KNOWN_PROFILES generic check
+      expect(captured.id).toMatch(/^[a-z0-9-]+$/);
+    }
+  });
+
+  it('every captured profile is reachable via selectWebglProfileById', () => {
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      expect(selectWebglProfileById(captured.id)).toBe(captured);
+    }
+  });
+
+  it('every captured profile.matchRenderer.test(profile.name) returns true', () => {
+    // A capture's `name` is the actual UNMASKED_RENDERER_WEBGL string, and
+    // `matchRenderer` is auto-derived to match exactly that string. The
+    // regex must therefore self-match — otherwise a persona with that
+    // renderer would silently fall through to "no spoof".
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      expect(captured.matchRenderer.test(captured.name)).toBe(true);
+    }
+  });
+
+  it('selectWebglProfile(captured.name) returns the captured profile (or an earlier hand-curated match)', () => {
+    // Ordering rule: hand-curated wins on overlapping regex. We only assert
+    // the result is *some* profile that matches; if it's not the captured
+    // one, it must be a hand-curated entry whose regex also matches the
+    // captured renderer string (legitimate precedence override).
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      const selected = selectWebglProfile(captured.name);
+      expect(selected).not.toBeNull();
+      if (selected !== captured) {
+        // Must be a hand-curated entry declared before the captured spread
+        // whose own regex matches the captured renderer.
+        const idx = KNOWN_PROFILES.indexOf(selected!);
+        const capturedIdx = KNOWN_PROFILES.indexOf(captured);
+        expect(idx).toBeLessThan(capturedIdx);
+        expect(selected!.matchRenderer.test(captured.name)).toBe(true);
+      }
+    }
+  });
+
+  it('selectWebglProfileForPersona honors webglProfileId override for captured ids', () => {
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      const profile = selectWebglProfileForPersona({
+        webglRenderer: 'intentionally-non-matching-renderer',
+        webglProfileId: captured.id,
+      });
+      expect(profile).toBe(captured);
+    }
+  });
+
+  it('captured profiles carry knownInCreepjsWhitelist boolean (verify-derived, never undefined)', () => {
+    // The integrate CLI always emits the field from `verify.verdict`, so
+    // captured entries never have the `undefined` ambiguity that some
+    // hand-curated entries do.
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      expect(typeof captured.knownInCreepjsWhitelist).toBe('boolean');
+    }
+  });
+
+  it('captured profiles produce non-empty serialization (webgl1 + webgl2 maps)', () => {
+    for (const captured of KNOWN_PROFILES_CAPTURED) {
+      const ser = serializeProfile(captured);
+      // A real HW capture always has at least the WebGL1 string params
+      // (VENDOR / RENDERER / VERSION / SHADING_LANGUAGE_VERSION) plus
+      // capability constants. Empty maps would indicate a malformed JSON
+      // slipped through integrate's validation.
+      expect(Object.keys(ser.webgl1).length).toBeGreaterThan(0);
+      expect(Object.keys(ser.webgl2).length).toBeGreaterThan(0);
+    }
   });
 });
 
