@@ -367,24 +367,17 @@ describe('Phase 5.4c: AudioBuffer.copyFromChannel mirror (CreepJS lies fix)', ()
     expect(copySample.join(',')).toBe(binsSample.join(','));
   });
 
-  it('copyFromChannel + getChannelData reverse-order also matches', () => {
+  it('copyFromChannel + getChannelData reverse-order also matches (Phase 6.1 byte-equal)', () => {
     // 反向顺序：先 getChannelData（in-place noise），再 copyFromChannel。
-    // 此时 buffer 已经噪声化，copy 应该读到噪声化后的样本，仍与 bins 一致。
+    // Phase 6.1 幂等记忆化：getChannelData 触发 ensureNoised 一次，set.add(0)；
+    // 后续 copyFromChannel 检查 set.has(0) 命中 → 不再加 noise → native copy
+    // 出与 underlying 完全相同的样本。bins 和 copy 应逐字节相等。
     const buf = new MockAudioBuffer({ numberOfChannels: 1, length: 5000, sampleRate: 44100 });
     const bins = buf.getChannelData(0);
     const copy = new Float32Array(5000);
     buf.copyFromChannel(copy, 0);
-    // copy = (buffer 已带 noise) 再 + noise（hook 累加 noise pattern 一次）
-    // bins = buffer 已带 noise（in-place 第一次）
-    // ⚠ 这两个不再相等（hook 设计导向 caller-perceived 而非 buffer-state 一致），
-    // 但 CreepJS 不走这个顺序。这里测确认：noise 量级仍受控（不爆炸）。
-    let maxDelta = 0;
-    for (let i = 0; i < 5000; i++) {
-      const d = Math.abs((copy[i] ?? 0) - (bins[i] ?? 0));
-      if (d > maxDelta) maxDelta = d;
-    }
-    // 反向顺序下的累积 delta < 2× amplitude（noise + noise 上限）
-    expect(maxDelta).toBeLessThan(2 * config.audioNoiseAmplitude);
+    // 6.1 强不变量：同一 buffer + channel 的两个 access path 输出逐样本相等
+    expect(Array.from(copy)).toEqual(Array.from(bins));
   });
 
   it('copyFromChannel preserves silent samples (Phase 5.2b skip-zero rule)', () => {
@@ -414,9 +407,11 @@ describe('Phase 5.4c: AudioBuffer.copyFromChannel mirror (CreepJS lies fix)', ()
     expect(Array.from(copy1)).toEqual(Array.from(bins2));
   });
 
-  it('copyToChannel writes noise-baked source into channel (next read sees noise)', () => {
-    // caller 通过 copyToChannel 写入新数据 → hook 先给 source 加 noise → 写入。
-    // 后续 getChannelData(0) 读出的样本应已带 noise（buffer 内容反映了带 noise 的 source）。
+  it('copyToChannel data fully preserved after subsequent getChannelData (Phase 6.1 contract)', () => {
+    // Phase 6.1 重设 copyToChannel 语义：caller 写入完整覆盖 underlying，并标记
+    // (buf, channel) 为 synced（set.add(channel)）；后续 ensureNoised 检查 set.has
+    // 命中 → 跳过加 noise → caller 数据原样保留。这是 CreepJS getCopyTo 路径成立
+    // 的前提（dataAttacked.filter(!== rand) 必须 empty）。
     const buf = new MockAudioBuffer({
       numberOfChannels: 1,
       length: 100,
@@ -425,17 +420,195 @@ describe('Phase 5.4c: AudioBuffer.copyFromChannel mirror (CreepJS lies fix)', ()
     });
     const source = new Float32Array(100);
     for (let i = 0; i < 100; i++) source[i] = (i + 1) * 1e-4; // 全非零
+    // 保存 source 的 Float32 量化值用于断言（避免 Float32 ↔ Float64 round-trip 误差）
+    const sourceCopy = Float32Array.from(source);
     buf.copyToChannel(source, 0);
-    // 验证：写入后 getChannelData 读出的样本与原始 source 不同（被噪声化）
-    // 但 getChannelData 自己会再加 noise → 总噪声 = 2× amplitude 上限
     const bins = buf.getChannelData(0);
-    let differencesFromSource = 0;
-    for (let i = 0; i < 100; i++) {
-      // bins[i] = (source[i] + noise_via_copyTo) + noise_via_getChannelData
-      // 不等于 source[i] 的概率极高
-      if (bins[i] !== (i + 1) * 1e-4) differencesFromSource++;
+    // 6.1 强不变量：bins 与 sourceCopy 逐字节相等（无任何 noise 叠加）
+    expect(Array.from(bins)).toEqual(Array.from(sourceCopy));
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 6.1: per-(buffer, channel) 幂等记忆化 noise（CreepJS audio trap 闭合）
+//
+// 背景：CreepJS upstream src/audio/index.ts getNoiseFactor() 用 AUDIO_TRAP
+// (= Math.random()) 写到 fresh AudioBuffer 的 3 个索引，跨 access path 验
+// 证写入是否 survive、复制是否一致：
+//   getCopyFrom: getChannelData(0)[start/mid/end] = rand; copyFromChannel(copy, 0);
+//                attack[i] = getChannelData(0)[idx_i] === 0 ? Math.random() : 0;
+//                return [...new Set([...gcd, ...copy, ...attack])].filter(!== 0)
+//   getCopyTo:  copyToChannel(Float32Array.fill(rand), 0);
+//                dataAttacked = [...gcd].map(x => x !== freq || !x ? Math.random() : x)
+//                return dataAttacked.filter(x => x !== freq)
+//   noiseFactor = Set(...).size > 1 ? sum : 0
+//   if (noiseFactor || sum(unique(bins[0..100]))) lied = true → trap yellow lies
+//
+// v0.5.4c 的 per-call PRNG 每次重置 → 同 buffer 多次 getChannelData 返回不同
+// noise → 写入的 rand 被后续 noise 抹掉 → noiseFactor != 0 → trap lies。
+//
+// 6.1 修法：WeakMap<AudioBuffer, Set<channel>> 记录已 noise 的 (buf, ch)。
+// ensureNoised 第一次调用时 in-place 加 noise（仅 non-zero 样本），加完
+// set.add(channel)；后续调用 no-op。3 个 hook 都用同一 ensureNoised → 跨
+// access path 输出一致 → caller 写入幸存 → noiseFactor === 0 → trap 闭合。
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 6.1: per-(buffer, channel) idempotent noise memoization', () => {
+  it('idempotence: 同一 buffer 多次 getChannelData 返回逐字节相等', () => {
+    const buf = new MockAudioBuffer({ numberOfChannels: 1, length: 200, sampleRate: 44100 });
+    const a = Array.from(buf.getChannelData(0));
+    const b = Array.from(buf.getChannelData(0));
+    const c = Array.from(buf.getChannelData(0));
+    expect(b).toEqual(a);
+    expect(c).toEqual(a);
+  });
+
+  it('caller-write-survives: getChannelData()[i] = X 后再读仍是 X (non-zero X)', () => {
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 200,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    // RAND 以 Float32 quantized 值作为期望（caller 写入 Float32Array 会 round一次）
+    const RAND = Math.fround(0.42); // 模拟 CreepJS AUDIO_TRAP = Math.random() 后 quantize
+    // 第一次 get：触发 ensureNoised，但 silence buffer + skip-zero → 无 noise 写入
+    const view = buf.getChannelData(0);
+    view[50] = RAND;
+    view[100] = RAND;
+    view[150] = RAND;
+    // 再读：set.has(0) 命中 → no-op → 写入完整保留
+    const reread = buf.getChannelData(0);
+    expect(reread[50]).toBe(RAND);
+    expect(reread[100]).toBe(RAND);
+    expect(reread[150]).toBe(RAND);
+  });
+
+  it('CreepJS getNoiseFactor() 复刻 → noiseFactor === 0 (trap 闭合 smoking gun)', () => {
+    // 复刻 CreepJS upstream src/audio/index.ts getCopyFrom + getCopyTo + getNoiseFactor。
+    // Phase 6.1 必须让最终 result Set size === 1 → noiseFactor 强制 0。
+    // RAND 预先 Float32-quantize，避免写入 Float32Array 后 Set 里两个不同精度版本共存。
+    const RAND = Math.fround(Math.random()); // 模拟 AUDIO_TRAP（Float32 量化后）
+
+    // ── getCopyFrom ──
+    const bufA = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 2000,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const copyA = new Float32Array(2000);
+    const start = 500;
+    const mid = 510;
+    const end = 520;
+    bufA.getChannelData(0)[start] = RAND;
+    bufA.getChannelData(0)[mid] = RAND;
+    bufA.getChannelData(0)[end] = RAND;
+    bufA.copyFromChannel(copyA, 0);
+    const attackA = [
+      bufA.getChannelData(0)[start] === 0 ? Math.random() : 0,
+      bufA.getChannelData(0)[mid] === 0 ? Math.random() : 0,
+      bufA.getChannelData(0)[end] === 0 ? Math.random() : 0,
+    ];
+    const fromResult = [
+      ...new Set([...bufA.getChannelData(0), ...copyA, ...attackA]),
+    ].filter((x) => x !== 0);
+
+    // ── getCopyTo ──
+    const bufB = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 2000,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const filled = new Float32Array(2000);
+    for (let i = 0; i < 2000; i++) filled[i] = RAND;
+    bufB.copyToChannel(filled, 0);
+    const frequency = bufB.getChannelData(0)[0]!;
+    const dataAttacked = [...bufB.getChannelData(0)].map((x) =>
+      x !== frequency || !x ? Math.random() : x,
+    );
+    const toResult = dataAttacked.filter((x) => x !== frequency);
+
+    // ── noiseFactor ──
+    const result = [...new Set([...fromResult, ...toResult])];
+    // 关键断言：result 应只含 RAND 一个值 → noiseFactor === 0
+    expect(result.length).toBe(1);
+    expect(result[0]).toBe(RAND);
+
+    const noiseFactor = +(
+      result.length !== 1 && result.reduce((acc, n) => (acc += +n!), 0)
+    );
+    expect(noiseFactor).toBe(0);
+  });
+
+  it('per-channel isolation: 不同 channel 独立 noise + 独立 synced 状态', () => {
+    const buf = new MockAudioBuffer({ numberOfChannels: 2, length: 100, sampleRate: 44100 });
+    const ch0a = Array.from(buf.getChannelData(0));
+    const ch1a = Array.from(buf.getChannelData(1));
+    // ch0 与 ch1 各自的 noise 序列必须不同（XOR seed）
+    expect(ch0a).not.toEqual(ch1a);
+    // 二次读取仍 deterministic
+    const ch0b = Array.from(buf.getChannelData(0));
+    const ch1b = Array.from(buf.getChannelData(1));
+    expect(ch0b).toEqual(ch0a);
+    expect(ch1b).toEqual(ch1a);
+  });
+
+  it('copyFromChannel 在 fresh buffer 上触发首次 noise（与 getChannelData 等价的入口）', () => {
+    // 直接 copyFromChannel 不经过 getChannelData，6.1 hook 仍要 lazy noise underlying
+    // 一次，让 dest 和后续 getChannelData 一致。
+    const bufA = new MockAudioBuffer({ numberOfChannels: 1, length: 100, sampleRate: 44100 });
+    const bufB = new MockAudioBuffer({ numberOfChannels: 1, length: 100, sampleRate: 44100 });
+    const copy = new Float32Array(100);
+    bufA.copyFromChannel(copy, 0);
+    const bins = bufB.getChannelData(0);
+    // 两条路径应输出同一 noise 模式（相同 seed^channel + 相同 baseline）
+    expect(Array.from(copy)).toEqual(Array.from(bins));
+  });
+
+  it('silent buffer + copyFromChannel → 全 0 (skip-zero 与幂等组合)', () => {
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 5000,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const copy = new Float32Array(5000);
+    buf.copyFromChannel(copy, 0);
+    const bins = buf.getChannelData(0);
+    // 静音 buffer 经任何 access path 都应保持全 0
+    for (let i = 0; i < 5000; i++) {
+      expect(copy[i]).toBe(0);
+      expect(bins[i]).toBe(0);
     }
-    expect(differencesFromSource).toBeGreaterThan(95);
+  });
+
+  it('copyToChannel 后 copyFromChannel 仍读到原 source 数据（synced 状态跨 access path）', () => {
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 100,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const source = new Float32Array(100);
+    for (let i = 0; i < 100; i++) source[i] = (i + 1) * 1e-4;
+    const sourceCopy = Float32Array.from(source);
+    buf.copyToChannel(source, 0);
+    const dest = new Float32Array(100);
+    buf.copyFromChannel(dest, 0);
+    // copyFromChannel 应原样读出 source 数据（synced 后不再加 noise）
+    expect(Array.from(dest)).toEqual(Array.from(sourceCopy));
+  });
+
+  it('独立 buffer 间 cache 互不影响（WeakMap key 安全）', () => {
+    const buf1 = new MockAudioBuffer({ numberOfChannels: 1, length: 50, sampleRate: 44100 });
+    const buf2 = new MockAudioBuffer({ numberOfChannels: 1, length: 50, sampleRate: 44100 });
+    // buf1.ch0 noised 后，buf2 仍是 fresh —— 各自独立 ensureNoised
+    const a1 = Array.from(buf1.getChannelData(0));
+    const a2 = Array.from(buf2.getChannelData(0));
+    // 同 PRNG seed^channel 下两 buffer noise 序列必相同
+    expect(a1).toEqual(a2);
   });
 });
 

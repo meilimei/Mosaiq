@@ -423,9 +423,9 @@ describe('Phase 4.2 worker IIFE: AudioBuffer audio spoof mirror (static)', () =>
 
   it('IIFE noise pattern: per-sample PRNG advance + 条件 add (Phase 5.2b silent-skip)', () => {
     // Phase 5.2b：silent samples 保留 exact 0，避免 CreepJS unique:5000 bold-fail。
-    // Phase 5.4c：noise 应用逻辑被抽取到共享 `_applyAudioNoise(arr,ch)` helper，
-    // 三个 hook（getChannelData / copyFromChannel / copyToChannel）复用，
-    // 保 cross-access-path 噪声序列一致 → 修 CreepJS yellow lies。关键不变量：
+    // Phase 6.1：noise 应用逻辑包在共享 `_ensureNoised(buf,ch,arr)` helper 内（替换
+    // 5.4c 的 `_applyAudioNoise`），三个 hook 都先查 WeakMap 避免重复加 noise。
+    // 关键不变量：
     //   1. 每样本 PRNG advance 一次（保 deterministic 序列） → `(prng()-0.5)*_audioAmp`
     //   2. 仅当 sample !== 0 时把 noise 写回 arr[i]            → `if(s!==0)arr[i]=s+n`
     expect(capturedIIFE).toMatch(/var s=arr\[i\]\|\|0/);
@@ -433,14 +433,32 @@ describe('Phase 4.2 worker IIFE: AudioBuffer audio spoof mirror (static)', () =>
     expect(capturedIIFE).toMatch(/if\(s!==0\)arr\[i\]=s\+n/);
   });
 
-  it('IIFE replaces copyFromChannel + copyToChannel (Phase 5.4c CreepJS lies fix)', () => {
-    // Phase 5.4c worker mirror — main scope §6 同步了 copyFromChannel /
-    // copyToChannel hook，worker IIFE 必须同步覆盖（worker realm 内的
-    // OfflineAudioContext path 同样会触发 CreepJS cross-check）。
+  it('IIFE replaces copyFromChannel + copyToChannel (Phase 6.1 idempotent memoization)', () => {
+    // Phase 6.1 worker mirror —— main scope §6 用 WeakMap<AudioBuffer, Set<channel>>
+    // 记忆化 noise，三个 hook 都通过 `_ensureNoised` 早退避免重复加 noise。
+    // worker IIFE 必须同步覆盖（worker realm 内的 OfflineAudioContext path 同样会
+    // 触发 CreepJS getNoiseFactor cross-check）。
     expect(capturedIIFE).toMatch(/AudioBuffer\.prototype\.copyFromChannel\s*=\s*function/);
     expect(capturedIIFE).toMatch(/AudioBuffer\.prototype\.copyToChannel\s*=\s*function/);
-    // 共享 helper 名 _applyAudioNoise 锁住三处 hook 复用同一逻辑
-    expect(capturedIIFE).toMatch(/_applyAudioNoise/);
+    // 共享 helper 名 _ensureNoised 锁住三处 hook 复用同一逻辑
+    expect(capturedIIFE).toMatch(/_ensureNoised/);
+  });
+
+  it('IIFE contains _noisedChannels WeakMap + set.has(ch) early return (Phase 6.1)', () => {
+    // 6.1 的 trap-fix 核心：WeakMap 记录 (buffer, channel) 已 noise 过 → 后续读
+    // 直接 return 不再叠加 noise → caller 写入幸存 → CreepJS noiseFactor === 0。
+    // 锁这三处文本结构防止重构丢功能。
+    expect(capturedIIFE).toMatch(/_noisedChannels=new WeakMap/);
+    expect(capturedIIFE).toMatch(/function _ensureNoised\(buf,ch,arr\)/);
+    expect(capturedIIFE).toMatch(/if\(set\.has\(ch\)\)return/);
+  });
+
+  it('IIFE copyToChannel marks (buf, ch) synced after native call (Phase 6.1)', () => {
+    // 6.1：copyToChannel 写完不再加 noise（caller 数据完整保留），用 set.add(ch)
+    // 标记 synced，禁止后续 ensureNoised 给 underlying 加 noise。
+    // copyToChannel hook body 内必含 native call _origCopyTo + set.add(ch) 顺序。
+    expect(capturedIIFE).toMatch(/_origCopyTo\.call\(this,source,channelNumber,bufferOffset\)/);
+    expect(capturedIIFE).toMatch(/set\.add\(ch\)/);
   });
 });
 
@@ -602,19 +620,44 @@ describe('Phase 4.2 worker IIFE: AudioBuffer execution in sandbox', () => {
     expect(copySample.join(',')).toBe(binsSample.join(','));
   });
 
-  it('IIFE copyToChannel write-path noises caller source (round-trip via getChannelData)', () => {
-    // copyToChannel hook 给 source 加 noise 再写入，确保后续 getChannelData
-    // 读出的样本与原始 source 不同（noise 已注入）。
+  it('IIFE copyToChannel preserves caller source (Phase 6.1 synced contract, sandbox)', () => {
+    // Phase 6.1 worker mirror：copyToChannel native 写完后，set.add(channel) 标记
+    // (buffer, channel) 已 synced；后续 getChannelData 触发 _ensureNoised → 命中
+    // set.has(ch) → 直接 return → caller 数据 byte-equal 写入值。这是闭合 CreepJS
+    // getNoiseFactor() trap 的关键不变量。
     const { FakeAudioBuffer } = runIIFEWithAudio(capturedIIFE);
+    // baseline 全 0：FakeAudioBuffer 默认 fill 是三角波，但 copyToChannel 是写覆盖，
+    // 我们看的是 caller-provided source 是否在写完后保持不变。
     const buf = new FakeAudioBuffer(1, 100, 44100);
     const source = new Float32Array(100);
-    for (let i = 0; i < 100; i++) source[i] = (i + 1) * 1e-4; // 全非零
+    for (let i = 0; i < 100; i++) source[i] = (i + 1) * 1e-4;
+    const sourceCopy = Float32Array.from(source); // Float32 量化基准
     buf.copyToChannel(source, 0);
     const bins = buf.getChannelData(0);
-    let differencesFromSource = 0;
-    for (let i = 0; i < 100; i++) {
-      if (bins[i] !== (i + 1) * 1e-4) differencesFromSource++;
-    }
-    expect(differencesFromSource).toBeGreaterThan(95);
+    // 6.1 强不变量：bins 与 sourceCopy 逐字节相等（无任何 noise 叠加）
+    expect(Array.from(bins)).toEqual(Array.from(sourceCopy));
+  });
+
+  it('IIFE getChannelData idempotent re-read (Phase 6.1 sandbox)', () => {
+    // 6.1 第二条强不变量：同一 buffer + channel 多次读返回 byte-equal 序列。
+    const { FakeAudioBuffer } = runIIFEWithAudio(capturedIIFE);
+    const buf = new FakeAudioBuffer(1, 200, 44100);
+    const a = Array.from(buf.getChannelData(0));
+    const b = Array.from(buf.getChannelData(0));
+    expect(b).toEqual(a);
+  });
+
+  it('IIFE caller-write survives subsequent getChannelData (Phase 6.1 sandbox)', () => {
+    // 6.1 第三条强不变量：caller 写入 underlying view 的值，下次读应原样返回。
+    // 这是 CreepJS getCopyFrom(rand, ...) 三个 rand 写能 survive 的根本前提。
+    const { FakeAudioBuffer } = runIIFEWithAudio(capturedIIFE);
+    const buf = new FakeAudioBuffer(1, 200, 44100);
+    const RAND = Math.fround(0.6789);
+    const view = buf.getChannelData(0);
+    view[80] = RAND;
+    view[120] = RAND;
+    const reread = buf.getChannelData(0);
+    expect(reread[80]).toBe(RAND);
+    expect(reread[120]).toBe(RAND);
   });
 });
