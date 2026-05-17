@@ -5,6 +5,100 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [0.7.0] — 2026-05-17
+
+The **"v0.7 captured WebGL profiles contributor pipeline"** release.
+Closes the v0.5.3 capture pipeline open loop: user-captured WebGL JSONs
+now have a structured path from `bench/captured-profiles/*.json` into
+`KNOWN_PROFILES` via an auto-generated `webgl-profiles-captured.ts`,
+with built-in CI drift detection.
+
+This is the long-term sustainability play for the CreepJS WebGL
+bold-fail known-limit. The whitelist gap (~250 hardcoded GPU hashes
+upstream) cannot be brute-forced (~5.5e-8 per attempt) — but a single
+real capture from common hardware is statistically worth millions of
+synthetic guesses, and contributing back grows `KNOWN_PROFILES`
+organically across the user base.
+
+### Added
+
+- **Phase 7.0 — Captured profiles contributor flow**
+  - **`packages/sdk/bench/captured-profiles/` directory**: drop-in
+    location for community-contributed real-hardware WebGL JSONs.
+    Includes a `README.md` with the full submit / verify / privacy
+    contract for contributors.
+  - **`bench/integrate-captured-profiles.ts`** (new tsx CLI): reads
+    every JSON in `captured-profiles/`, runs `verifyCapture` +
+    `emitProfileTypeScript` (reusing Phase 5.3 `convert-captured-
+    profile.ts` helpers as the single source of truth), writes a
+    deterministic `webgl-profiles-captured.ts` (sorted by id;
+    minimal imports when empty). Supports `--check` mode for CI
+    drift detection (regenerates into a buffer and diffs against
+    on-disk; exits non-zero if they differ).
+  - **`packages/sdk/src/injection/webgl-profiles-captured.ts`**
+    (new auto-generated file, committed to repo): re-exports
+    `KNOWN_PROFILES_CAPTURED: readonly WebglProfile[]` consumed by
+    `webgl-profiles.ts` and spread into `KNOWN_PROFILES` after the
+    4 hand-curated entries (declaration order = match priority,
+    hand-curated wins on conflict).
+  - **`bench:integrate-profiles` script** in `packages/sdk/package.
+    json` (`pnpm --filter @mosaiq/sdk run bench:integrate-profiles`).
+  - **`docs/CAPTURING-WEBGL-PROFILES.md`** end-to-end contributor
+    guide: pre-flight checklist (rejecting software-renderer
+    captures), step-by-step capture/verify/submit/integrate flow,
+    privacy guarantees (we collect zero PII beyond GL params + UA),
+    and provenance discussion.
+
+### Internal
+
+- **Filename → profile id rule**: kebab-case stem
+  (`/^[a-z0-9][a-z0-9-]*$/`) becomes the profile id verbatim;
+  otherwise falls back to `suggestProfileId` heuristic from the
+  renderer string. This lets contributors pin a stable id via
+  filename while keeping the convert tool's auto-suggestion as a
+  safety net for ad-hoc captures.
+- **CI drift hook**: `bench:integrate-profiles -- --check` exits 1
+  when on-disk `webgl-profiles-captured.ts` doesn't match what the
+  current JSON set produces. Ready to be wired into `.github/
+  workflows/` once CI lands; the check command is documented in
+  the contributor README so PR authors can self-verify before push.
+
+### Documented (known limitations) — unchanged
+
+- CreepJS WebGL bold-fail (Intel UHD 730 not in upstream whitelist;
+  Phase 7.0 contributor flow is the long-term path to grow
+  `KNOWN_PROFILES`).
+- browserleaks-canvas uniqueness 100% (by-design per-persona).
+
+### Bench
+
+- **No bench re-run** for v0.7.0 — empty `captured-profiles/`
+  directory produces an empty `KNOWN_PROFILES_CAPTURED`, so the
+  injected behavior is byte-identical to v0.6.0. The post-6.1 bench
+  fixture (`bench/results/2026-05-17T08-36-26-115Z`) remains the
+  reference state: 12/12 sites OK, 2 visible hits (both documented
+  long-term known-limits).
+
+### Tests
+
+- **sdk**: 378 → 394 (+16). Breakdown:
+  - +3 `integrateOne` (happy-path, schemaVersion-mismatch error,
+    invalid-JSON error).
+  - +4 `deriveIdentity` (filename-stem precedence, fallback to
+    suggested id, leading-digit handling, const-name normalization).
+  - +6 `renderGeneratedSource` (empty-state minimal imports, non-
+    empty imports, determinism, multi-profile id-sorted, banner
+    capHash + verdict, matchRenderer literal verbatim).
+  - +3 round-trip (convert-pipeline self-test still passes,
+    capHash invariant across re-runs, IntegratedProfile shape
+    completeness).
+- **persona-schema**: 26 → 26 unchanged.
+- **typecheck clean**: persona-schema + sdk + desktop all
+  `tsc --noEmit` pass (with both empty and populated
+  `webgl-profiles-captured.ts` shapes).
+
+---
+
 ## [0.6.0] — 2026-05-17
 
 The **"v0.6 CreepJS audio trap closed"** release. Closes the v0.5.0
