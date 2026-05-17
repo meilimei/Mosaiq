@@ -31,6 +31,13 @@ so non-trivial CreepJS whitelist hits become attainable.
   runs the capture page in a browser with hardware acceleration off,
   the tool now flags the situation and tells them how to recapture
   against real GPU hardware.
+- **Phase 5.4c**: AudioBuffer `copyFromChannel` / `copyToChannel` hooks
+  added (main scope + worker IIFE mirror). Source-level investigation of
+  CreepJS `audio.ts` showed the v0.5.0 hypothesis (`Function.prototype.
+  toString` / proxy detection cross-check) was wrong; the actual surface
+  is a `trap` aggregate across all 3 methods. 5.4c shifted the lies
+  hash `b726173b → 17db53bb` (one path closed) but did **not** clear the
+  yellow signal — see Documented (known limitations) below.
 
 ### Added
 
@@ -126,15 +133,52 @@ so non-trivial CreepJS whitelist hits become attainable.
   preserved). Closes the v0.5.0 documented "Bench `report.ts` parser
   noise" limitation. 8 new vitest cases (synthetic + real-fixture) lock
   the discriminator + regex + STRONG-sibling invariants.
+- **Phase 5.4c — CreepJS Audio: one of two lies paths closed**
+  (`runner.ts §6` + `runner.ts §11` worker IIFE mirror). Hooks added
+  for `AudioBuffer.copyFromChannel` and `AudioBuffer.copyToChannel`,
+  symmetrically with the existing `getChannelData` hook. Refactored
+  `runner.ts §6` to extract a shared `applyAudioNoise(target, channel)`
+  helper consumed by all three hooks, guaranteeing identical
+  `seed XOR channel` PRNG sequence + Phase 5.2b skip-zero rule across
+  access paths. Worker IIFE mirrored with the same shared
+  `_applyAudioNoise(arr, ch)` helper internalized via the IIFE string.
+  This closes the `getChannelData ↔ copyFromChannel sample mismatch`
+  cross-check (CreepJS upstream `src/audio/index.ts`) and shifts the
+  lies hash from `b726173b` → `17db53bb` in the post-5.4c bench fixture
+  (`bench/results/2026-05-17T04-44-25-195Z`). Yellow severity unchanged
+  — a different CreepJS cross-check (`trap` aggregate across all 3
+  methods) still fires; see Documented (known limitations) for the
+  corrected v0.6 diagnosis. 8 new vitest cases (5 main-scope + 3
+  worker-scope sandbox) lock the cross-path noise invariants.
+
+  Trade-off (orthogonal to the remaining lies): when the same buffer is
+  read via both `copyFromChannel` AND `getChannelData` in reverse order
+  (getChannelData first, then copyFromChannel), the two access paths
+  now disagree by ≤ 2× amplitude (~2e-7) because each hook applies
+  noise once. CreepJS doesn't probe that order today; any future probe
+  would surface as a separate fresh `lies` entry.
 
 ### Documented (known limitations)
 
-- **CreepJS Audio "lies" yellow signal still fires**: After the Phase
-  5.2b bold-fail elimination, CreepJS still flags Audio with a soft
-  `lies` severity (yellow). Likely caused by Function.prototype.toString
-  / proxy detection cross-checks — under investigation for v0.6. Yellow
-  `lies` does not gate the WebGL fallback the way `bold-fail` does, and
-  no other detector in the 12-site suite penalizes it. Tracked.
+- **CreepJS Audio yellow-lies still fires (`trap` cross-check)** —
+  diagnosis corrected from v0.5.0. Phase 5.4c shifted the lies hash
+  but did not clear the yellow severity. Inspecting the post-5.4c
+  `creepjs.html` (`bench/results/2026-05-17T04-44-25-195Z`) shows the
+  remaining trigger is the CreepJS `trap` field, whose `<div>` `title`
+  attribute literally lists `AudioBuffer.getChannelData()` +
+  `AudioBuffer.copyFromChannel()` + `AudioBuffer.copyToChannel`. Trap
+  appears to be an aggregate sum across the three access paths;
+  because Phase 5.4c uses a fresh `mulberry32(seed XOR channel)` PRNG
+  per call, repeated reads of the same `[4500..4600]` window draw
+  different noise samples each time, so the trap deviates from the
+  Chrome baseline value the CreepJS team hardcoded. Two paths forward
+  for v0.6: (a) memoize per-`(buffer-id, channel-id, sample-index)`
+  noise so all three methods return identical noised samples (closes
+  trap; spec change to noise determinism — currently per-call); (b)
+  inspect the upstream trap formula and pre-compute a baseline-matching
+  noise distribution. Yellow `lies` does not gate the WebGL fallback
+  the way `bold-fail` does, and no other detector in the 12-site suite
+  penalizes it.
 - **CreepJS WebGL bold-fail persists for all 4 built-in profiles**
   (carried over from v0.4, unchanged). Phase 5.3 capture + convert
   pipeline is the long-term path: any user can now contribute an
@@ -146,27 +190,32 @@ so non-trivial CreepJS whitelist hits become attainable.
   flexibility benefit (Intel iGPU vs NVIDIA / AMD desktop) applies
   regardless of CreepJS whitelist.
 
-After Phase 5.4 the v0.5.0 visible report hits collapse to: **2 reds**
-(CreepJS WebGL bold-fail + browserleaks-canvas 100% uniqueness, both
-documented known-limits) + **1 yellow** (CreepJS Audio lies). Down
-from v0.4's 3 reds + the 22-line phantom block that previously masked
-the real signal.
+After Phase 5.4 + 5.4b + 5.4c the v0.5.0 visible report hits collapse
+to: **2 reds** (CreepJS WebGL bold-fail + browserleaks-canvas 100%
+uniqueness) + **1 yellow** (CreepJS Audio `trap` lies, hash shifted
+from `b726173b` to `17db53bb` after one of two CreepJS cross-checks
+was closed by 5.4c). Down from v0.4's 3 reds + the 22-line phantom
+block; all 3 remaining hits are documented above as long-term known
+limits.
 
 ### Bench
 
-- **Phase 5.2 12-site re-run** (`bench/results/2026-05-17T01-04-37-334Z`
-  → pre-5.2b; `bench/results/2026-05-17T01-27-18-536Z` → post-5.2b).
-  12/12 sites OK both runs. Total visible hits 28 → 25 → **3** (after
-  Phase 5.4 parser-noise removal applied to the same fixture: 22
-  phantom creepjs `<unknown>` entries dropped, leaving 2 real reds
-  [creepjs WebGL bold-fail + browserleaks-canvas uniqueness 100%] and
-  1 yellow [creepjs Audio lies]).
+- **Phase 5.2 / 5.4c 12-site re-runs**
+  (`bench/results/2026-05-17T01-04-37-334Z` → pre-5.2b;
+  `bench/results/2026-05-17T01-27-18-536Z` → post-5.2b;
+  `bench/results/2026-05-17T04-44-25-195Z` → post-5.4c). 12/12 sites OK
+  all three runs. Total visible hits 28 → 25 → **3** (after Phase 5.4
+  parser-noise removal: 22 phantom creepjs `<unknown>` entries dropped,
+  leaving the 2 reds [creepjs WebGL bold-fail + browserleaks-canvas
+  uniqueness 100%] + 1 yellow [creepjs Audio `trap` lies, hash
+  `17db53bb` post-5.4c, was `b726173b` pre-5.4c]). All 3 documented as
+  long-term known limits above.
 
 ### Tests
 
-- **persona-schema**: 26 → 26 (5.1 introduced 5 new under
-  `AudioFingerprintSchema noiseAmplitudeDb`; was 21 before v0.5).
-- **sdk**: 318 → 358. Breakdown:
+- **persona-schema**: 21 → 26 (Phase 5.1 introduced 5 new under
+  `AudioFingerprintSchema noiseAmplitudeDb`).
+- **sdk**: 318 → 366. Breakdown:
   - +2 `runner-audio` (Phase 5.1 dB-noise visibility + bound).
   - +3 `runner-audio` (Phase 5.2b silent-sample preservation + full-
     silence buffer + PRNG-advance invariant).
@@ -177,8 +226,12 @@ the real signal.
   - +7 `convert-captured-profile` (Phase 5.4b detectSoftwareRenderer:
     Microsoft Basic Render Driver / SwiftShader / llvmpipe / generic
     + 3 real-GPU negative controls).
+  - +8 `runner-audio` / `runner-worker` (Phase 5.4c
+    `copyFromChannel` / `copyToChannel` cross-path noise invariants;
+    5 main-scope + 3 worker-scope sandbox).
 - **typecheck clean**: persona-schema + sdk + desktop all `tsc --noEmit`
-  pass.
+  pass. **Tests**: 366/366 sdk + 26/26 persona-schema all pass on
+  post-5.4c HEAD.
 
 ### Internal
 
@@ -545,6 +598,7 @@ Initial public release. See git tag `v0.1.0`.
 - humanize input engine (mouse jitter, keystroke timing)
 - 9-site baseline detection bench (creepjs, sannysoft, browserleaks, etc.)
 
+[0.5.0]: https://github.com/meilimei/Mosaiq/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/meilimei/Mosaiq/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/meilimei/Mosaiq/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/meilimei/Mosaiq/compare/v0.1.0...v0.2.0
