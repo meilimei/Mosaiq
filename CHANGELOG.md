@@ -5,12 +5,25 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
-## [Unreleased]
+## [0.7.1] — 2026-05-17
 
-Post-v0.7.0 follow-ups — closing the loops that v0.7.0 left open
-("Ready to be wired into `.github/workflows/` once CI lands"; "No bench
-re-run for v0.7.0 — empty captured-profiles/ directory"). All atomic,
-non-breaking changes accumulating toward v0.7.1 / v0.8.0.
+The **"v0.7.1 captured-profiles pipeline hardening"** patch. Closes the
+follow-up loops v0.7.0 explicitly left open:
+
+- "Ready to be wired into `.github/workflows/` once CI lands" → CI shipped
+- "No bench re-run for v0.7.0 — empty `captured-profiles/`" → first real
+  hardware capture (Intel HD 520) committed, end-to-end pipeline validated
+- A latent ESM circular-dependency in v0.7.0's `webgl-profiles-captured.ts`
+  bootstrap that would crash with `ReferenceError: Cannot access 'GL'
+  before initialization` on first import. **Anyone using `@mosaiq/sdk`
+  v0.7.0 with a non-empty captured registry should upgrade.** The 0.7.0
+  release shipped with an empty registry so npm-installed users were not
+  affected, but the bug would have surfaced for the first contributor
+  to add a JSON capture.
+
+No persona-schema breaking changes. No bench re-run (injection behavior
+byte-identical to v0.7.0 plus one captured profile that no template uses
+by default).
 
 ### Added
 
@@ -39,6 +52,16 @@ non-breaking changes accumulating toward v0.7.1 / v0.8.0.
     **`bench:integrate-profiles -- --check`** drift detection — fulfilling
     the v0.7.0 promise that contributor JSONs and the auto-generated TS
     must stay in lock-step on PRs. Concurrency-cancels superseded runs.
+    First run on `3a7a938`: 1m 0s, all green.
+- **Phase 7.4 — Committed bench fixtures directory**
+  - `packages/sdk/bench/fixtures/` (new) holds static HTML snapshots that
+    regression tests load via `readFileSync`. Distinct from
+    `bench/results/` (gitignored — captured per-run fresh from live
+    sites). Includes a README with the contract for adding new fixtures
+    (per-feature naming, README update, test path).
+  - First fixture: `creepjs-v0.5.0-snapshot.html` (the exact HTML that
+    produced the v0.5.0 23-phantom-`<unknown>` parser bug; v0.5.1 fix
+    must collapse them to 2 real surface markers).
 
 ### Tests
 
@@ -57,12 +80,13 @@ non-breaking changes accumulating toward v0.7.1 / v0.8.0.
 ### Fixed
 
 - **ESM circular dependency** in `webgl-profiles.ts ↔
-  webgl-profiles-captured.ts`: the auto-generated file previously emitted
-  `import { GL } from './webgl-profiles.js'` (runtime), creating a load
-  cycle because `webgl-profiles.ts` itself imports `KNOWN_PROFILES_CAPTURED`
-  back from the generated file. The cycle manifested as `ReferenceError:
-  Cannot access 'GL' before initialization` and broke 8 test suites + the
-  integrate CLI's own ability to bootstrap. The auto-generated file is now
+  webgl-profiles-captured.ts` (regression from v0.7.0): the auto-generated
+  file emitted `import { GL } from './webgl-profiles.js'` (runtime),
+  creating a load cycle because `webgl-profiles.ts` itself imports
+  `KNOWN_PROFILES_CAPTURED` back from the generated file. The cycle
+  manifested as `ReferenceError: Cannot access 'GL' before initialization`
+  and broke 8 test suites + the integrate CLI's own ability to bootstrap
+  the moment any JSON capture was added. The auto-generated file is now
   fully self-contained: type-only `import type { GlParamValue, WebglProfile }`
   (erased at compile time) plus `0xHEX /* NAME */` literal pairs for GL
   constants. The hand-paste convert path (`bench:convert-profile`) still
@@ -72,6 +96,11 @@ non-breaking changes accumulating toward v0.7.1 / v0.8.0.
   (Skylake-era Intel iGPU, no `UHD` prefix) → `hd-NNN`, plus `iris-pro` /
   `iris-plus`. Without this, a Skylake/Broadwell capture's filename and
   internal id fell back to `intel-unknown-d3d11`.
+- **CI ENOENT for `bench/sites-creepjs.test.ts` v0.5.0 fixture test**:
+  the test read `bench/results/<timestamp>/creepjs.html` which is
+  gitignored — passed locally, failed in CI. Fixture moved to the
+  committed `bench/fixtures/` location described above; first CI run on
+  `3a7a938` confirmed green.
 
 ### Internal
 
@@ -80,6 +109,26 @@ non-breaking changes accumulating toward v0.7.1 / v0.8.0.
   The integrate CLI passes `true`; the convert CLI keeps the default
   `false`. Single source of truth in `convert-captured-profile.ts`
   preserved — no parallel rendering paths.
+
+### Tests (totals)
+
+- **sdk**: 394 → 402 (+8 Phase 7.2). Typecheck clean.
+- **persona-schema**: 26/26 unchanged. Typecheck clean.
+
+### Known limitations — unchanged
+
+- CreepJS WebGL bold-fail for Intel UHD 730 / Intel HD 520 (not in
+  upstream whitelist; the contributor pipeline grows `KNOWN_PROFILES`
+  organically).
+- browserleaks-canvas uniqueness 100% (by-design per-persona).
+
+### Deferred (post-v0.7.1)
+
+- **GitHub Actions Node 20 deprecation** (`actions/checkout@v4`,
+  `actions/setup-node@v4`, `pnpm/action-setup@v4`): GitHub forces Node 24
+  on JavaScript actions starting **2026-06-02**. Currently a warning, not
+  a failure. A follow-up Phase 7.5 will validate `@v5` versions before
+  the cutoff.
 
 ## [0.7.0] — 2026-05-17
 
