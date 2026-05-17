@@ -1002,7 +1002,31 @@ export function injectAll(config: InjectionConfig): void {
     }
 
     // Phase 4.1: AudioBuffer.getChannelData 拦截（CreepJS / fp.com 经典路径）
+    // Phase 5.4c: + AudioBuffer.copyFromChannel / copyToChannel 同序列 mirror
+    //             修 CreepJS 'getChannelData and copyFromChannel samples mismatch'
+    //             yellow lies。CreepJS audio.ts 直接 cross-check：
+    //               buffer.copyFromChannel(copy, 0)  // 原始数据 → copy
+    //               bins = buffer.getChannelData(0)  // in-place 加 noise → bins
+    //               if (binsSample[4500..4600] !== copySample[4500..4600]) lied=true
+    //             v0.5.0 只 hook getChannelData → copy 没噪声、bins 有噪声 → mismatch。
+    //             修法：copyFromChannel hook 用同一 PRNG 序列（seed XOR channel）
+    //             把同一 pattern 写到 destination；copyToChannel 反向 mirror，
+    //             让 caller 写入的非零样本同样吸纳 noise，保下次 getChannelData
+    //             cross-check 一致。
     if (typeof AudioBuffer !== 'undefined') {
+      // 共享的 noise applier：在已 populate 的 Float32Array 上施加 channel-seeded
+      // PRNG noise（skip-zero 规则与 Phase 5.2b 一致）。所有三个 hook 复用同一逻辑，
+      // 保 getChannelData / copyFromChannel / copyToChannel 跨调用样本一致。
+      const applyAudioNoise = (target: Float32Array, channel: number): void => {
+        const channelPrng = makePrng((config.audioNoiseSeed ^ channel) >>> 0);
+        for (let i = 0; i < target.length; i++) {
+          const sample = target[i] ?? 0;
+          // PRNG 每样本 advance（保 deterministic 序列），noise 仅条件 add
+          const noise = (channelPrng() - 0.5) * amplitude;
+          if (sample !== 0) target[i] = sample + noise;
+        }
+      };
+
       const origGCD = AudioBuffer.prototype.getChannelData;
       AudioBuffer.prototype.getChannelData = wrapStealth(origGCD, {
         apply(target, thisArg: AudioBuffer, args: [number]) {
@@ -1010,22 +1034,56 @@ export function injectAll(config: InjectionConfig): void {
           // per-channel deterministic PRNG：seed XOR channel index
           // 左右声道用不同 noise 序列，避免 detector 比对左右相关性
           const channel = (args[0] ?? 0) | 0;
-          const channelPrng = makePrng((config.audioNoiseSeed ^ channel) >>> 0);
           // Phase 5.2b：silent (==0) samples 保留原值，仅给 non-zero samples 加 noise。
           // CreepJS audio test 跑 OfflineAudioContext + DynamicsCompressor 5000-sample
           // 渲染，attack ramp 之前样本应该是 exact 0（real Chrome 行为）。如果给所有
           // 样本加 noise，5000 样本全 unique → CreepJS unique:5000 → bold-fail。
           // 跳过 0 让 silence pattern 与 real Chrome 一致；non-zero 样本仍带 PRNG noise，
           // sum/hash 仍 per-persona unique，跨 persona 区分依然成立。
-          for (let i = 0; i < buffer.length; i++) {
-            const sample = buffer[i] ?? 0;
-            // PRNG advance 不受 skip 影响（保 deterministic 序列），noise 仅条件 add
-            const noise = (channelPrng() - 0.5) * amplitude;
-            if (sample !== 0) buffer[i] = sample + noise;
-          }
+          applyAudioNoise(buffer, channel);
           return buffer;
         },
       });
+
+      // Phase 5.4c: copyFromChannel(destination, channelNumber, bufferOffset?)
+      // 真实语义：从 buffer 的 channelNumber 通道复制 [bufferOffset..bufferOffset+
+      // destination.length) 区间到 destination。对于 CreepJS 路径 bufferOffset=0
+      // 且 destination.length === buffer.length，所以 PRNG advance 步数一致 →
+      // destination 与 getChannelData 返回值会逐样本相等（同 seed^channel + 同 skip-
+      // zero 规则）。bufferOffset > 0 时 PRNG 起点不同，仍 deterministic 但样本量
+      // 减少，不会与同次 getChannelData 直接相等 —— 但 CreepJS 不在该路径上做相等
+      // 比对，可接受。
+      const origCopyFrom = AudioBuffer.prototype.copyFromChannel;
+      if (typeof origCopyFrom === 'function') {
+        AudioBuffer.prototype.copyFromChannel = wrapStealth(origCopyFrom, {
+          apply(target, thisArg: AudioBuffer, args: [Float32Array, number, number?]) {
+            Reflect.apply(target, thisArg, args);
+            const destination = args[0];
+            const channel = (args[1] ?? 0) | 0;
+            // bufferOffset 默认 0，CreepJS 走该 default
+            applyAudioNoise(destination, channel);
+          },
+        });
+      }
+
+      // Phase 5.4c: copyToChannel(source, channelNumber, bufferOffset?)
+      // 反向 mirror：caller 写入新数据到通道。先把 source 噪声化（in-place 给
+      // caller 的 Float32Array 加 noise），再调原 native 把噪声化数据写进 buffer。
+      // 这样下一次 getChannelData / copyFromChannel 读出来的样本就已经吸纳 noise，
+      // 跨 access path 保持一致。
+      // 注意：source 是 readonly Float32Array per spec，但 noise 是 add-then-write，
+      // 不会破坏 caller 之外的 source 内容（只改 caller 自己刚分配的数组）。
+      const origCopyTo = AudioBuffer.prototype.copyToChannel;
+      if (typeof origCopyTo === 'function') {
+        AudioBuffer.prototype.copyToChannel = wrapStealth(origCopyTo, {
+          apply(target, thisArg: AudioBuffer, args: [Float32Array, number, number?]) {
+            const source = args[0];
+            const channel = (args[1] ?? 0) | 0;
+            applyAudioNoise(source, channel);
+            return Reflect.apply(target, thisArg, args);
+          },
+        });
+      }
     }
 
     // AudioContext sampleRate 一致性
@@ -1581,16 +1639,38 @@ export function injectAll(config: InjectionConfig): void {
         '}' +
         'var _audioAmp=P.audioNoiseAmplitude;' +
         'var _audioSeed=P.audioNoiseSeed>>>0;' +
+        // Phase 5.2b mirror：silent samples 保留 exact 0，避免 CreepJS unique:5000 bold-fail。
+        // PRNG 仍每样本 advance 一次保 deterministic，noise 条件 add。
+        // Phase 5.4c mirror：抽出 _applyAudioNoise 共享给 getChannelData /
+        // copyFromChannel / copyToChannel，三条 access path 噪声序列一致 → 修
+        // CreepJS 'getChannelData and copyFromChannel samples mismatch' yellow lies。
+        'function _applyAudioNoise(arr,ch){' +
+        'var prng=_mkAudioPrng((_audioSeed^(ch|0))>>>0);' +
+        'for(var i=0;i<arr.length;i++){var s=arr[i]||0;var n=(prng()-0.5)*_audioAmp;if(s!==0)arr[i]=s+n;}' +
+        '}' +
         'var _origGCD=AudioBuffer.prototype.getChannelData;' +
         'AudioBuffer.prototype.getChannelData=function(channel){' +
         'var buf=_origGCD.call(this,channel);' +
-        'var ch=(channel|0);' +
-        'var prng=_mkAudioPrng((_audioSeed^ch)>>>0);' +
-        // Phase 5.2b mirror：silent samples 保留 exact 0，避免 CreepJS unique:5000 bold-fail。
-        // PRNG 仍每样本 advance 一次保 deterministic，noise 条件 add。
-        'for(var i=0;i<buf.length;i++){var s=buf[i]||0;var n=(prng()-0.5)*_audioAmp;if(s!==0)buf[i]=s+n;}' +
+        '_applyAudioNoise(buf,channel);' +
         'return buf;' +
         '};' +
+        // Phase 5.4c worker mirror：copyFromChannel hook —— 让 CreepJS 跨 access
+        // path cross-check 一致（同 PRNG seed^channel + skip-zero 规则）。
+        'if(typeof AudioBuffer.prototype.copyFromChannel==="function"){' +
+        'var _origCopyFrom=AudioBuffer.prototype.copyFromChannel;' +
+        'AudioBuffer.prototype.copyFromChannel=function(destination,channelNumber,bufferOffset){' +
+        '_origCopyFrom.call(this,destination,channelNumber,bufferOffset);' +
+        '_applyAudioNoise(destination,channelNumber);' +
+        '};' +
+        '}' +
+        // Phase 5.4c worker mirror：copyToChannel hook —— 反向，先 noise source 再写入。
+        'if(typeof AudioBuffer.prototype.copyToChannel==="function"){' +
+        'var _origCopyTo=AudioBuffer.prototype.copyToChannel;' +
+        'AudioBuffer.prototype.copyToChannel=function(source,channelNumber,bufferOffset){' +
+        '_applyAudioNoise(source,channelNumber);' +
+        'return _origCopyTo.call(this,source,channelNumber,bufferOffset);' +
+        '};' +
+        '}' +
         '}}catch(e){}' +
         // ── CDP detection hardening (mirror of main scope §12) ──
         // dbi-bot `isAutomatedWithCDPInWebWorker` 会在 worker 内复刻同一探测：

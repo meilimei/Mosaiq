@@ -74,6 +74,40 @@ class MockAudioBuffer {
     if (!buf) throw new Error(`channel ${channel} out of range`);
     return buf;
   }
+
+  /**
+   * Phase 5.4c mock：copyFromChannel(destination, channelNumber, bufferOffset?)。
+   * 真实 AudioBuffer 语义：把 channel 通道在 [bufferOffset..bufferOffset+
+   * destination.length) 区间的 sample 复制到 destination Float32Array。
+   * runner.ts §6 hook 在原生 copy 完成后给 destination 加 noise。本 mock 仅
+   * 实现 spec 必要部分（不做 channel range 校验，由 hook 直接 forward）。
+   */
+  copyFromChannel(destination: Float32Array, channelNumber: number, bufferOffset = 0): void {
+    const src = this.#channels[channelNumber];
+    if (!src) throw new Error(`channel ${channelNumber} out of range`);
+    const offset = bufferOffset | 0;
+    const copyLen = Math.min(destination.length, src.length - offset);
+    for (let i = 0; i < copyLen; i++) {
+      destination[i] = src[i + offset] ?? 0;
+    }
+    // 超出 src 范围的 destination 尾部留原值（spec 不规定填 0）
+  }
+
+  /**
+   * Phase 5.4c mock：copyToChannel(source, channelNumber, bufferOffset?)。
+   * 把 source Float32Array 写入到 channel 通道的 [bufferOffset..] 起始位置。
+   * runner.ts §6 hook 在调原生写入前先给 source 加 noise（in-place），
+   * 让下次 getChannelData 读出来的样本含同一份 noise。
+   */
+  copyToChannel(source: Float32Array, channelNumber: number, bufferOffset = 0): void {
+    const dst = this.#channels[channelNumber];
+    if (!dst) throw new Error(`channel ${channelNumber} out of range`);
+    const offset = bufferOffset | 0;
+    const writeLen = Math.min(source.length, dst.length - offset);
+    for (let i = 0; i < writeLen; i++) {
+      dst[i + offset] = source[i] ?? 0;
+    }
+  }
 }
 
 class MockAnalyserNode {
@@ -302,6 +336,106 @@ describe('Phase 5.2b: AudioBuffer silent samples preserved (CreepJS unique:5000 
       if (rampData[i] !== baseline) differencesFromBaseline++;
     }
     expect(differencesFromBaseline).toBeGreaterThan(95);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 5.4c: copyFromChannel / copyToChannel mirror noise sequence
+//
+// 背景：CreepJS audio.ts cross-check：
+//   buffer.copyFromChannel(copy, 0)      // 期望 == buffer 的 channel 0
+//   bins = buffer.getChannelData(0)      // 期望 == buffer 的 channel 0
+//   if (binsSample[4500..4600] !== copySample[4500..4600]) {
+//     documentLie('AudioBuffer', 'getChannelData and copyFromChannel samples mismatch');
+//   }
+// v0.5.0 只 hook getChannelData → copy 是原始数据、bins 是原始 + noise → mismatch
+// → CreepJS Audio yellow lies。修法：copyFromChannel hook 用同一 PRNG 序列
+// （seed XOR channel + skip-zero）把同一 noise pattern 写到 destination。
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('Phase 5.4c: AudioBuffer.copyFromChannel mirror (CreepJS lies fix)', () => {
+  it('copyFromChannel destination == getChannelData buffer (same channel)', () => {
+    // CreepJS 关键场景：先 copyFromChannel，再 getChannelData，cross-check 样本相等。
+    const buf = new MockAudioBuffer({ numberOfChannels: 1, length: 5000, sampleRate: 44100 });
+    const copy = new Float32Array(5000);
+    // 重要：先 copyFromChannel 再 getChannelData（CreepJS 顺序）
+    buf.copyFromChannel(copy, 0);
+    const bins = buf.getChannelData(0);
+    // CreepJS 的具体比对窗口 [4500..4600]（500ms 窗口）
+    const copySample = Array.from(copy.slice(4500, 4600));
+    const binsSample = Array.from(bins.slice(4500, 4600));
+    expect(copySample.join(',')).toBe(binsSample.join(','));
+  });
+
+  it('copyFromChannel + getChannelData reverse-order also matches', () => {
+    // 反向顺序：先 getChannelData（in-place noise），再 copyFromChannel。
+    // 此时 buffer 已经噪声化，copy 应该读到噪声化后的样本，仍与 bins 一致。
+    const buf = new MockAudioBuffer({ numberOfChannels: 1, length: 5000, sampleRate: 44100 });
+    const bins = buf.getChannelData(0);
+    const copy = new Float32Array(5000);
+    buf.copyFromChannel(copy, 0);
+    // copy = (buffer 已带 noise) 再 + noise（hook 累加 noise pattern 一次）
+    // bins = buffer 已带 noise（in-place 第一次）
+    // ⚠ 这两个不再相等（hook 设计导向 caller-perceived 而非 buffer-state 一致），
+    // 但 CreepJS 不走这个顺序。这里测确认：noise 量级仍受控（不爆炸）。
+    let maxDelta = 0;
+    for (let i = 0; i < 5000; i++) {
+      const d = Math.abs((copy[i] ?? 0) - (bins[i] ?? 0));
+      if (d > maxDelta) maxDelta = d;
+    }
+    // 反向顺序下的累积 delta < 2× amplitude（noise + noise 上限）
+    expect(maxDelta).toBeLessThan(2 * config.audioNoiseAmplitude);
+  });
+
+  it('copyFromChannel preserves silent samples (Phase 5.2b skip-zero rule)', () => {
+    // 纯 silence buffer 经 copyFromChannel 仍全 0（CreepJS unique:5000 protection
+    // 沿用到 copyFromChannel 路径，避免新增 access path 触发 bold-fail）。
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 5000,
+      sampleRate: 44100,
+      fill: () => 0,
+    });
+    const copy = new Float32Array(5000);
+    buf.copyFromChannel(copy, 0);
+    const uniqueValues = new Set<number>();
+    for (let i = 0; i < copy.length; i++) uniqueValues.add(copy[i]!);
+    expect(uniqueValues.size).toBe(1);
+    expect(uniqueValues.has(0)).toBe(true);
+  });
+
+  it('copyFromChannel applies same noise as getChannelData on different buffers', () => {
+    // 同 persona，两个独立 buffer，copyFromChannel(0) 与 getChannelData(0) 噪声序列必一致。
+    const buf1 = new MockAudioBuffer({ numberOfChannels: 1, length: 100, sampleRate: 44100 });
+    const buf2 = new MockAudioBuffer({ numberOfChannels: 1, length: 100, sampleRate: 44100 });
+    const copy1 = new Float32Array(100);
+    buf1.copyFromChannel(copy1, 0);
+    const bins2 = buf2.getChannelData(0);
+    expect(Array.from(copy1)).toEqual(Array.from(bins2));
+  });
+
+  it('copyToChannel writes noise-baked source into channel (next read sees noise)', () => {
+    // caller 通过 copyToChannel 写入新数据 → hook 先给 source 加 noise → 写入。
+    // 后续 getChannelData(0) 读出的样本应已带 noise（buffer 内容反映了带 noise 的 source）。
+    const buf = new MockAudioBuffer({
+      numberOfChannels: 1,
+      length: 100,
+      sampleRate: 44100,
+      fill: () => 0, // 起始 silence
+    });
+    const source = new Float32Array(100);
+    for (let i = 0; i < 100; i++) source[i] = (i + 1) * 1e-4; // 全非零
+    buf.copyToChannel(source, 0);
+    // 验证：写入后 getChannelData 读出的样本与原始 source 不同（被噪声化）
+    // 但 getChannelData 自己会再加 noise → 总噪声 = 2× amplitude 上限
+    const bins = buf.getChannelData(0);
+    let differencesFromSource = 0;
+    for (let i = 0; i < 100; i++) {
+      // bins[i] = (source[i] + noise_via_copyTo) + noise_via_getChannelData
+      // 不等于 source[i] 的概率极高
+      if (bins[i] !== (i + 1) * 1e-4) differencesFromSource++;
+    }
+    expect(differencesFromSource).toBeGreaterThan(95);
   });
 });
 
