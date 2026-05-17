@@ -129,6 +129,80 @@ export function getGpuBrand(unmaskedRenderer: string): string {
   return '';
 }
 
+/**
+ * Phase 5.4 — detect software-rasterizer fallbacks vs real GPU hardware.
+ *
+ * Real users sometimes capture with hardware acceleration disabled (browser
+ * setting toggled off, GPU drivers missing, VM without GPU passthrough, …).
+ * The capture itself is technically valid, but submitting such a profile to
+ * `KNOWN_PROFILES` is anti-detection-counterproductive:
+ *
+ *   - CreepJS whitelists are populated from real consumer GPUs only —
+ *     software-fallback hashes won't appear there.
+ *   - Plausibility check fails: a Mosaiq persona claiming
+ *     "Windows 11 + Chrome 147 + Microsoft Basic Render Driver" is itself
+ *     a distinctive fingerprint that detectors like amiunique /
+ *     fingerprint-scan flag as unusual (most consumer Windows users have
+ *     working drivers).
+ *
+ * Patterns covered:
+ *   - **Microsoft Basic Render Driver** (Windows D3D11 WARP CPU rasterizer
+ *     — surfaced by Edge / Chrome on Windows when GPU acceleration is off
+ *     or drivers missing).
+ *   - **SwiftShader** (Google's portable CPU GL implementation; embedded
+ *     in Chromium; activated when GPU is unavailable).
+ *   - **llvmpipe** (Mesa Gallium software driver on Linux/BSD).
+ *   - **Generic "Software" / "Software Rasterizer"** strings (covers
+ *     headless / WSL / niche driver fallbacks).
+ *
+ * Returned along with `isSoftware`: a short user-facing diagnostic note
+ * suggesting the most-likely fix.
+ */
+export interface SoftwareRendererDetection {
+  readonly isSoftware: boolean;
+  /** Short human-readable label of which fallback was matched. */
+  readonly label: string;
+  /** Suggested user action to recapture against real GPU. */
+  readonly hint: string;
+}
+
+export function detectSoftwareRenderer(unmaskedRenderer: string): SoftwareRendererDetection {
+  const r = unmaskedRenderer;
+  if (/Microsoft Basic Render Driver/i.test(r)) {
+    return {
+      isSoftware: true,
+      label: 'Microsoft Basic Render Driver (Windows D3D11 WARP — CPU rasterizer)',
+      hint:
+        'Enable hardware acceleration in your browser (Edge: edge://settings/system → "Use graphics acceleration when available"; Chrome: chrome://settings/system), then verify chrome://gpu / edge://gpu shows "Hardware accelerated" before recapturing.',
+    };
+  }
+  if (/SwiftShader/i.test(r)) {
+    return {
+      isSoftware: true,
+      label: 'SwiftShader (Chromium portable CPU GL fallback)',
+      hint:
+        'Your browser is using the bundled CPU rasterizer. Toggle hardware acceleration on, install / update GPU drivers, or run on a host with a real GPU before recapturing.',
+    };
+  }
+  if (/llvmpipe/i.test(r)) {
+    return {
+      isSoftware: true,
+      label: 'Mesa llvmpipe (Linux/BSD software driver)',
+      hint:
+        'Mesa fell back to CPU rendering. Install / load proprietary or open-source GPU drivers (e.g. nvidia, amdgpu, i915), confirm with `glxinfo | grep "OpenGL renderer"`, then recapture.',
+    };
+  }
+  if (/(?:^|[^A-Za-z])Software(?:\s+Rasterizer)?(?:[^A-Za-z]|$)/i.test(r)) {
+    return {
+      isSoftware: true,
+      label: 'Generic software rasterizer',
+      hint:
+        'The renderer string self-identifies as a software fallback. Enable GPU acceleration / install drivers and recapture.',
+    };
+  }
+  return { isSoftware: false, label: '', hint: '' };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Verify against CreepJS whitelist
 // ─────────────────────────────────────────────────────────────────────────────
@@ -492,6 +566,29 @@ async function main(): Promise<void> {
   console.log(`  capabilitiesHash:  ${verify.capHash}   in whitelist? ${verify.capInWhitelist ? '✓ YES' : '✗ NO'}`);
   console.log(`  brandCapabilities: ${verify.brandHashValue}    in whitelist? ${verify.brandInWhitelist ? '✓ YES' : '✗ NO'}`);
   console.log('');
+
+  // Phase 5.4 software-renderer diagnostic — fires before the verdict so users
+  // immediately understand why a brand-empty / WARP / SwiftShader / llvmpipe
+  // capture is unlikely to be useful even though the convert pipeline ran clean.
+  const sw = detectSoftwareRenderer(payload.renderer);
+  if (sw.isSoftware) {
+    console.log('\x1b[33m───────────────────────────────────────────────────────────────────────────────\x1b[0m');
+    console.log('\x1b[33m ⚠  Software renderer detected — this is NOT real GPU hardware\x1b[0m');
+    console.log('\x1b[33m───────────────────────────────────────────────────────────────────────────────\x1b[0m');
+    console.log(`  Matched: ${sw.label}`);
+    console.log('');
+    console.log('  Why this matters:');
+    console.log('    • CreepJS whitelists only populated from real consumer GPUs');
+    console.log('      → software-fallback hashes mathematically never hit.');
+    console.log('    • A Mosaiq persona claiming "Windows + modern Chrome + no GPU"');
+    console.log('      is itself an unusual fingerprint that detectors like');
+    console.log('      amiunique / fingerprint-scan can flag as outlier.');
+    console.log('');
+    console.log('  Suggested fix:');
+    console.log(`    ${sw.hint}`);
+    console.log('');
+  }
+
   const verdict =
     verify.verdict === 'PASS'
       ? '\x1b[32m✓ HITS CreepJS whitelist! Setting knownInCreepjsWhitelist=true.\x1b[0m'

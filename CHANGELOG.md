@@ -25,6 +25,12 @@ so non-trivial CreepJS whitelist hits become attainable.
   v0.5.0 documented `bold-fail: <unknown>` 22-line phantom block in
   bench reports collapses to 0, leaving only the 2 real surface markers
   visible.
+- **Phase 5.4b**: convert-captured-profile gains a software-renderer
+  diagnostic (Microsoft Basic Render Driver / SwiftShader / llvmpipe /
+  generic). Surfaced from real-world capture testing — when a user
+  runs the capture page in a browser with hardware acceleration off,
+  the tool now flags the situation and tells them how to recapture
+  against real GPU hardware.
 
 ### Added
 
@@ -63,6 +69,20 @@ so non-trivial CreepJS whitelist hits become attainable.
 - **`bench:verify-creepjs` + `bench:convert-profile` scripts**
   (`packages/sdk/package.json`): expose the two whitelist tools through
   `pnpm run` (`pnpm exec tsx` is not in the bin shim path on Windows).
+- **Phase 5.4b — `detectSoftwareRenderer` helper** in
+  `bench/convert-captured-profile.ts`: classifies an unmasked renderer
+  string as software fallback (Microsoft Basic Render Driver,
+  SwiftShader, Mesa llvmpipe, generic Software Rasterizer) and returns
+  a contextual `{label, hint}` so the CLI can render a yellow warning
+  block before the verdict. Closes a real-world UX gap — a Phase 5.4b
+  test pass exercised by an actual user capture (Edge with
+  hw-accel off) showed the convert tool happily emits a paste-ready
+  snippet for a Microsoft-WARP profile that's anti-detection-
+  counterproductive (CreepJS whitelist mathematically can't hit
+  software-only hashes; persona claiming "Win11 + Chrome 147 + no GPU"
+  is itself an outlier on amiunique / fingerprint-scan). 7 new tests
+  cover the 4 software-renderer patterns + 3 negative controls (Intel
+  iGPU / NVIDIA RTX / AMD RX must NOT match).
 
 ### Fixed
 
@@ -146,7 +166,7 @@ the real signal.
 
 - **persona-schema**: 26 → 26 (5.1 introduced 5 new under
   `AudioFingerprintSchema noiseAmplitudeDb`; was 21 before v0.5).
-- **sdk**: 318 → 351. Breakdown:
+- **sdk**: 318 → 358. Breakdown:
   - +2 `runner-audio` (Phase 5.1 dB-noise visibility + bound).
   - +3 `runner-audio` (Phase 5.2b silent-sample preservation + full-
     silence buffer + PRNG-advance invariant).
@@ -154,6 +174,9 @@ the real signal.
     brand / id-suggest / regex-suggest / TS-emit).
   - +8 `sites-creepjs` (Phase 5.4 extractCreepjs discriminator + hex
     regex + STRONG-sibling guard + real bench-fixture regression).
+  - +7 `convert-captured-profile` (Phase 5.4b detectSoftwareRenderer:
+    Microsoft Basic Render Driver / SwiftShader / llvmpipe / generic
+    + 3 real-GPU negative controls).
 - **typecheck clean**: persona-schema + sdk + desktop all `tsc --noEmit`
   pass.
 

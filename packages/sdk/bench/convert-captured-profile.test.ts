@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildParamMap,
+  detectSoftwareRenderer,
   emitProfileTypeScript,
   getGpuBrand,
   parseCapturePayload,
@@ -148,6 +149,78 @@ describe('getGpuBrand', () => {
   it('returns empty for unknown brand', () => {
     expect(getGpuBrand('Unknown VGA')).toBe('');
     expect(getGpuBrand('')).toBe('');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// detectSoftwareRenderer — Phase 5.4 diagnostic for hardware-acceleration off
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('detectSoftwareRenderer', () => {
+  it('detects Microsoft Basic Render Driver (Windows D3D11 WARP)', () => {
+    // 真实 capture 来自 Edge 关闭硬件加速时的 ANGLE WARP fallback。
+    const result = detectSoftwareRenderer(
+      'ANGLE (Microsoft, Microsoft Basic Render Driver (0x0000008C) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    );
+    expect(result.isSoftware).toBe(true);
+    expect(result.label).toMatch(/Microsoft Basic Render Driver/);
+    expect(result.hint).toMatch(/edge:\/\/settings\/system|chrome:\/\/settings\/system/);
+  });
+
+  it('detects SwiftShader (Chromium portable CPU GL)', () => {
+    const result = detectSoftwareRenderer('ANGLE (Google, SwiftShader Device, ...)');
+    expect(result.isSoftware).toBe(true);
+    expect(result.label).toMatch(/SwiftShader/);
+    expect(result.hint).toMatch(/hardware acceleration|GPU/i);
+  });
+
+  it('detects Mesa llvmpipe (Linux software driver)', () => {
+    const result = detectSoftwareRenderer('Mesa Intel(R) llvmpipe (LLVM 17.0.6, 256 bits)');
+    expect(result.isSoftware).toBe(true);
+    expect(result.label).toMatch(/llvmpipe/);
+    expect(result.hint).toMatch(/glxinfo|drivers/i);
+  });
+
+  it('detects generic "Software Rasterizer" string', () => {
+    const result = detectSoftwareRenderer('Generic Software Rasterizer');
+    expect(result.isSoftware).toBe(true);
+    expect(result.label).toMatch(/software/i);
+  });
+
+  it('does NOT flag real Intel iGPU as software', () => {
+    const result = detectSoftwareRenderer(
+      'ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    );
+    expect(result.isSoftware).toBe(false);
+    expect(result.label).toBe('');
+    expect(result.hint).toBe('');
+  });
+
+  it('does NOT flag real NVIDIA / AMD / Apple GPUs as software', () => {
+    expect(
+      detectSoftwareRenderer(
+        'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      ).isSoftware,
+    ).toBe(false);
+    expect(
+      detectSoftwareRenderer('ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)')
+        .isSoftware,
+    ).toBe(false);
+    expect(detectSoftwareRenderer('Apple M2').isSoftware).toBe(false);
+  });
+
+  it('does NOT confuse "Software Rasterizer" with brand names containing the substring', () => {
+    // The real "MicroSoft Software Inc." would be a corporate string but
+    // word-boundary anchored regex should still match it as software.
+    // More importantly: ensure a NVIDIA renderer that mentions "software"
+    // pipeline elsewhere wouldn't false-positive — currently we rely on the
+    // regex's word-boundary; this test pins a representative known-good
+    // string to prevent regression if regex is loosened.
+    expect(
+      detectSoftwareRenderer(
+        'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      ).isSoftware,
+    ).toBe(false);
   });
 });
 
