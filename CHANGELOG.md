@@ -5,6 +5,167 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [0.5.0] — 2026-05-17
+
+The **"v0.5 audio dB-noise + bench-driven CreepJS audio fix + real-hardware
+WebGL pipeline"** release. Closes the v0.4 AnalyserNode dB-scale silent-
+quantize limitation, eliminates the CreepJS audio bold-fail introduced by
+the Phase 4.1 hook (discovered via Phase 5.2 12-site bench re-run), and
+ships a complete real-hardware WebGL profile capture + convert workflow
+so non-trivial CreepJS whitelist hits become attainable.
+
+- **Phase 5.1**: AnalyserNode dB-domain noise (`audioNoiseAmplitudeDb`).
+- **Phase 5.2 / 5.2b**: 12-site bench re-run revealed CreepJS audio
+  bold-fail (Phase 4.1 regression); fixed by skipping zero samples in
+  the AudioBuffer hook so silent-region pattern matches real Chrome.
+- **Phase 5.3**: `bench/capture-real-webgl-profile.html` + `bench/convert-
+  captured-profile.ts` — end-to-end capture workflow for users to
+  contribute authentic GPU profiles to `KNOWN_PROFILES`.
+- **Phase 5.4**: bench `extractCreepjs` parser noise eliminated; the
+  v0.5.0 documented `bold-fail: <unknown>` 22-line phantom block in
+  bench reports collapses to 0, leaving only the 2 real surface markers
+  visible.
+
+### Added
+
+- **Phase 5.1 — `audioNoiseAmplitudeDb` field**
+  (`packages/persona-schema/src/persona.ts` + 4 templates): New
+  `AudioFingerprintSchema.noiseAmplitudeDb` (Zod default `0.001`,
+  bounds `[0, 5]`). Wired through `InjectionConfig.audioNoiseAmplitudeDb`
+  to `runner.ts` AnalyserNode hook. Replaces the v0.2-v0.4 PCM-only
+  `audioNoiseAmplitude=1e-7` which was silently quantized in dB scale
+  (Float32 ULP @ -100 dB ≈ 1.19e-5; 1e-7 noise rounds to baseline). The
+  new default 0.001 dB ≈ 42× ULP — guaranteed visible, far below human
+  JND (~1 dB) and audio-application thresholds. PCM path unchanged
+  (still 1e-7, which is correct for the [-1, 1] range). 5 new persona-
+  schema tests + 2 new sdk runner-audio tests.
+- **Phase 5.3 — `bench/capture-real-webgl-profile.html`**: Self-
+  contained capture page (no network requests). Reads
+  `UNMASKED_VENDOR_WEBGL` + `UNMASKED_RENDERER_WEBGL` via
+  `WEBGL_debug_renderer_info`, then queries 28 WebGL1 + 30 WebGL2
+  capability params matching the GL constants exposed by `runner.ts`.
+  Emits a versioned JSON payload (`schemaVersion: mosaiq-webgl-capture/1`)
+  with a local-computed CreepJS hash preview (capabilitiesHash +
+  brandCapabilities) so the user can sanity-check their hardware before
+  submitting.
+- **Phase 5.3 — `bench/convert-captured-profile.ts`** (new tsx CLI):
+  Reads capture JSON from stdin or `--file <path>`, verifies against
+  the same CreepJS whitelists used by `verify-creepjs-profile-hash.ts`,
+  emits a paste-ready `WebglProfile` TypeScript snippet for
+  `webgl-profiles.ts`. Auto-suggests a profile id and `matchRenderer`
+  regex from the captured renderer string. Uses the live `GL.*`
+  constant map for readable output (falls back to hex literals for
+  unmapped params; entries sorted by hex key for stable diffs).
+  `--self-test` invariant locks the round-trip pipeline against
+  `INTEL_UHD_730_D3D11` capHash `2146264057`. 22 new vitest cases
+  (parse / verify / brand classification / id suggestion / regex
+  suggestion / TS emission / round-trip).
+- **`bench:verify-creepjs` + `bench:convert-profile` scripts**
+  (`packages/sdk/package.json`): expose the two whitelist tools through
+  `pnpm run` (`pnpm exec tsx` is not in the bin shim path on Windows).
+
+### Fixed
+
+- **Phase 5.2b — CreepJS audio bold-fail eliminated**
+  (`runner.ts §6` + `runner.ts §11` worker IIFE mirror). Bench-driven
+  fix. The Phase 5.2 12-site re-run (the first since Phase 4.1 landed in
+  v0.4) surfaced `creepjs.com Audio` bold-fail. Root cause: Phase 4.1
+  hook applied PRNG noise to all 5000 samples including the silence
+  region; CreepJS audio test renders `OfflineAudioContext +
+  DynamicsCompressor` where pre-attack samples are exact 0 on real
+  Chrome. Adding any noise to those zeros produced `unique:5000` (every
+  sample distinct), which CreepJS bold-fails. Fix: skip the
+  `buf[i] = s + n` write when the original sample is exact 0. PRNG still
+  advances every iteration (deterministic sequence + per-channel XOR
+  seed unchanged); non-zero samples receive identical noise. Worker
+  IIFE updated symmetrically. Bench result: creepjs Audio severity
+  dropped **bold-fail (red) → lies (yellow)** — the bold-fail signal
+  CreepJS uses to gate WebGL fallback no longer fires on the audio
+  surface. 3 new vitest cases pin the silent-sample preservation
+  invariant; worker IIFE static assertion rewritten to lock the new
+  `var s=...|var n=...|if(s!==0)` pattern.
+- **Phase 5.4 — bench parser noise eliminated**
+  (`packages/sdk/bench/sites.ts` `extractCreepjs`). The v0.5.0 12-site
+  bench report `creepjs.html` carried 22 phantom `bold-fail: <unknown>`
+  entries with single-character hashes (`hash=2`, `hash=5`, `hash=.`,
+  …). Root cause: the page-side extractor selected the over-broad
+  `span.lies, span.bold-fail` and fell back to `surface = '<unknown>'`
+  when the previous sibling was not `<strong>`. CreepJS uses the bare
+  `lies`/`bold-fail` classes for **inline character-level hash
+  highlighting** (e.g. `<span class="bold-fail">2</span>` digits inside
+  the AudioBuffer trap-value debug text), and uses `lies hash` /
+  `bold-fail hash` only for surface-level markers. Fix: extract the
+  page.evaluate body into an exported `extractCreepjsFromDocument`
+  helper and tighten three guards — (1) selector
+  `span.lies.hash, span.bold-fail.hash` (CreepJS's own discriminator);
+  (2) hash text must match `/^[0-9a-f]{6,12}$/i` (hashMini format);
+  (3) `previousElementSibling.tagName === 'STRONG'` is required (drop
+  the v0.2 `<unknown>` fallback). Verified against the
+  2026-05-17T01-27-18-536Z bench fixture: 24 collected → 2 (the 2 real
+  surface markers `WebGL bold-fail#3695ea1d` + `Audio lies#b726173b`
+  preserved). Closes the v0.5.0 documented "Bench `report.ts` parser
+  noise" limitation. 8 new vitest cases (synthetic + real-fixture) lock
+  the discriminator + regex + STRONG-sibling invariants.
+
+### Documented (known limitations)
+
+- **CreepJS Audio "lies" yellow signal still fires**: After the Phase
+  5.2b bold-fail elimination, CreepJS still flags Audio with a soft
+  `lies` severity (yellow). Likely caused by Function.prototype.toString
+  / proxy detection cross-checks — under investigation for v0.6. Yellow
+  `lies` does not gate the WebGL fallback the way `bold-fail` does, and
+  no other detector in the 12-site suite penalizes it. Tracked.
+- **CreepJS WebGL bold-fail persists for all 4 built-in profiles**
+  (carried over from v0.4, unchanged). Phase 5.3 capture + convert
+  pipeline is the long-term path: any user can now contribute an
+  authentic capture from their machine that may hit a CreepJS-whitelisted
+  hash, growing `KNOWN_PROFILES` beyond the 4 built-ins. Blind brute-
+  force remains mathematically infeasible (Phase 2.2 Part 2 math:
+  per-attempt hit probability ≈ 5.5e-8). The convert tool always emits a
+  paste-ready snippet even on whitelist miss — the GPU-persona
+  flexibility benefit (Intel iGPU vs NVIDIA / AMD desktop) applies
+  regardless of CreepJS whitelist.
+
+After Phase 5.4 the v0.5.0 visible report hits collapse to: **2 reds**
+(CreepJS WebGL bold-fail + browserleaks-canvas 100% uniqueness, both
+documented known-limits) + **1 yellow** (CreepJS Audio lies). Down
+from v0.4's 3 reds + the 22-line phantom block that previously masked
+the real signal.
+
+### Bench
+
+- **Phase 5.2 12-site re-run** (`bench/results/2026-05-17T01-04-37-334Z`
+  → pre-5.2b; `bench/results/2026-05-17T01-27-18-536Z` → post-5.2b).
+  12/12 sites OK both runs. Total visible hits 28 → 25 → **3** (after
+  Phase 5.4 parser-noise removal applied to the same fixture: 22
+  phantom creepjs `<unknown>` entries dropped, leaving 2 real reds
+  [creepjs WebGL bold-fail + browserleaks-canvas uniqueness 100%] and
+  1 yellow [creepjs Audio lies]).
+
+### Tests
+
+- **persona-schema**: 26 → 26 (5.1 introduced 5 new under
+  `AudioFingerprintSchema noiseAmplitudeDb`; was 21 before v0.5).
+- **sdk**: 318 → 351. Breakdown:
+  - +2 `runner-audio` (Phase 5.1 dB-noise visibility + bound).
+  - +3 `runner-audio` (Phase 5.2b silent-sample preservation + full-
+    silence buffer + PRNG-advance invariant).
+  - +22 `convert-captured-profile` (Phase 5.3 round-trip / verify /
+    brand / id-suggest / regex-suggest / TS-emit).
+  - +8 `sites-creepjs` (Phase 5.4 extractCreepjs discriminator + hex
+    regex + STRONG-sibling guard + real bench-fixture regression).
+- **typecheck clean**: persona-schema + sdk + desktop all `tsc --noEmit`
+  pass.
+
+### Internal
+
+- **`bench/PHASE-5-PLAN.md`** added documenting the v0.5 plan.
+- **MockAudioBuffer** in `runner-audio.test.ts` gained an optional
+  `fill` callback so silent-pattern tests can inject zero buffers
+  without ad-hoc Float32Array poking.
+
+---
+
 ## [0.4.0] — 2026-05-16
 
 The **"v0.4 audio closure + multi-GPU + chromium-fork bridge"** release.

@@ -319,55 +319,87 @@ async function extractIphey(page: Page): Promise<Record<string, unknown>> {
  * 兼容：旧版本 CreepJS 可能用 `.trust-score` 或文本 `N lies` — 都尝试一遍 fallback。
  */
 async function extractCreepjs(page: Page): Promise<Record<string, unknown>> {
-  return await page.evaluate(() => {
-    const result: Record<string, unknown> = {};
+  return await page.evaluate(extractCreepjsFromDocument);
+}
 
-    // ── 撒谎 surface 列表（核心反检测指标） ──
-    // 每条形如 `<strong>WebGL</strong><span class="lies hash">e58ad7c4</span>`
-    // 或 `<strong>Intl</strong><span class="bold-fail hash">23d22f8d</span>`
-    const liesSurfaces: Array<{ surface: string; severity: 'lies' | 'bold-fail'; hash: string }> = [];
-    document.querySelectorAll('span.lies, span.bold-fail').forEach((span) => {
-      const cls = span.className.toLowerCase();
-      const severity: 'lies' | 'bold-fail' = cls.includes('bold-fail') ? 'bold-fail' : 'lies';
-      const hash = (span.textContent ?? '').trim();
-      // surface 名在前面紧邻的 <strong>
-      const prevStrong = span.previousElementSibling;
-      const surface =
-        prevStrong && prevStrong.tagName === 'STRONG'
-          ? (prevStrong.textContent ?? '').trim()
-          : '<unknown>';
-      if (hash) liesSurfaces.push({ surface, severity, hash });
-    });
-    result.liesSurfaces = liesSurfaces;
-    result.liesCount = liesSurfaces.filter((l) => l.severity === 'lies').length;
-    result.boldFailCount = liesSurfaces.filter((l) => l.severity === 'bold-fail').length;
+/**
+ * Pure DOM-based parser for the CreepJS result page.
+ *
+ * 设计为「无外部闭包 / 无 import」，可以同时：
+ *   1. 在 Playwright 的 `page.evaluate(extractCreepjsFromDocument)` 中直接序列化执行
+ *   2. 在 vitest + happy-dom 环境下当作普通函数调用（document 走 happy-dom global）
+ *
+ * **v0.5.1 fix — `<unknown>` 解析噪声**：
+ *   v0.5.0 的报告里 creepjs 卡片下挂着 23 条 `bold-fail: <unknown>` 单字符
+ *   hash（hash=2 / hash=5 / hash=. / ...），是 parser 把 CreepJS 用作内联字符
+ *   高亮的 `<span class="bold-fail">N</span>`（出现在 AudioBuffer trap value 等
+ *   debug 文本里）误当成 surface-level lie marker 收进来了。CreepJS 自己用
+ *   `hash` class 区分两类：surface 级 marker = `lies hash` / `bold-fail hash`，
+ *   inline 字符高亮 = 仅 `lies` / 仅 `bold-fail`。
+ *
+ *   修复策略（三道闸都收紧）：
+ *     1. selector 改成 `span.lies.hash, span.bold-fail.hash` —— CreepJS 原生
+ *        discriminator
+ *     2. textContent 必须是 hashMini 格式（hex 6-12 字符），过滤极端兜底
+ *     3. previousElementSibling 必须是 `<strong>` —— 没有 surface 名的 marker
+ *        是垃圾，弃掉 v0.2 的 `<unknown>` fallback
+ *   任意一道失败即跳过，不再产生 `<unknown>` 行。
+ */
+export function extractCreepjsFromDocument(): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
 
-    // ── Trust score（旧版本 selector，可能 N/A） ──
-    const trustEl = document.querySelector('.trust-score, [class*="trust"]');
-    result.trustScore = trustEl?.textContent?.trim() ?? null;
-
-    // ── FP id (主指纹 hash) ──
-    const fpEl = document.querySelector('[class*="fingerprint"] strong, .fingerprint .id');
-    result.fingerprintId = fpEl?.textContent?.trim() ?? null;
-
-    // ── 全文 fallback：旧版 CreepJS 可能用 `N lies / N blocked / N errors` 文本 ──
-    const allText = document.body.textContent ?? '';
-    const blockedMatch = allText.match(/(\d+)\s*blocked/i);
-    const errorsMatch = allText.match(/(\d+)\s*errors?/i);
-    result.blockedCount = blockedMatch ? Number(blockedMatch[1]) : null;
-    result.errorsCount = errorsMatch ? Number(errorsMatch[1]) : null;
-
-    // ── 收集所有 sub-card 标题 + 截断文本（人工查阅用） ──
-    const sections: Array<{ title: string; subtitle: string }> = [];
-    document.querySelectorAll('.col-six, .visitor-info, [class*="card"]').forEach((card) => {
-      const title = card.querySelector('strong, h2, h3, .strong')?.textContent?.trim() ?? '';
-      const subtitle = (card.textContent ?? '').slice(0, 200).replace(/\s+/g, ' ').trim();
-      if (title) sections.push({ title, subtitle });
-    });
-    result.sections = sections;
-
-    return result;
+  // ── 撒谎 surface 列表（核心反检测指标） ──
+  // 真正的 surface marker 形如：
+  //   <strong>WebGL</strong><span class="bold-fail hash">3695ea1d</span>
+  //   <strong>Audio</strong><span class="lies hash">b726173b</span>
+  // 而 inline 字符高亮（v0.5.0 报告里的 23 条噪声源头）形如：
+  //   sum: 124.043475<span class="bold-fail">2</span><span class="bold-fail">5</span>...
+  // → 以 `.hash` class 作为 CreepJS 自己的判别器，过滤后者。
+  const liesSurfaces: Array<{ surface: string; severity: 'lies' | 'bold-fail'; hash: string }> = [];
+  document.querySelectorAll('span.lies.hash, span.bold-fail.hash').forEach((span) => {
+    const cls = span.className.toLowerCase();
+    const severity: 'lies' | 'bold-fail' = cls.includes('bold-fail') ? 'bold-fail' : 'lies';
+    const hash = (span.textContent ?? '').trim();
+    // 二道闸：必须是 hashMini 格式（hex 6-12 字符）。CreepJS 的 hashMini 输出
+    // 长度 8，给个 6-12 区间容错（防止他们升级 hash 长度）。
+    if (!hash || !/^[0-9a-f]{6,12}$/i.test(hash)) return;
+    // 三道闸：surface 名必须来自前一个 <strong>。没有 strong 兄弟的就不是
+    // surface-level marker，丢弃。
+    const prevStrong = span.previousElementSibling;
+    if (!prevStrong || prevStrong.tagName !== 'STRONG') return;
+    const surface = (prevStrong.textContent ?? '').trim();
+    if (!surface) return;
+    liesSurfaces.push({ surface, severity, hash });
   });
+  result.liesSurfaces = liesSurfaces;
+  result.liesCount = liesSurfaces.filter((l) => l.severity === 'lies').length;
+  result.boldFailCount = liesSurfaces.filter((l) => l.severity === 'bold-fail').length;
+
+  // ── Trust score（旧版本 selector，可能 N/A） ──
+  const trustEl = document.querySelector('.trust-score, [class*="trust"]');
+  result.trustScore = trustEl?.textContent?.trim() ?? null;
+
+  // ── FP id (主指纹 hash) ──
+  const fpEl = document.querySelector('[class*="fingerprint"] strong, .fingerprint .id');
+  result.fingerprintId = fpEl?.textContent?.trim() ?? null;
+
+  // ── 全文 fallback：旧版 CreepJS 可能用 `N lies / N blocked / N errors` 文本 ──
+  const allText = document.body.textContent ?? '';
+  const blockedMatch = allText.match(/(\d+)\s*blocked/i);
+  const errorsMatch = allText.match(/(\d+)\s*errors?/i);
+  result.blockedCount = blockedMatch ? Number(blockedMatch[1]) : null;
+  result.errorsCount = errorsMatch ? Number(errorsMatch[1]) : null;
+
+  // ── 收集所有 sub-card 标题 + 截断文本（人工查阅用） ──
+  const sections: Array<{ title: string; subtitle: string }> = [];
+  document.querySelectorAll('.col-six, .visitor-info, [class*="card"]').forEach((card) => {
+    const title = card.querySelector('strong, h2, h3, .strong')?.textContent?.trim() ?? '';
+    const subtitle = (card.textContent ?? '').slice(0, 200).replace(/\s+/g, ' ').trim();
+    if (title) sections.push({ title, subtitle });
+  });
+  result.sections = sections;
+
+  return result;
 }
 
 /**
