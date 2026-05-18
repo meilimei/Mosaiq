@@ -30,6 +30,8 @@ interface PersonaListPageProps {
   onCreate: () => void;
   onEdit: (id: PersonaId) => void;
   onClone: (id: PersonaId) => void;
+  /** 跳转到 Detection Lab 页（detection run 历史 + 启动新 run）。displayName 用作页头副标题 */
+  onDetectionLab: (id: PersonaId, displayName: string) => void;
 }
 
 /** 删除二次确认 5 秒后自动取消，避免误点 */
@@ -37,7 +39,12 @@ const DELETE_CONFIRM_TIMEOUT_MS = 5000;
 /** 列表轮询间隔。短了浪费 IPC，长了运行中 persona 状态延迟可见 */
 const POLL_INTERVAL_MS = 3000;
 
-export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPageProps) {
+export function PersonaListPage({
+  onCreate,
+  onEdit,
+  onClone,
+  onDetectionLab,
+}: PersonaListPageProps) {
   const toast = useToast();
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,15 +126,16 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
     toast.info(`已停止 ${id}`);
   };
 
-  const handleDetectionLab = async (id: PersonaId) => {
-    setBusy(id);
-    setErrorFor(id, null);
-    const res = await window.mosaiq.openDetectionLab(id);
-    setBusy(null);
-    if (!res.ok) {
-      setErrorFor(id, res.error);
-      toast.error(`自检页打开失败：${res.error}`);
-    }
+  /**
+   * 跳转到 Detection Lab：纯 renderer 路由切换，不走 IPC。
+   *
+   * v0.8 之前 `openDetectionLab` IPC 会在已启动 persona 浏览器里打开两个反检测站，
+   * v0.8 起 Detection Lab 是独立功能（与 launch 解耦），所以这里直接 setPage。
+   * 旧 `window.mosaiq.openDetectionLab` channel 暂保留兼容（main.ts 未删），但 UI
+   * 不再调用——deprecate 在 8.7。
+   */
+  const handleDetectionLab = (id: PersonaId, displayName: string) => {
+    onDetectionLab(id, displayName);
   };
 
   /**
@@ -442,35 +450,29 @@ export function PersonaListPage({ onCreate, onEdit, onClone }: PersonaListPagePr
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
+                    {/* Detection Lab 始终可见（与 launch 解耦） */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDetectionLab(p.id, p.displayName)}
+                      title="打开 Detection Lab（启动反检测体检 + 历史 run）"
+                    >
+                      <ShieldCheck className="mr-1 h-4 w-4" /> Detection Lab
+                    </Button>
                     {p.isRunning ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDetectionLab(p.id)}
-                          disabled={isBusy}
-                        >
-                          {isBusy ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                          ) : (
-                            <ShieldCheck className="mr-1 h-4 w-4" />
-                          )}
-                          自检
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleStop(p.id)}
-                          disabled={isBusy}
-                        >
-                          {isBusy ? (
-                            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Square className="mr-1 h-4 w-4" />
-                          )}
-                          停止
-                        </Button>
-                      </>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleStop(p.id)}
+                        disabled={isBusy}
+                      >
+                        {isBusy ? (
+                          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Square className="mr-1 h-4 w-4" />
+                        )}
+                        停止
+                      </Button>
                     ) : (
                       <Button size="sm" onClick={() => handleLaunch(p.id)} disabled={isBusy}>
                         {isBusy ? (

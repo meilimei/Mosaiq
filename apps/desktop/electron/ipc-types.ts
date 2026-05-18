@@ -11,12 +11,7 @@ import type {
   RunProgressEvent,
 } from '@mosaiq/sdk';
 
-export type {
-  DetectionRun,
-  DetectionRunSummary,
-  ProxyVerifyResult,
-  RunProgressEvent,
-};
+export type { DetectionRun, DetectionRunSummary, ProxyVerifyResult, RunProgressEvent };
 
 export interface ProxyVerifyInput {
   protocol: 'http' | 'https' | 'socks5';
@@ -132,9 +127,7 @@ export interface ExportPersonaOptions {
  *   - ok:false → 通常因为该 persona 已有 in-flight run（单 persona 串行约束）
  *     或 persona 不存在
  */
-export type DetectionRunStartResult =
-  | { ok: true; runId: string }
-  | { ok: false; error: string };
+export type DetectionRunStartResult = { ok: true; runId: string } | { ok: false; error: string };
 
 /**
  * 推送给 renderer 的进度消息。
@@ -159,7 +152,6 @@ export interface MosaiqApi {
   launchPersona(id: PersonaId): Promise<{ ok: true } | { ok: false; error: string }>;
   stopPersona(id: PersonaId): Promise<boolean>;
   getRunningPersonas(): Promise<PersonaId[]>;
-  openDetectionLab(id: PersonaId): Promise<{ ok: true } | { ok: false; error: string }>;
   verifyProxy(input: ProxyVerifyInput): Promise<ProxyVerifyResult>;
   exportPersona(id: PersonaId, opts?: ExportPersonaOptions): Promise<ExportPersonaResult>;
   importPersona(): Promise<ImportPersonaResult>;
@@ -207,7 +199,6 @@ export const IPC_CHANNELS = {
   launchPersona: 'mosaiq:launchPersona',
   stopPersona: 'mosaiq:stopPersona',
   getRunningPersonas: 'mosaiq:getRunningPersonas',
-  openDetectionLab: 'mosaiq:openDetectionLab',
   verifyProxy: 'mosaiq:verifyProxy',
   exportPersona: 'mosaiq:exportPersona',
   importPersona: 'mosaiq:importPersona',

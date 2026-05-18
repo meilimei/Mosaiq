@@ -8,12 +8,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { PersonaId } from '@mosaiq/persona-schema';
 
 import {
-  IPC_CHANNELS,
-  IPC_EVENTS,
   type ClonePersonaInput,
   type CreatePersonaInput,
   type DetectionLabProgressMessage,
   type ExportPersonaOptions,
+  IPC_CHANNELS,
+  IPC_EVENTS,
   type MosaiqApi,
   type MosaiqEvents,
   type ProxyVerifyInput,
@@ -33,7 +33,6 @@ const api: MosaiqApi = {
   launchPersona: (id: PersonaId) => ipcRenderer.invoke(IPC_CHANNELS.launchPersona, id),
   stopPersona: (id: PersonaId) => ipcRenderer.invoke(IPC_CHANNELS.stopPersona, id),
   getRunningPersonas: () => ipcRenderer.invoke(IPC_CHANNELS.getRunningPersonas),
-  openDetectionLab: (id: PersonaId) => ipcRenderer.invoke(IPC_CHANNELS.openDetectionLab, id),
   verifyProxy: (input: ProxyVerifyInput) => ipcRenderer.invoke(IPC_CHANNELS.verifyProxy, input),
   exportPersona: (id: PersonaId, opts?: ExportPersonaOptions) =>
     ipcRenderer.invoke(IPC_CHANNELS.exportPersona, id, opts ?? {}),
@@ -43,8 +42,7 @@ const api: MosaiqApi = {
   // ── Phase 8.5 Detection Lab ──────────────────────────────────────────────
   detectionLabRun: (personaId: PersonaId) =>
     ipcRenderer.invoke(IPC_CHANNELS.detectionLabRun, personaId),
-  detectionLabCancel: (runId: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.detectionLabCancel, runId),
+  detectionLabCancel: (runId: string) => ipcRenderer.invoke(IPC_CHANNELS.detectionLabCancel, runId),
   detectionLabListRuns: (personaId: PersonaId) =>
     ipcRenderer.invoke(IPC_CHANNELS.detectionLabListRuns, personaId),
   detectionLabGetRun: (personaId: PersonaId, runId: string) =>

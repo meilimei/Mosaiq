@@ -9,7 +9,9 @@
  *
  * 设计选择：
  *   - 所有类型都 transferable via IPC（纯 POJO，无 class / function / Date）
- *   - DetectionRun 不嵌入 raw / report.md（按需 lazy load，避免 IPC 序列化 30MB 抓的 HTML）
+ *   - DetectionRun **内嵌** raw（v0.8.0+）：`SiteResult.html` / `screenshot` 是相对
+ *     路径字符串、不是文件内容，所以 raw 序列化通常 <100KB。listDetectionRuns
+ *     在投影 DetectionRunSummary 时丢 raw，避免 100 个历史 run 一次性占用大量内存
  *   - SurfaceHit 与 bench/report.ts 的 SurfaceHit 同形（scorer 是 bench/report 抽出来的）
  */
 
@@ -198,8 +200,17 @@ export function emptyHitsBySurface(): HitsBySurface {
 export type RunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'canceled';
 
 /**
- * UI 列表 / 历史表项主消费类型。**不包含**原始 results / screenshots，
- * 那些通过 readDetectionRun(personaId, runId) 按需加载。
+ * UI 列表 / 历史表项主消费类型。
+ *
+ * 关于 `raw` 字段：
+ *   - 完成 run 会内嵌 `raw`（DetectionRunRaw），UI detail 页直接访问
+ *     `run.raw.results[]` 渲染 12 站 grid，不再分两次 IPC
+ *   - SiteResult 里的 `html` / `screenshot` 是相对路径**字符串**（不是文件内容），
+ *     真正的 artifacts 在 `<runtimeRoot>/detection-runs/<personaId>/<runId>/` 下；
+ *     所以 raw JSON 序列化后通常 <100KB，IPC clone 成本可接受
+ *   - failed run 通常 raw 缺失（runDetection 抛错前没有完整 raw）
+ *   - listDetectionRuns 投影出 DetectionRunSummary 时丢弃 raw，避免
+ *     100 个历史 run 一次性占用大量内存
  */
 export interface DetectionRun {
   /** ISO timestamp folder name，eg `2026-05-17T18-30-00-000Z` */
@@ -216,6 +227,11 @@ export interface DetectionRun {
   durationMs: number;
   /** 得分。failed/canceled 时可能为 null（部分跑完仍可有 partial score） */
   score: DetectionScore | null;
+  /**
+   * 原始数据（按站 results / 元信息）。完成 run 必有；failed run 在 runDetection
+   * 抛错前若已 build raw 则留下，否则 undefined。
+   */
+  raw?: DetectionRunRaw;
   /** failed 时填，否则 null */
   error: string | null;
   /** 运行时上下文 */

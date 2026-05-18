@@ -1,6 +1,6 @@
 {
   "name": "@mosaiq/persona-schema",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Persona schema definitions for Mosaiq — the canonical source of truth for browser fingerprints",
   "license": "Apache-2.0",
   "type": "module",
@@ -16,11 +16,7 @@
       "import": "./dist/templates/index.js"
     }
   },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE.md"
-  ],
+  "files": ["dist", "README.md", "LICENSE.md"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",

@@ -11,4 +11,4 @@
  * 时需要带上 SDK 版本，但 electron `app.getVersion()` 返回的是 desktop app 版本，
  * 二者不一定同步。
  */
-export const SDK_VERSION = '0.7.1';
+export const SDK_VERSION = '0.8.0';

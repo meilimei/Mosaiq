@@ -5,6 +5,272 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [0.8.0] — 2026-05-18
+
+The **"v0.8 Detection Lab in the desktop app"** release. Closes the v0.7
+"`Detection Lab` button is a pixelscan/browserscan placeholder" UX gap by
+hoisting the entire bench-only detection pipeline (12 sites, scorer,
+12-surface attribution, severity-weighted hits) into `@mosaiq/sdk` public
+API and shipping a full renderer dashboard: history list with weighted-hits
+trend chart, per-run detail with hits-by-surface radar + per-site grid,
+live progress events with cancellation, and a 100KB-wire-format
+`DetectionRun` JSON store at `~/.mosaiq/detection-runs/<personaId>/`.
+
+End users can now repeatedly run anti-detection self-checks against their
+own personas without touching the bench CLI; contributors retain
+`pnpm bench:all` as the existing comparison loop (the bench `baseline-
+detection.ts` was rewritten as a thin wrapper around the new SDK
+`runDetection` so it stays in lockstep).
+
+This release does **not** add new fingerprint surfaces or change injection
+behavior — `runDetection` reuses the v0.7.1 SDK launch + spoof stack
+verbatim. Bench fingerprint coverage from v0.7.1 (12/12 sites OK, 2
+documented long-term reds) is preserved.
+
+### Added
+
+- **Phase 8.1 — Site specs + types lifted to SDK** (`commit e5da6dc`).
+  - `packages/sdk/src/detection-lab/sites.ts` (937 LOC moved from
+    `packages/sdk/bench/sites.ts`): the 12-site `SITES` array + per-site
+    `extract*` functions become a public SDK module. Bench `sites.ts`
+    decays to a 21-line re-export shim so existing `tsx bench/*` scripts
+    keep working unchanged.
+  - `packages/sdk/src/detection-lab/types.ts` (258 LOC): canonical type
+    contract — `SiteSpec` / `SiteResult` / `SurfaceName` (12 surfaces:
+    webdriver / navigator / canvas / webgl / audio / font / webrtc /
+    screen / permissions / timezone / plugins / other) / `HitSeverity`
+    (high/medium/low) / `SurfaceHit` / `DetectionRunRaw` /
+    `DetectionScore` / `DetectionRun` / `HitsBySurface` / `RunStatus`
+    (pending/running/completed/failed/canceled) /
+    `RunProgressPhase` (init/site-start/site-retry/site-end/done/
+    canceled/error) / `RunProgressEvent` /
+    `DetectionLabProgressMessage`. All POJO, structured-clone-safe for
+    Electron IPC.
+  - `bench/report.ts` rewritten to consume the SDK types as the single
+    source of truth (no more parallel definitions).
+- **Phase 8.2 — Scorer module hoisted to SDK** (`commit 3669c67`).
+  - `packages/sdk/src/detection-lab/scorer.ts` (689 LOC): pure
+    `computeScore(raw: DetectionRunRaw): DetectionScore` — no I/O, no
+    bench dependency, deterministic. Exposes `SEVERITY_WEIGHT` (high*3,
+    medium*1.5, low*0.5), 12 per-site scorers (`scoreSannysoft`,
+    `scoreCreepjs`, `scoreDbiBot`, `scoreAmIUnique`, `scorePixelscan`,
+    `scoreAntoinevastel`, `scoreIncolumitas`, `scoreFingerprintScan`,
+    `scoreBrowserleaks*`, `scoreIphey`, …), `attributeSurface(detector)`
+    pattern matcher, `normalizeWebglString` / `parseUniquenessPct`
+    helpers, `SURFACE_PATTERNS` / `DBI_KEY_TO_SURFACE` /
+    `FPSCANNER_TO_SURFACE` / `KNOWN_OUTDATED_FPSCANNER_RULES` lookup
+    tables.
+  - 54 vitest cases pin the scoring contract: surface attribution
+    coverage, severity weight invariants, per-site score determinism,
+    edge cases (empty results / failed sites / partial scores).
+  - `bench/report.ts` `analyze*` helpers decay to pure markdown
+    renderers (no `hits.push` side-effects); `generate()` calls
+    `computeScore` and projects the result to the existing report
+    layout. Net diff: bench/report.ts -286 LOC, SDK +1419 LOC (incl.
+    tests).
+- **Phase 8.3 — Detection runner public API** (`commit 19ad187`).
+  - `packages/sdk/src/detection-lab/runner-core.ts` (310 LOC): pure
+    lifecycle orchestration. Iterates `SITES` (with optional `onlySites`
+    filter), drives `goto` / `waitForLoadState` / per-site `extract` /
+    `screenshot` / `bodyText`, applies up to 2 retries on transient
+    failures (closed page / target navigation), emits `RunProgressEvent`
+    via injected `onProgress` callback, honors `AbortSignal` for
+    cancellation. Zero Playwright import — all browser interaction goes
+    through injected `RunDetectionDeps` (launchPersona / runOnePage /
+    closePage / closeContext) so the module is testable with happy-dom +
+    plain mocks. 31 vitest cases.
+  - `packages/sdk/src/detection-lab/runner.ts` (310 LOC): thin wrapper
+    that wires `runner-core` to real Playwright `launchPersona` from
+    `@mosaiq/sdk`. Exports `runDetection({ persona, onProgress, signal,
+    onlySites?, artifactDir? })`. 16 vitest cases (lifecycle integration
+    + retry semantics + abort propagation). Bench
+    `baseline-detection.ts` was rewritten as a 137-line caller of the
+    new SDK function (-123 LOC vs the old hand-rolled bench loop) so the
+    public API and the contributor benchmark share one codepath.
+- **Phase 8.4 — DetectionRun JSON persistence** (`commit 19ad187`).
+  - `packages/sdk/src/detection-lab/run-store.ts` (245 LOC): one JSON
+    file per run at
+    `<runtimeRoot>/detection-runs/<personaId>/<runId>.json` plus
+    sibling `<runId>/` artifact directory (screenshots / HTML).
+    `saveDetectionRun` / `loadDetectionRun` / `listDetectionRuns`
+    (returns lightweight `DetectionRunSummary[]`, projecting top-level
+    fields and discarding full hits arrays — keeps 100 historical runs
+    at ~150 bytes each in memory) / `deleteDetectionRun` (removes both
+    JSON and artifact dir).
+  - `packages/sdk/src/paths.ts:46-91` +3 helpers
+    (`getDetectionRunsDir` / `getDetectionRunFile` /
+    `getDetectionRunArtifactDir`) following the v0.6 `paths.ts`
+    convention (mkdir centralized in save, pure path concat elsewhere).
+  - 21 round-trip tests: tmp-dir injection mirroring `persona-store.
+    test`, save-then-load equivalence, list ordering by startedAt
+    descending, corrupt-JSON skip-with-warn, missing-file throw,
+    failed-run preservation, summary projection correctness.
+- **Phase 8.5 — Electron IPC bridge** (`commit 19ad187`).
+  - `apps/desktop/electron/ipc-types.ts:128-229` (+101 LOC): 5 new
+    invoke channels (`detectionLab:run` / `:cancel` / `:listRuns` /
+    `:getRun` / `:deleteRun`) plus 1 push channel
+    (`detectionLab:progress`). `MosaiqEvents` exposed as a separate
+    `window.mosaiqEvents.*` contextBridge expose (decoupled from the
+    request-response `window.mosaiq.*` API surface; subscriptions
+    return cleanup callbacks that callers hand to React effect
+    teardown).
+  - `apps/desktop/electron/main.ts` (+212 LOC): `activeRuns`
+    `Map<runId, ActiveRunEntry>` + `runIdsByPersona`
+    `Map<personaId, Set<runId>>` dual index for O(1) cancel by runId
+    and serial-per-persona enforcement (second `startRun` for the same
+    persona returns `{ ok: false, error }` instead of racing). Each
+    invoke handler is async / fire-and-forget for `:run` (returns
+    `runId` immediately, progress streams via push events).
+  - `apps/desktop/electron/preload.ts` (+25 LOC): `mosaiq` and
+    `mosaiqEvents` separately context-bridged so the renderer can
+    typecheck against `MosaiqApi` and `MosaiqEvents` independently.
+  - `packages/sdk/src/version.ts` (14 LOC) + `version.test.ts`: SDK
+    version constant exposed for `DetectionRun.meta.sdkVersion`. Vitest
+    asserts the constant matches `package.json` version on every run
+    (drift fails CI; manual sync required at release time, intentional
+    so a forgotten bump never makes it past the test suite).
+- **Phase 8.6 — Renderer UI** (this release).
+  - `apps/desktop/src/lib/detection-lab.ts` (137 LOC): UI helpers —
+    12-surface display labels (Chinese), badge/text Tailwind class
+    fragments, recharts HEX color tokens (dual-channel: CSS classes for
+    chips, raw HEX for charts), severity dot colors, run status
+    badges, `formatMs` (ms → "Xm Ys" / "Y.Zs" / "Yms"),
+    `hitsBySurfaceToRadarData` projector.
+  - 4 components in `apps/desktop/src/components/detection-lab/`:
+    - `SurfaceHitBadge.tsx` (46 LOC): surface color block + severity
+      dot + detector label; `compact` mode for site-card chip strips.
+    - `HitsBySurfaceRadar.tsx` (95 LOC): recharts `<RadarChart>` with
+      12 axes, custom `<Tooltip>` mapping surface enum → Chinese
+      label; empty-hits state shows a green "✓ 全 surface 无命中"
+      banner instead of an empty radar.
+    - `RunsTrendChart.tsx` (130 LOC): recharts `<LineChart>` with
+      `weightedHits` over the last 20 runs (oldest left, newest
+      right); failed/canceled run dots painted in `--destructive`,
+      tooltip shows `STATUS_LABEL` + `sitesOk/total` + duration.
+    - `SiteResultCard.tsx` (120 LOC): per-site mini card —
+      OK/FAIL/running badge, title, hit chips, error block (if any),
+      collapsible `extracted` KV table. Screenshot embedding is
+      intentionally deferred (needs `file://` whitelist or main-process
+      blob server; planned post-v0.8).
+  - 2 pages in `apps/desktop/src/pages/`:
+    - `DetectionLabPage.tsx` (390 LOC): persona-scoped lab view. New
+      Run button (disabled while one is in flight) + Cancel button
+      mirror, live progress card with phase text + ETA-style "已用
+      Xs" tick, weighted-hits trend chart (≥2 runs), history list
+      with status badges + 5-second 2-step delete confirmation.
+      Subscribes to `mosaiqEvents.onDetectionLabProgress` filtered by
+      a `useRef`-stored active runId (avoids stale-closure event
+      drops).
+    - `DetectionRunDetailPage.tsx` (320 LOC): single-run drill-down.
+      Summary header with status badge + meta (timestamp / duration /
+      OK/FAIL / SDK + Chrome version), 2-column hero (radar +
+      headline numbers card with `creepjsLies` / `sannysoftPass` /
+      `dbiBotFlagsTriggered` / `amiuniqueOutliers` /
+      `fpScannerInconsistent` / `incolumitasBadFlags`), hits list
+      grouped by surface, 3-column 12-site grid wired through
+      `SiteResultCard`. Includes 2-step delete confirmation that
+      navigates back to the lab page on success.
+  - `apps/desktop/src/App.tsx`: 2 new `Page` kinds
+    (`detectionLab` / `detectionRun`) with back-navigation chain
+    (run → lab → list).
+  - `apps/desktop/src/pages/PersonaListPage.tsx`: Detection Lab
+    button always visible (decoupled from `isRunning` — running a
+    detection no longer requires launching the persona browser
+    separately); button now navigates via prop callback instead of
+    invoking the deprecated `openDetectionLab` IPC channel.
+  - `recharts@3.8.1` added to `apps/desktop` dependencies.
+
+### Changed
+
+- **`DetectionRun` now embeds `raw?: DetectionRunRaw`** (`packages/sdk/
+  src/detection-lab/types.ts:213-240`). The original Phase 8.4 design
+  envisioned lazy-loading raw via a separate IPC round-trip out of
+  concern that raw could carry tens of MB of HTML. Empirically
+  `SiteResult.html` and `screenshot` are *relative path strings*, not
+  file contents — actual artifacts live on disk under
+  `<runId>/`. Raw JSON typically serializes to <100KB, well within IPC
+  `structuredClone` budget. Embedding lets the detail page complete in
+  a single `detectionLabGetRun` call. `listDetectionRuns` still
+  projects to a lightweight summary, so the OOM concern for 100+
+  historical runs is preserved. The optional shape is fully
+  backward-compatible with v0.8-pre run files (existing JSONs that
+  predate the embed are loaded as `raw: undefined`; the detail page
+  gracefully omits the per-site grid when raw is missing).
+
+### Removed
+
+- **`mosaiq:openDetectionLab` IPC channel** (`apps/desktop/electron/{
+  main.ts,preload.ts,ipc-types.ts}`). The v0.7 placeholder that opened
+  pixelscan + browserscan in a running persona's browser tab is now
+  redundant — the renderer Detection Lab page does everything that
+  channel was meant to do, and more. No replacement needed; the
+  `Detection Lab` button now triggers a renderer route change.
+
+### Tests
+
+- **sdk**: 471 → 544 (+73 across Phase 8.3-8.4-8.5). Breakdown:
+  - +31 `runner-core.test.ts` (Phase 8.3a: lifecycle orchestration —
+    progress event sequence per phase, retry semantics, abort
+    propagation, onlySites filter, screenshot/HTML path emission,
+    error wrapping).
+  - +16 `runner.test.ts` (Phase 8.3b: integration with mocked
+    `launchPersona` — happy path, abort during siteRun, abort during
+    settle, page close mid-flight retry).
+  - +21 `run-store.test.ts` (Phase 8.4: save/load round-trip,
+    artifact dir cleanup, list ordering, summary projection,
+    corrupt-JSON skip, failed-run preservation).
+  - +1 `version.test.ts` (Phase 8.5: SDK_VERSION ↔ package.json
+    sync invariant).
+  - 4 existing test files received minor updates for
+    `DetectionRun.raw?:` (no behavior change — the new optional
+    field is invisible to existing fixtures).
+- **persona-schema**: 26 → 26 unchanged (no schema changes in v0.8).
+- **typecheck clean**: persona-schema + sdk + desktop all
+  `tsc --noEmit` pass.
+
+### Tests (totals)
+
+- 26 vitest files / **544 tests** all green on post-8.6 HEAD.
+- bench `pnpm bench:all` still works against the new SDK
+  `runDetection` (caller rewritten in 8.3b, no behavior change).
+
+### Documented (known limitations) — unchanged
+
+- CreepJS WebGL bold-fail (Intel UHD 730 / Intel HD 520 not in
+  upstream whitelist; v0.7 contributor pipeline remains the long-term
+  path).
+- browserleaks-canvas uniqueness 100% (by-design per-persona).
+
+### Internal
+
+- **`docs/V0.8-DETECTION-LAB.md`**: 678-line product-level integration
+  plan. §1-§7 fully fleshed out post-shipping (each phase has a
+  retrospective with implementation locations, design decisions, and
+  LOC totals). §8 risk register (10 entries — single-persona
+  serialization, SPA settle timeouts, scorer schema versioning, ...)
+  retained as the post-v0.8 follow-up loop.
+- **Renderer bundle size**: 213kB → 621kB raw / ~184kB gzipped, +408kB
+  raw from `recharts`. Acceptable for desktop (no mobile target);
+  future optimization could code-split the lab pages behind a dynamic
+  import if needed.
+
+### Deferred (post-v0.8.0)
+
+- **Site result screenshot thumbnails** in `SiteResultCard`. Embedding
+  requires either a `file://` whitelist on the renderer or a main-
+  process blob server. Path remains open in v0.9.
+- **Scorer schema versioning markers on the trend chart**. As scorer
+  rules evolve, historical `weightedHits` values stop being directly
+  comparable. Future enhancement: render vertical separator lines on
+  `RunsTrendChart` at scorer schema version boundaries (requires
+  persisting `scorerVersion` on each run).
+- **Renderer e2e tests** (Playwright). The desktop renderer has no
+  component test infrastructure today; v0.8 ships under the same
+  convention as v0.7 (typecheck + manual smoke). Targeted for v1.0+.
+- **Per-run artifact viewer** (full screenshot + HTML download from
+  the detail page). Out of v0.8 scope — artifacts persist on disk
+  today, just not surfaced through the UI.
+
 ## [0.7.1] — 2026-05-17
 
 The **"v0.7.1 captured-profiles pipeline hardening"** patch. Closes the

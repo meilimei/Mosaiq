@@ -1,6 +1,6 @@
 {
   "name": "@mosaiq/desktop",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Mosaiq Desktop — antidetect browser profile manager",
   "license": "Apache-2.0",
   "private": true,
@@ -30,6 +30,7 @@
     "playwright-core": "1.59.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "recharts": "^3.8.1",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7"
   },

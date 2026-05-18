@@ -192,6 +192,7 @@ function buildCompletedRun(
     sitesAttempted: raw.results.map((r) => r.id),
     durationMs: Date.now() - entry.startedAtMs,
     score,
+    raw,
     error: null,
     meta: {
       sdkVersion: SDK_VERSION,
@@ -200,11 +201,7 @@ function buildCompletedRun(
   };
 }
 
-function buildFailedRun(
-  runId: string,
-  entry: ActiveRunEntry,
-  error: string,
-): DetectionRun {
+function buildFailedRun(runId: string, entry: ActiveRunEntry, error: string): DetectionRun {
   return {
     id: runId,
     personaId: entry.personaId,
@@ -242,10 +239,7 @@ function statusToTerminalPhase(status: RunStatus): RunProgressEvent['phase'] {
  * 不 await 此函数本身——调用方拿到 promise 后丢进 activeRunPromises，window-all-
  * closed 时统一 abort（不强求等完，进程会被强杀）。
  */
-async function executeDetectionRunAsync(
-  entry: ActiveRunEntry,
-  persona: Persona,
-): Promise<void> {
+async function executeDetectionRunAsync(entry: ActiveRunEntry, persona: Persona): Promise<void> {
   const { runId, personaId, abort } = entry;
   try {
     const result = await runDetection(persona, {
@@ -462,21 +456,6 @@ function registerIpcHandlers() {
     return Array.from(runningSessions.keys());
   });
 
-  ipcMain.handle(IPC_CHANNELS.openDetectionLab, async (_evt, id: PersonaId) => {
-    const session = runningSessions.get(id);
-    if (!session) {
-      return { ok: false as const, error: `Persona ${id} 未启动，请先启动浏览器` };
-    }
-    try {
-      await session.open('https://pixelscan.net/');
-      const page = await session.context.newPage();
-      await page.goto('https://browserscan.net/', { waitUntil: 'domcontentloaded' });
-      return { ok: true as const };
-    } catch (err) {
-      return { ok: false as const, error: (err as Error).message };
-    }
-  });
-
   ipcMain.handle(IPC_CHANNELS.verifyProxy, async (_evt, input: ProxyVerifyInput) => {
     return verifyProxy({
       protocol: input.protocol,
@@ -618,22 +597,16 @@ function registerIpcHandlers() {
   );
 
   /** 中断 in-flight run；abort 后 SDK 会让当前站结束（goto timeout 内），下站起短路。 */
-  ipcMain.handle(
-    IPC_CHANNELS.detectionLabCancel,
-    (_evt, runId: string): boolean => {
-      const entry = activeRunsByRunId.get(runId);
-      if (!entry) return false;
-      entry.abort.abort();
-      return true;
-    },
-  );
+  ipcMain.handle(IPC_CHANNELS.detectionLabCancel, (_evt, runId: string): boolean => {
+    const entry = activeRunsByRunId.get(runId);
+    if (!entry) return false;
+    entry.abort.abort();
+    return true;
+  });
 
-  ipcMain.handle(
-    IPC_CHANNELS.detectionLabListRuns,
-    (_evt, personaId: PersonaId) => {
-      return listDetectionRuns(personaId);
-    },
-  );
+  ipcMain.handle(IPC_CHANNELS.detectionLabListRuns, (_evt, personaId: PersonaId) => {
+    return listDetectionRuns(personaId);
+  });
 
   ipcMain.handle(
     IPC_CHANNELS.detectionLabGetRun,
@@ -652,9 +625,7 @@ function registerIpcHandlers() {
     IPC_CHANNELS.detectionLabDeleteRun,
     (_evt, personaId: PersonaId, runId: string): boolean => {
       if (activeRunsByRunId.has(runId)) {
-        throw new Error(
-          `Cannot delete in-flight run ${runId}; cancel it first then retry.`,
-        );
+        throw new Error(`Cannot delete in-flight run ${runId}; cancel it first then retry.`);
       }
       return deleteDetectionRun(personaId, runId);
     },
