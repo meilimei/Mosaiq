@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import type { PersonaId } from '@mosaiq/persona-schema';
 
+import pkg from '../package.json';
 import { ToastProvider } from './components/Toast.js';
 import { DetectionLabPage } from './pages/DetectionLabPage.js';
 import { DetectionRunDetailPage } from './pages/DetectionRunDetailPage.js';
@@ -27,7 +28,7 @@ export default function App() {
       <div className="dark min-h-screen bg-background text-foreground">
         <div className="draggable flex h-10 items-center border-b border-border px-4 text-sm font-semibold">
           <span className="non-draggable">🎭 Mosaiq Desktop</span>
-          <span className="ml-auto text-xs text-muted-foreground non-draggable">v0.1.0</span>
+          <span className="ml-auto text-xs text-muted-foreground non-draggable">v{pkg.version}</span>
         </div>
         <main className="mx-auto max-w-6xl p-6">
           {page.kind === 'list' && (
