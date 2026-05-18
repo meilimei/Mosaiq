@@ -1,0 +1,54 @@
+# Force LF line endings for all text files across platforms.
+#
+# Background: this repo is developed on a mix of Windows / macOS / Linux.
+# Without this file, Windows clones with `core.autocrlf=true` (the default
+# on Git for Windows) convert text files to CRLF on checkout, then back to
+# LF on commit — every git/biome/lint operation prints
+# `LF will be replaced by CRLF the next time Git touches it` warnings.
+#
+# Setting `text=auto eol=lf` tells git: detect text vs binary automatically,
+# but always normalize text to LF in the index and on disk regardless of
+# `core.autocrlf`. Binary file types must be tagged explicitly so they
+# never get accidentally normalized.
+
+* text=auto eol=lf
+
+# Explicit text — covers files that auto-detect might miss
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.cjs       text eol=lf
+*.mjs       text eol=lf
+*.jsx       text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.mdx       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.svg       text eol=lf
+
+# Windows-only scripts must keep CRLF (cmd.exe / PowerShell scripts)
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binary — never normalize
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.webp      binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
+*.zip       binary
+*.gz        binary
+*.tar       binary
+*.7z        binary
+*.exe       binary
+*.dll       binary
+*.dmg       binary
