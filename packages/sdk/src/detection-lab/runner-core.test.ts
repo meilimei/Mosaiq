@@ -18,12 +18,12 @@ import {
   BACKOFF_BASE_MS,
   DEFAULT_MAX_RETRIES,
   DEFAULT_TIMEOUT_MS,
-  backoffMs,
-  executeRun,
-  filterSites,
   type ExecuteRunOptions,
   type PersonaSnapshot,
   type SiteWorker,
+  backoffMs,
+  executeRun,
+  filterSites,
 } from './runner-core.js';
 import type { RunProgressEvent, SiteResult, SiteSpec } from './types.js';
 
@@ -69,9 +69,7 @@ const PERSONA_SNAPSHOT: PersonaSnapshot = {
   system: { os: 'win11' },
 };
 
-function defaultOpts(
-  overrides: Partial<ExecuteRunOptions> = {},
-): ExecuteRunOptions {
+function defaultOpts(overrides: Partial<ExecuteRunOptions> = {}): ExecuteRunOptions {
   return {
     runId: 'run-1',
     personaId: 'persona-test' as ExecuteRunOptions['personaId'],
@@ -131,10 +129,7 @@ describe('filterSites', () => {
   });
 
   it('applies skip filter', () => {
-    expect(filterSites(all, undefined, ['b']).map((s) => s.id)).toEqual([
-      'a',
-      'c',
-    ]);
+    expect(filterSites(all, undefined, ['b']).map((s) => s.id)).toEqual(['a', 'c']);
   });
 
   it('applies only then skip', () => {
@@ -150,11 +145,7 @@ describe('filterSites', () => {
   });
 
   it('treats empty arrays as "no filter"', () => {
-    expect(filterSites(all, [], []).map((s) => s.id)).toEqual([
-      'a',
-      'b',
-      'c',
-    ]);
+    expect(filterSites(all, [], []).map((s) => s.id)).toEqual(['a', 'b', 'c']);
   });
 });
 
@@ -256,11 +247,7 @@ describe('executeRun: happy path', () => {
       a: [okResult('a')],
       c: [okResult('c')],
     });
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ only: ['a', 'c'] }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ only: ['a', 'c'] }));
 
     expect(calls).toEqual(['a', 'c']);
     expect(raw.sitesAttempted).toBe(2);
@@ -381,11 +368,7 @@ describe('executeRun: retry', () => {
       a: [failResult('a', 'e1'), failResult('a', 'e2'), okResult('a')],
     });
     const { events, onProgress } = captureProgress();
-    await executeRun(
-      sites,
-      worker,
-      defaultOpts({ maxRetries: 2, onProgress }),
-    );
+    await executeRun(sites, worker, defaultOpts({ maxRetries: 2, onProgress }));
 
     expect(events.map((e) => e.phase)).toEqual([
       'init',
@@ -406,11 +389,7 @@ describe('executeRun: retry', () => {
   it('maxRetries=0 → single attempt, no retry on failure', async () => {
     const sites = [spec('a')];
     const { worker, calls } = mockWorker({ a: [failResult('a', 'oops')] });
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ maxRetries: 0 }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ maxRetries: 0 }));
 
     expect(calls).toEqual(['a']);
     expect(raw.results[0]?.retries).toBe(0);
@@ -438,11 +417,7 @@ describe('executeRun: retry', () => {
     const worker: SiteWorker = async () => {
       throw new Error('worker exploded');
     };
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ maxRetries: 0 }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ maxRetries: 0 }));
 
     expect(raw.results[0]?.ok).toBe(false);
     expect(raw.results[0]?.error).toBe('worker exploded');
@@ -462,11 +437,7 @@ describe('executeRun: abort', () => {
       if (s.id === 'b') ac.abort();
       return okResult(s.id);
     };
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ signal: ac.signal }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ signal: ac.signal }));
 
     expect(raw.results.map((r) => r.id)).toEqual(['a', 'b', 'c']);
     expect(raw.results[0]?.ok).toBe(true);
@@ -485,18 +456,10 @@ describe('executeRun: abort', () => {
       return okResult(s.id);
     };
     const { events, onProgress } = captureProgress();
-    await executeRun(
-      sites,
-      worker,
-      defaultOpts({ signal: ac.signal, onProgress }),
-    );
+    await executeRun(sites, worker, defaultOpts({ signal: ac.signal, onProgress }));
 
-    const startSites = events
-      .filter((e) => e.phase === 'site-start')
-      .map((e) => e.siteId);
-    const endSites = events
-      .filter((e) => e.phase === 'site-end')
-      .map((e) => e.siteId);
+    const startSites = events.filter((e) => e.phase === 'site-start').map((e) => e.siteId);
+    const endSites = events.filter((e) => e.phase === 'site-end').map((e) => e.siteId);
     expect(startSites).toEqual(['a']);
     expect(endSites).toEqual(['a']);
   });
@@ -533,11 +496,7 @@ describe('executeRun: abort', () => {
       a: [okResult('a')],
       b: [okResult('b')],
     });
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ signal: ac.signal }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ signal: ac.signal }));
 
     expect(calls).toEqual([]);
     expect(raw.results.every((r) => r.error === 'aborted')).toBe(true);
@@ -577,11 +536,7 @@ describe('executeRun: DI + aggregation', () => {
       c: [failResult('c'), failResult('c'), failResult('c')], // 2 retries, 失败
       d: [okResult('d')],
     });
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ maxRetries: 2 }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ maxRetries: 2 }));
 
     expect(raw.sitesOk).toBe(3); // a, b, d
     expect(raw.sitesFail).toBe(1); // c
@@ -599,11 +554,7 @@ describe('executeRun: DI + aggregation', () => {
     };
     const sites = [spec('a')];
     const { worker } = mockWorker({ a: [okResult('a')] });
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ personaSnapshot: snap }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ personaSnapshot: snap }));
 
     expect(raw.persona).toBe(snap);
     expect(raw.persona.hardware?.gpu?.webglRenderer).toBe('Apple M1');
@@ -613,11 +564,7 @@ describe('executeRun: DI + aggregation', () => {
     const sites = [spec('a')];
     const { worker } = mockWorker({});
     const { events, onProgress } = captureProgress();
-    const raw = await executeRun(
-      sites,
-      worker,
-      defaultOpts({ only: ['nonexistent'], onProgress }),
-    );
+    const raw = await executeRun(sites, worker, defaultOpts({ only: ['nonexistent'], onProgress }));
 
     expect(events).toHaveLength(1);
     expect(events[0]?.phase).toBe('init');

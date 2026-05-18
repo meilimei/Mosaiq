@@ -8,29 +8,29 @@
  *   4. computeScore 主入口：metrics 合并 / weightedHits 累加 / hitsBySurface 计数
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
+  KNOWN_OUTDATED_FPSCANNER_RULES,
   SEVERITY_WEIGHT,
-  computeScore,
   attributeSurface,
+  computeScore,
   normalizeWebglString,
   parseUniquenessPct,
-  weightHit,
-  weightedHitsSum,
-  scoreSannysoft,
-  scoreCreepjs,
-  scoreIphey,
-  scoreBrowserleaksCanvas,
-  scoreBrowserleaksWebgl,
-  scoreBrowserleaksGeneric,
-  scoreDbiBot,
   scoreAmIUnique,
   scoreAntoinevastel,
-  scoreIncolumitas,
+  scoreBrowserleaksCanvas,
+  scoreBrowserleaksGeneric,
+  scoreBrowserleaksWebgl,
+  scoreCreepjs,
+  scoreDbiBot,
   scoreFingerprintScan,
+  scoreIncolumitas,
+  scoreIphey,
   scorePixelscan,
-  KNOWN_OUTDATED_FPSCANNER_RULES,
+  scoreSannysoft,
+  weightHit,
+  weightedHitsSum,
 } from './scorer.js';
 import type { DetectionRunRaw, SiteResult } from './types.js';
 
@@ -570,9 +570,7 @@ describe('computeScore', () => {
           liesSurfaces: [{ surface: 'canvas hash', severity: 'bold-fail', hash: 'abc' }],
         }),
         makeSiteResult('amiunique', {
-          outliers: [
-            { name: 'X', similarityPct: 0.1, similarityRaw: '0.1%', value: 'v' },
-          ],
+          outliers: [{ name: 'X', similarityPct: 0.1, similarityRaw: '0.1%', value: 'v' }],
         }),
       ]),
     );

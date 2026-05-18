@@ -80,27 +80,27 @@ async function main() {
         DEPTH_BITS: { pname: 0x0d56, expected: 24 },
         STENCIL_BITS: { pname: 0x0d57, expected: 8 },
       };
-      const probeContext = (
-        gl: WebGLRenderingContext | WebGL2RenderingContext,
-        label: string,
-      ) => {
+      const probeContext = (gl: WebGLRenderingContext | WebGL2RenderingContext, label: string) => {
         const result: Record<string, unknown> = {};
         for (const [name, ref] of Object.entries(PHASE_1_9_REFS)) {
           result[name] = gl.getParameter(ref.pname);
         }
         // typed-array 类型保护：MAX_VIEWPORT_DIMS / ALIASED_*_RANGE
         const viewportDims = gl.getParameter(0x0d3a);
-        result.MAX_VIEWPORT_DIMS = viewportDims instanceof Int32Array
-          ? [viewportDims[0], viewportDims[1]]
-          : `WRONG_TYPE:${Object.prototype.toString.call(viewportDims)}`;
+        result.MAX_VIEWPORT_DIMS =
+          viewportDims instanceof Int32Array
+            ? [viewportDims[0], viewportDims[1]]
+            : `WRONG_TYPE:${Object.prototype.toString.call(viewportDims)}`;
         const lineRange = gl.getParameter(0x846e);
-        result.ALIASED_LINE_WIDTH_RANGE = lineRange instanceof Float32Array
-          ? [lineRange[0], lineRange[1]]
-          : `WRONG_TYPE:${Object.prototype.toString.call(lineRange)}`;
+        result.ALIASED_LINE_WIDTH_RANGE =
+          lineRange instanceof Float32Array
+            ? [lineRange[0], lineRange[1]]
+            : `WRONG_TYPE:${Object.prototype.toString.call(lineRange)}`;
         const pointRange = gl.getParameter(0x846d);
-        result.ALIASED_POINT_SIZE_RANGE = pointRange instanceof Float32Array
-          ? [pointRange[0], pointRange[1]]
-          : `WRONG_TYPE:${Object.prototype.toString.call(pointRange)}`;
+        result.ALIASED_POINT_SIZE_RANGE =
+          pointRange instanceof Float32Array
+            ? [pointRange[0], pointRange[1]]
+            : `WRONG_TYPE:${Object.prototype.toString.call(pointRange)}`;
         out[`phase19_${label}`] = result;
       };
       try {
@@ -203,7 +203,9 @@ async function main() {
           const ogl = oc.getContext('webgl');
           if (ogl) {
             out.offscreen_webgl_direct_vendor = (ogl as WebGLRenderingContext).getParameter(0x9245);
-            out.offscreen_webgl_direct_renderer = (ogl as WebGLRenderingContext).getParameter(0x9246);
+            out.offscreen_webgl_direct_renderer = (ogl as WebGLRenderingContext).getParameter(
+              0x9246,
+            );
 
             const oext = (ogl as WebGLRenderingContext).getExtension('WEBGL_debug_renderer_info');
             if (oext) {
@@ -223,9 +225,9 @@ async function main() {
             out.offscreen_webgl2_direct_vendor = (ogl2 as WebGL2RenderingContext).getParameter(
               0x9245,
             );
-            out.offscreen_webgl2_direct_renderer = (
-              ogl2 as WebGL2RenderingContext
-            ).getParameter(0x9246);
+            out.offscreen_webgl2_direct_renderer = (ogl2 as WebGL2RenderingContext).getParameter(
+              0x9246,
+            );
           }
         } else {
           out.offscreen = 'NOT_SUPPORTED';
@@ -236,8 +238,7 @@ async function main() {
 
       // ── 5. window marker 检查 — runner.ts 是否真的执行了 ─────
       // (在 runner.ts WebGL 块开头会加 globalThis.__mosaiqWebglMark)
-      out.runnerWebglMark =
-        (globalThis as Record<string, unknown>).__mosaiqWebglMark ?? 'NOT_SET';
+      out.runnerWebglMark = (globalThis as Record<string, unknown>).__mosaiqWebglMark ?? 'NOT_SET';
       out.runnerWebglError =
         (globalThis as Record<string, unknown>).__mosaiqWebglError ?? 'NO_ERROR';
 

@@ -31,14 +31,14 @@ import { join } from 'node:path';
 import type { Persona } from '@mosaiq/persona-schema';
 import type { Page } from 'playwright-core';
 
-import { BrowserSession } from '../browser-session.js';
-import { launchPersona, type LaunchPersonaOptions } from '../launcher.js';
+import type { BrowserSession } from '../browser-session.js';
+import { type LaunchPersonaOptions, launchPersona } from '../launcher.js';
 import {
-  executeRun,
   type ExecuteRunOptions,
   type PersonaSnapshot,
   type SiteWorker,
   type SiteWorkerContext,
+  executeRun,
 } from './runner-core.js';
 import { computeScore } from './scorer.js';
 import { SITES } from './sites.js';
@@ -113,15 +113,8 @@ export interface RunDetectionResult {
  * 生产调用 `runDetection(persona, options)` 走默认实现。
  */
 export interface RunDetectionDeps {
-  launch?: (
-    persona: Persona,
-    options?: LaunchPersonaOptions,
-  ) => Promise<BrowserSession>;
-  runOnePage?: (
-    page: Page,
-    spec: SiteSpec,
-    ctx: SiteWorkerContext,
-  ) => Promise<SiteResult>;
+  launch?: (persona: Persona, options?: LaunchPersonaOptions) => Promise<BrowserSession>;
+  runOnePage?: (page: Page, spec: SiteSpec, ctx: SiteWorkerContext) => Promise<SiteResult>;
   mkdir?: (dir: string) => void;
   /** DI: ISO 时间戳生成（也用作默认 runId）；测试用。 */
   isoTimestamp?: () => string;
@@ -140,10 +133,7 @@ export interface RunDetectionDeps {
  * - 返回 `unknown`-typed 字段（browser / system / fingerprint）保留 zod 推断的全
  *   部子键，方便 scorer 做 cross-check（如 hardware.gpu.webglRenderer）。
  */
-export function snapshotPersona(
-  persona: Persona,
-  template = 'unknown',
-): PersonaSnapshot {
+export function snapshotPersona(persona: Persona, template = 'unknown'): PersonaSnapshot {
   return {
     id: persona.metadata.id,
     template,
@@ -292,10 +282,7 @@ export async function runDetection(
 
   const runId = options.runId ?? defaultRunId();
   const personaId = persona.metadata.id;
-  const personaSnapshot = snapshotPersona(
-    persona,
-    options.personaTemplate ?? 'unknown',
-  );
+  const personaSnapshot = snapshotPersona(persona, options.personaTemplate ?? 'unknown');
 
   if (options.artifactDir) {
     mkdir(options.artifactDir);

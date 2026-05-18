@@ -51,9 +51,8 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-      sans-serif;
-    font-feature-settings: 'rlig' 1, 'calt' 1;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 
   /* 允许拖动 Electron 窗口 */

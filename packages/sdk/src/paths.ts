@@ -3,9 +3,9 @@
  * 确保 cookies / localStorage / indexedDB 跨 persona 完全隔离。
  */
 
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { mkdirSync, existsSync } from 'node:fs';
 
 import type { PersonaId } from '@mosaiq/persona-schema';
 

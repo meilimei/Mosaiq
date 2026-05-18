@@ -10,12 +10,7 @@
  */
 
 import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
-import {
-  deletePersona,
-  launchPersona,
-  personaExists,
-  savePersona,
-} from '../src/index.js';
+import { deletePersona, launchPersona, personaExists, savePersona } from '../src/index.js';
 
 const PERSONA_ID = `diag-nav-${Date.now().toString(36)}`;
 
@@ -43,26 +38,25 @@ async function main() {
       out.plugins_constructorName = navigator.plugins.constructor.name;
       out.plugins_proto = Object.getPrototypeOf(navigator.plugins) === PluginArray.prototype;
       out.plugins_toString = String(navigator.plugins);
-      out.plugins_symToStringTag = (navigator.plugins as unknown as { [Symbol.toStringTag]?: string })[
-        Symbol.toStringTag
-      ];
+      out.plugins_symToStringTag = (
+        navigator.plugins as unknown as { [Symbol.toStringTag]?: string }
+      )[Symbol.toStringTag];
 
       // ── 1. PluginArray IDL methods ──
       const tryFn = <T>(label: string, fn: () => T) => {
         try {
           const v = fn();
-          out[label] = typeof v === 'object' && v !== null
-            ? `<${(v as object).constructor?.name ?? typeof v}>`
-            : v;
+          out[label] =
+            typeof v === 'object' && v !== null
+              ? `<${(v as object).constructor?.name ?? typeof v}>`
+              : v;
         } catch (e) {
           out[label] = `THROW: ${(e as Error).message}`;
         }
       };
       tryFn('plugins_item_0', () => navigator.plugins.item(0));
       tryFn('plugins_item_99', () => navigator.plugins.item(99));
-      tryFn('plugins_namedItem_PDFViewer', () =>
-        navigator.plugins.namedItem('PDF Viewer'),
-      );
+      tryFn('plugins_namedItem_PDFViewer', () => navigator.plugins.namedItem('PDF Viewer'));
       tryFn('plugins_namedItem_unknown', () => navigator.plugins.namedItem('unknown'));
       tryFn('plugins_refresh', () => navigator.plugins.refresh());
 
@@ -106,9 +100,7 @@ async function main() {
       out.mimeTypes_isMimeTypeArray = navigator.mimeTypes instanceof MimeTypeArray;
       out.mimeTypes_constructorName = navigator.mimeTypes.constructor.name;
       tryFn('mimeTypes_item_0', () => navigator.mimeTypes.item(0));
-      tryFn('mimeTypes_namedItem_pdf', () =>
-        navigator.mimeTypes.namedItem('application/pdf'),
-      );
+      tryFn('mimeTypes_namedItem_pdf', () => navigator.mimeTypes.namedItem('application/pdf'));
 
       // ── 6. pdfViewerEnabled ──
       out.pdfViewerEnabled = navigator.pdfViewerEnabled;
@@ -120,8 +112,7 @@ async function main() {
       const notifDesc = Object.getOwnPropertyDescriptor(Notification, 'permission');
       out.notif_descriptor_hasGet = !!notifDesc?.get;
       out.notif_getter_toString = String(notifDesc?.get);
-      out.notif_getter_native =
-        notifDesc?.get && String(notifDesc.get).includes('[native code]');
+      out.notif_getter_native = notifDesc?.get && String(notifDesc.get).includes('[native code]');
 
       // ── 8. Descriptor 一致性（CreepJS getPrototypeLies 关键扫描点） ──
       const descs = ['plugins', 'mimeTypes', 'pdfViewerEnabled'].map((k) => {
@@ -134,11 +125,8 @@ async function main() {
           enumerable: desc?.enumerable,
           configurable: desc?.configurable,
           getterName: desc?.get?.name,
-          getterToStringTail: desc?.get
-            ? String(desc.get).slice(-50)
-            : 'N/A',
-          getterIsNative:
-            !!desc?.get && String(desc.get).includes('[native code]'),
+          getterToStringTail: desc?.get ? String(desc.get).slice(-50) : 'N/A',
+          getterIsNative: !!desc?.get && String(desc.get).includes('[native code]'),
         };
       });
       out.proto_descriptors = descs;

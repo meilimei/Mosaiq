@@ -53,9 +53,7 @@ describe('navigator identity', () => {
 
   it('overrides hardwareConcurrency / deviceMemory / maxTouchPoints', () => {
     expect(navigator.hardwareConcurrency).toBe(8);
-    expect(
-      (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
-    ).toBe(8);
+    expect((navigator as Navigator & { deviceMemory?: number }).deviceMemory).toBe(8);
     expect(navigator.maxTouchPoints).toBe(0);
   });
 
@@ -79,9 +77,7 @@ describe('反 own-property 检测', () => {
   });
 
   it('navigator.hardwareConcurrency has no own property on the instance', () => {
-    expect(
-      Object.getOwnPropertyDescriptor(navigator, 'hardwareConcurrency'),
-    ).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(navigator, 'hardwareConcurrency')).toBeUndefined();
   });
 
   it('webdriver getter resolves somewhere on the prototype chain', () => {
@@ -192,7 +188,10 @@ describe('navigator.plugins / mimeTypes / pdfViewerEnabled (Phase 1.8)', () => {
 
   it('navigator.plugins enumerates 5 distinct Chrome-standard names', () => {
     if (typeof PluginArray === 'undefined') return;
-    const names = Array.from({ length: navigator.plugins.length }, (_, i) => navigator.plugins[i].name);
+    const names = Array.from(
+      { length: navigator.plugins.length },
+      (_, i) => navigator.plugins[i].name,
+    );
     expect(names).toEqual([
       'PDF Viewer',
       'Chrome PDF Viewer',
@@ -332,8 +331,7 @@ describe('worker scope spoof (Phase 1.5)', () => {
   });
 
   it('navigator.serviceWorker.register is replaced (instance-level own override)', () => {
-    const sw = (navigator as Navigator & { serviceWorker?: ServiceWorkerContainer })
-      .serviceWorker;
+    const sw = (navigator as Navigator & { serviceWorker?: ServiceWorkerContainer }).serviceWorker;
     if (!sw || typeof sw.register !== 'function') return;
     // 实例 own 属性应该是我们替换上去的 wrappedRegister，而不是原型链上的
     // 原生 register。检查 own desc 存在即可。

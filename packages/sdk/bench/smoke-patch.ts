@@ -84,11 +84,7 @@ async function main() {
     t(`page.evaluate(1+1) done: ${evalRes}`);
 
     t('page.innerText(body) begin');
-    const bodyText = await withTimeout(
-      page.locator('body').innerText(),
-      10_000,
-      'page.innerText',
-    );
+    const bodyText = await withTimeout(page.locator('body').innerText(), 10_000, 'page.innerText');
     t(`page.innerText(body) done: "${bodyText.slice(0, 80).replace(/\s+/g, ' ')}..."`);
 
     t('SUCCESS — all 5 ops finished');
@@ -100,9 +96,16 @@ async function main() {
     if (session) {
       t('closing browser');
       await session.context.close().catch(() => undefined);
-      await session.context.browser()?.close().catch(() => undefined);
+      await session.context
+        .browser()
+        ?.close()
+        .catch(() => undefined);
     }
-    try { deletePersona(personaId); } catch { /* ignore */ }
+    try {
+      deletePersona(personaId);
+    } catch {
+      /* ignore */
+    }
     t('cleanup done');
   }
 }

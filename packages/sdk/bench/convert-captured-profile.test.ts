@@ -9,7 +9,9 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { INTEL_UHD_730_D3D11 } from '../src/injection/webgl-profiles.js';
 import {
+  type CapturePayload,
   buildParamMap,
   detectSoftwareRenderer,
   emitProfileTypeScript,
@@ -18,20 +20,15 @@ import {
   suggestMatchRenderer,
   suggestProfileId,
   verifyCapture,
-  type CapturePayload,
 } from './convert-captured-profile.js';
-import { extractCreepjsWebglParams, capabilitiesHash } from './creepjs-whitelist-data.js';
-import { INTEL_UHD_730_D3D11 } from '../src/injection/webgl-profiles.js';
+import { capabilitiesHash, extractCreepjsWebglParams } from './creepjs-whitelist-data.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: synthesize a CapturePayload from a live WebglProfile so the test is
 // independent of any hardcoded JSON snapshot.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function profileToPayload(
-  profile: typeof INTEL_UHD_730_D3D11,
-  renderer: string,
-): CapturePayload {
+function profileToPayload(profile: typeof INTEL_UHD_730_D3D11, renderer: string): CapturePayload {
   const toRecord = (
     m: ReadonlyMap<number, number | readonly number[] | string>,
   ): Record<string, number | readonly number[] | string> => {
@@ -280,10 +277,7 @@ describe('suggestProfileId', () => {
 
   it('extracts AMD RX models', () => {
     expect(
-      suggestProfileId(
-        'AMD',
-        'ANGLE (AMD, AMD Radeon RX 7900 Direct3D11 vs_5_0 ps_5_0, D3D11)',
-      ),
+      suggestProfileId('AMD', 'ANGLE (AMD, AMD Radeon RX 7900 Direct3D11 vs_5_0 ps_5_0, D3D11)'),
     ).toBe('amd-rx-7900-d3d11');
   });
 
@@ -306,9 +300,7 @@ describe('suggestProfileId', () => {
   });
 
   it('falls back to unknown when no model token matches', () => {
-    expect(suggestProfileId('Intel', 'Unrecognized GPU XYZ123')).toBe(
-      'intel-unknown-unknown',
-    );
+    expect(suggestProfileId('Intel', 'Unrecognized GPU XYZ123')).toBe('intel-unknown-unknown');
   });
 });
 

@@ -19,10 +19,9 @@ async function main() {
   const id = `probe-uach-${Date.now().toString(36)}`;
   if (personaExists(id)) deletePersona(id);
   savePersona(createWin11ChromeUsPersona({ id, displayName: 'uach' }));
-  const session = await launchPersona(
-    createWin11ChromeUsPersona({ id, displayName: 'uach' }),
-    { headless: true },
-  );
+  const session = await launchPersona(createWin11ChromeUsPersona({ id, displayName: 'uach' }), {
+    headless: true,
+  });
   try {
     const page = await session.firstPage();
     await page.goto('https://abrahamjuliot.github.io/creepjs/', {

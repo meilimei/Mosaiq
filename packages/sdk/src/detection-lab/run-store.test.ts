@@ -22,23 +22,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PersonaId } from '@mosaiq/persona-schema';
 
+import { type PathConfig, getDetectionRunFile, getDetectionRunsDir } from '../paths.js';
 import {
-  getDetectionRunArtifactDir,
-  saveDetectionRun,
-  loadDetectionRun,
-  listDetectionRuns,
   deleteDetectionRun,
+  getDetectionRunArtifactDir,
+  listDetectionRuns,
+  loadDetectionRun,
+  saveDetectionRun,
 } from './run-store.js';
-import {
-  getDetectionRunFile,
-  getDetectionRunsDir,
-  type PathConfig,
-} from '../paths.js';
-import {
-  emptyHitsBySurface,
-  type DetectionRun,
-  type DetectionScore,
-} from './types.js';
+import { type DetectionRun, type DetectionScore, emptyHitsBySurface } from './types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 测试 fixtures
@@ -125,11 +117,7 @@ describe('saveDetectionRun + loadDetectionRun', () => {
     const run = makeRun();
     saveDetectionRun('alice' as PersonaId, run, cfg);
 
-    const file = getDetectionRunFile(
-      'alice' as PersonaId,
-      run.id,
-      cfg,
-    );
+    const file = getDetectionRunFile('alice' as PersonaId, run.id, cfg);
     expect(existsSync(file)).toBe(true);
 
     const loaded = loadDetectionRun('alice' as PersonaId, run.id, cfg);
@@ -159,31 +147,25 @@ describe('saveDetectionRun + loadDetectionRun', () => {
   });
 
   it('throws on load of missing run', () => {
-    expect(() =>
-      loadDetectionRun('alice' as PersonaId, 'nope', cfg),
-    ).toThrow(/DetectionRun not found/);
+    expect(() => loadDetectionRun('alice' as PersonaId, 'nope', cfg)).toThrow(
+      /DetectionRun not found/,
+    );
   });
 
   it('throws on load of corrupt JSON', () => {
     const dir = getDetectionRunsDir('alice' as PersonaId, cfg);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'bad.json'), 'not json {', 'utf-8');
-    expect(() =>
-      loadDetectionRun('alice' as PersonaId, 'bad', cfg),
-    ).toThrow();
+    expect(() => loadDetectionRun('alice' as PersonaId, 'bad', cfg)).toThrow();
   });
 
   it('throws on load of shape-mismatch JSON', () => {
     const dir = getDetectionRunsDir('alice' as PersonaId, cfg);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, 'wrong-shape.json'),
-      JSON.stringify({ hello: 'world' }),
-      'utf-8',
+    writeFileSync(join(dir, 'wrong-shape.json'), JSON.stringify({ hello: 'world' }), 'utf-8');
+    expect(() => loadDetectionRun('alice' as PersonaId, 'wrong-shape', cfg)).toThrow(
+      /Corrupt DetectionRun JSON/,
     );
-    expect(() =>
-      loadDetectionRun('alice' as PersonaId, 'wrong-shape', cfg),
-    ).toThrow(/Corrupt DetectionRun JSON/);
   });
 
   it('preserves failed run with score=null and error', () => {
@@ -266,11 +248,7 @@ describe('listDetectionRuns', () => {
     saveDetectionRun('alice' as PersonaId, makeRun({ id: 'good' }), cfg);
     const dir = getDetectionRunsDir('alice' as PersonaId, cfg);
     writeFileSync(join(dir, 'broken.json'), '{ not parseable', 'utf-8');
-    writeFileSync(
-      join(dir, 'wrong-shape.json'),
-      JSON.stringify({ hello: 'world' }),
-      'utf-8',
-    );
+    writeFileSync(join(dir, 'wrong-shape.json'), JSON.stringify({ hello: 'world' }), 'utf-8');
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const list = listDetectionRuns('alice' as PersonaId, cfg);
@@ -287,11 +265,7 @@ describe('listDetectionRuns', () => {
       makeRun({ id: 'a1', personaId: 'alice' as PersonaId }),
       cfg,
     );
-    saveDetectionRun(
-      'bob' as PersonaId,
-      makeRun({ id: 'b1', personaId: 'bob' as PersonaId }),
-      cfg,
-    );
+    saveDetectionRun('bob' as PersonaId, makeRun({ id: 'b1', personaId: 'bob' as PersonaId }), cfg);
 
     const aliceList = listDetectionRuns('alice' as PersonaId, cfg);
     const bobList = listDetectionRuns('bob' as PersonaId, cfg);
@@ -328,11 +302,7 @@ describe('deleteDetectionRun', () => {
 
   it('also removes the artifacts subdirectory when present', () => {
     saveDetectionRun('alice' as PersonaId, makeRun({ id: 'r1' }), cfg);
-    const artifactDir = getDetectionRunArtifactDir(
-      'alice' as PersonaId,
-      'r1',
-      cfg,
-    );
+    const artifactDir = getDetectionRunArtifactDir('alice' as PersonaId, 'r1', cfg);
     mkdirSync(artifactDir, { recursive: true });
     writeFileSync(join(artifactDir, 'sannysoft.png'), 'fake', 'utf-8');
     writeFileSync(join(artifactDir, 'creepjs.html'), '<html/>', 'utf-8');
@@ -343,9 +313,7 @@ describe('deleteDetectionRun', () => {
   });
 
   it('returns false on idempotent delete of nonexistent run', () => {
-    expect(deleteDetectionRun('alice' as PersonaId, 'never-existed', cfg)).toBe(
-      false,
-    );
+    expect(deleteDetectionRun('alice' as PersonaId, 'never-existed', cfg)).toBe(false);
   });
 
   it('leaves sibling runs intact', () => {
@@ -364,22 +332,14 @@ describe('deleteDetectionRun', () => {
 
 describe('getDetectionRunArtifactDir', () => {
   it('is a pure path computation (no mkdir)', () => {
-    const dir = getDetectionRunArtifactDir(
-      'alice' as PersonaId,
-      'r1',
-      cfg,
-    );
+    const dir = getDetectionRunArtifactDir('alice' as PersonaId, 'r1', cfg);
     expect(dir).toBe(join(tmpRoot, 'detection-runs', 'alice', 'r1'));
     expect(existsSync(dir)).toBe(false);
   });
 
   it('is sibling to the <runId>.json file (same prefix)', () => {
     const file = getDetectionRunFile('alice' as PersonaId, 'r1', cfg);
-    const dir = getDetectionRunArtifactDir(
-      'alice' as PersonaId,
-      'r1',
-      cfg,
-    );
+    const dir = getDetectionRunArtifactDir('alice' as PersonaId, 'r1', cfg);
     // file = .../alice/r1.json, dir = .../alice/r1
     expect(file).toBe(`${dir}.json`);
   });
@@ -394,20 +354,9 @@ describe('full lifecycle smoke', () => {
     const persona = 'alice' as PersonaId;
     expect(listDetectionRuns(persona, cfg)).toEqual([]);
 
-    saveDetectionRun(
-      persona,
-      makeRun({ id: 'r1', startedAt: '2026-01-01T00:00:00.000Z' }),
-      cfg,
-    );
-    saveDetectionRun(
-      persona,
-      makeRun({ id: 'r2', startedAt: '2026-02-01T00:00:00.000Z' }),
-      cfg,
-    );
-    expect(listDetectionRuns(persona, cfg).map((s) => s.runId)).toEqual([
-      'r2',
-      'r1',
-    ]);
+    saveDetectionRun(persona, makeRun({ id: 'r1', startedAt: '2026-01-01T00:00:00.000Z' }), cfg);
+    saveDetectionRun(persona, makeRun({ id: 'r2', startedAt: '2026-02-01T00:00:00.000Z' }), cfg);
+    expect(listDetectionRuns(persona, cfg).map((s) => s.runId)).toEqual(['r2', 'r1']);
 
     deleteDetectionRun(persona, 'r1', cfg);
     expect(listDetectionRuns(persona, cfg).map((s) => s.runId)).toEqual(['r2']);

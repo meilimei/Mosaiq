@@ -58,35 +58,62 @@ async function main() {
 
       // CreepJS short list (49 params)
       const paramNames = [
-        'ALIASED_POINT_SIZE_RANGE', 'ALIASED_LINE_WIDTH_RANGE',
-        'STENCIL_VALUE_MASK', 'STENCIL_WRITEMASK',
-        'STENCIL_BACK_VALUE_MASK', 'STENCIL_BACK_WRITEMASK',
-        'MAX_TEXTURE_SIZE', 'MAX_VIEWPORT_DIMS', 'SUBPIXEL_BITS',
-        'MAX_VERTEX_ATTRIBS', 'MAX_VERTEX_UNIFORM_VECTORS', 'MAX_VARYING_VECTORS',
-        'MAX_COMBINED_TEXTURE_IMAGE_UNITS', 'MAX_VERTEX_TEXTURE_IMAGE_UNITS',
-        'MAX_TEXTURE_IMAGE_UNITS', 'MAX_FRAGMENT_UNIFORM_VECTORS',
-        'SHADING_LANGUAGE_VERSION', 'VENDOR', 'RENDERER', 'VERSION',
-        'MAX_CUBE_MAP_TEXTURE_SIZE', 'MAX_RENDERBUFFER_SIZE', 'MAX_3D_TEXTURE_SIZE',
-        'MAX_ELEMENTS_VERTICES', 'MAX_ELEMENTS_INDICES', 'MAX_TEXTURE_LOD_BIAS',
-        'MAX_DRAW_BUFFERS', 'MAX_FRAGMENT_UNIFORM_COMPONENTS',
-        'MAX_VERTEX_UNIFORM_COMPONENTS', 'MAX_ARRAY_TEXTURE_LAYERS',
-        'MAX_PROGRAM_TEXEL_OFFSET', 'MAX_VARYING_COMPONENTS',
+        'ALIASED_POINT_SIZE_RANGE',
+        'ALIASED_LINE_WIDTH_RANGE',
+        'STENCIL_VALUE_MASK',
+        'STENCIL_WRITEMASK',
+        'STENCIL_BACK_VALUE_MASK',
+        'STENCIL_BACK_WRITEMASK',
+        'MAX_TEXTURE_SIZE',
+        'MAX_VIEWPORT_DIMS',
+        'SUBPIXEL_BITS',
+        'MAX_VERTEX_ATTRIBS',
+        'MAX_VERTEX_UNIFORM_VECTORS',
+        'MAX_VARYING_VECTORS',
+        'MAX_COMBINED_TEXTURE_IMAGE_UNITS',
+        'MAX_VERTEX_TEXTURE_IMAGE_UNITS',
+        'MAX_TEXTURE_IMAGE_UNITS',
+        'MAX_FRAGMENT_UNIFORM_VECTORS',
+        'SHADING_LANGUAGE_VERSION',
+        'VENDOR',
+        'RENDERER',
+        'VERSION',
+        'MAX_CUBE_MAP_TEXTURE_SIZE',
+        'MAX_RENDERBUFFER_SIZE',
+        'MAX_3D_TEXTURE_SIZE',
+        'MAX_ELEMENTS_VERTICES',
+        'MAX_ELEMENTS_INDICES',
+        'MAX_TEXTURE_LOD_BIAS',
+        'MAX_DRAW_BUFFERS',
+        'MAX_FRAGMENT_UNIFORM_COMPONENTS',
+        'MAX_VERTEX_UNIFORM_COMPONENTS',
+        'MAX_ARRAY_TEXTURE_LAYERS',
+        'MAX_PROGRAM_TEXEL_OFFSET',
+        'MAX_VARYING_COMPONENTS',
         'MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS',
         'MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS',
         'MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS',
-        'MAX_COLOR_ATTACHMENTS', 'MAX_SAMPLES',
-        'MAX_VERTEX_UNIFORM_BLOCKS', 'MAX_FRAGMENT_UNIFORM_BLOCKS',
-        'MAX_COMBINED_UNIFORM_BLOCKS', 'MAX_UNIFORM_BUFFER_BINDINGS',
-        'MAX_UNIFORM_BLOCK_SIZE', 'MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS',
+        'MAX_COLOR_ATTACHMENTS',
+        'MAX_SAMPLES',
+        'MAX_VERTEX_UNIFORM_BLOCKS',
+        'MAX_FRAGMENT_UNIFORM_BLOCKS',
+        'MAX_COMBINED_UNIFORM_BLOCKS',
+        'MAX_UNIFORM_BUFFER_BINDINGS',
+        'MAX_UNIFORM_BLOCK_SIZE',
+        'MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS',
         'MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS',
-        'MAX_VERTEX_OUTPUT_COMPONENTS', 'MAX_FRAGMENT_INPUT_COMPONENTS',
-        'MAX_SERVER_WAIT_TIMEOUT', 'MAX_ELEMENT_INDEX', 'MAX_CLIENT_WAIT_TIMEOUT_WEBGL',
+        'MAX_VERTEX_OUTPUT_COMPONENTS',
+        'MAX_FRAGMENT_INPUT_COMPONENTS',
+        'MAX_SERVER_WAIT_TIMEOUT',
+        'MAX_ELEMENT_INDEX',
+        'MAX_CLIENT_WAIT_TIMEOUT_WEBGL',
       ];
 
       const getParams = (g: WebGLRenderingContext | WebGL2RenderingContext) => {
         if (!g) return {};
-        const protoNames = Object.getOwnPropertyNames(Object.getPrototypeOf(g))
-          .filter((n) => paramNames.includes(n));
+        const protoNames = Object.getOwnPropertyNames(Object.getPrototypeOf(g)).filter((n) =>
+          paramNames.includes(n),
+        );
         const result: Record<string, unknown> = {};
         for (const name of protoNames) {
           const pname = (g as unknown as Record<string, number>)[name];
@@ -113,7 +140,8 @@ async function main() {
       const ext = gl.getExtension('EXT_texture_filter_anisotropic');
       if (ext) {
         merged.MAX_TEXTURE_MAX_ANISOTROPY_EXT = gl.getParameter(
-          (ext as unknown as { MAX_TEXTURE_MAX_ANISOTROPY_EXT: number }).MAX_TEXTURE_MAX_ANISOTROPY_EXT,
+          (ext as unknown as { MAX_TEXTURE_MAX_ANISOTROPY_EXT: number })
+            .MAX_TEXTURE_MAX_ANISOTROPY_EXT,
         );
       }
 
@@ -200,15 +228,11 @@ async function main() {
     console.log(`  UNMASKED_RENDERER_WEBGL: ${probe.UNMASKED_RENDERER_WEBGL}`);
     console.log(`  GPU brand:               ${probe.gpuBrand}`);
     console.log(`  numeric value count:     ${probe.numericValueCount}`);
-    console.log(
-      `  webglParamsStr length:   ${(probe.webglParamsStr as string).length} chars`,
-    );
+    console.log(`  webglParamsStr length:   ${(probe.webglParamsStr as string).length} chars`);
     console.log(`  webglParams (sorted):    ${probe.webglParamsStr}`);
     console.log(`  brand hash (estimated):  ${probe.brandHash_estimated}`);
     console.log(`  caps hash (estimated):   ${probe.capabilitiesHash_estimated}`);
-    console.log(
-      '\n  ⚠️  Note: hashMini in actual CreepJS source uses different algo, our estimate',
-    );
+    console.log('\n  ⚠️  Note: hashMini in actual CreepJS source uses different algo, our estimate');
     console.log('  may diverge. Real validation: visit creepjs.com and check Analysis.');
   } finally {
     if (session) await session.close();

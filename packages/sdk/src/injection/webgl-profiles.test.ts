@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { KNOWN_PROFILES_CAPTURED } from './webgl-profiles-captured.js';
 import {
   AMD_RX_6600_D3D11,
   FLOAT32_ARRAY_PARAMS,
@@ -22,7 +23,6 @@ import {
   selectWebglProfileForPersona,
   serializeProfile,
 } from './webgl-profiles.js';
-import { KNOWN_PROFILES_CAPTURED } from './webgl-profiles-captured.js';
 
 describe('GL constants', () => {
   it('hex 值与 WebGL spec 一致（不让 typo 静默生效）', () => {
@@ -380,8 +380,7 @@ describe('Phase 4.3: NVIDIA RTX 3060 D3D11 profile', () => {
 
 describe('Phase 4.3: AMD RX 6600 D3D11 profile', () => {
   it('matchRenderer 匹配 ANGLE D3D11 RX 6600 字符串', () => {
-    const realisticRenderer =
-      'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    const realisticRenderer = 'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)';
     expect(AMD_RX_6600_D3D11.matchRenderer.test(realisticRenderer)).toBe(true);
   });
 
@@ -492,16 +491,14 @@ describe('selectWebglProfileForPersona', () => {
 
   it('Phase 4.3: RTX 3060 renderer 字符串 → NVIDIA profile', () => {
     const profile = selectWebglProfileForPersona({
-      webglRenderer:
-        'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      webglRenderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
     });
     expect(profile).toBe(NVIDIA_RTX_3060_D3D11);
   });
 
   it('Phase 4.3: RX 6600 renderer 字符串 → AMD profile', () => {
     const profile = selectWebglProfileForPersona({
-      webglRenderer:
-        'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+      webglRenderer: 'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)',
     });
     expect(profile).toBe(AMD_RX_6600_D3D11);
   });
@@ -661,7 +658,7 @@ describe('serializeProfile', () => {
     const ser = serializeProfile(INTEL_UHD_730_D3D11);
     for (const key of Object.keys(ser.webgl1)) {
       expect(key).toMatch(/^0x[0-9a-f]+$/);
-      expect(Number.isFinite(parseInt(key, 16))).toBe(true);
+      expect(Number.isFinite(Number.parseInt(key, 16))).toBe(true);
     }
   });
 

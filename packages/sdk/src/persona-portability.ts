@@ -17,11 +17,7 @@
  *     persona JSON 里。导出 persona 不会带走会话。这是有意为之 —— 让用户清楚
  *     什么是身份配置（移植）vs 什么是登录状态（不移植）。
  */
-import {
-  type Persona,
-  type PersonaId,
-  parsePersona,
-} from '@mosaiq/persona-schema';
+import { type Persona, type PersonaId, parsePersona } from '@mosaiq/persona-schema';
 
 import type { PathConfig } from './paths.js';
 import { loadPersona, personaExists, savePersona } from './persona-store.js';

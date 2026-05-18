@@ -122,11 +122,7 @@ describe('deriveIdentity', () => {
   const verify = integrateOne('placeholder.json', freshCapture()).verify;
 
   it('uses the JSON filename stem as id when it looks like kebab-case', () => {
-    const { id, constName } = deriveIdentity(
-      'intel-uhd-630-d3d11-alice.json',
-      payload,
-      verify,
-    );
+    const { id, constName } = deriveIdentity('intel-uhd-630-d3d11-alice.json', payload, verify);
     expect(id).toBe('intel-uhd-630-d3d11-alice');
     expect(constName).toBe('INTEL_UHD_630_D3D11_ALICE');
   });
@@ -148,11 +144,7 @@ describe('deriveIdentity', () => {
   });
 
   it('upper-cases + underscores const name from id', () => {
-    const { constName } = deriveIdentity(
-      'intel-uhd-730-d3d11-test.json',
-      payload,
-      verify,
-    );
+    const { constName } = deriveIdentity('intel-uhd-730-d3d11-test.json', payload, verify);
     expect(constName).toBe('INTEL_UHD_730_D3D11_TEST');
     expect(/^[A-Z0-9_]+$/.test(constName)).toBe(true);
   });
@@ -177,9 +169,7 @@ describe('renderGeneratedSource', () => {
     const out = renderGeneratedSource([profile]);
     // Type-only import — erased at compile time, no runtime cycle with
     // webgl-profiles.ts (which imports KNOWN_PROFILES_CAPTURED from here).
-    expect(out).toContain(
-      `import type { GlParamValue, WebglProfile } from './webgl-profiles.js';`,
-    );
+    expect(out).toContain(`import type { GlParamValue, WebglProfile } from './webgl-profiles.js';`);
     // MUST NOT have a runtime `import { GL }` — that triggers the cycle.
     expect(out).not.toMatch(/^import \{ GL \}/m);
     // GL constants must appear as `0xHEX /* NAME */` literals so the file
@@ -187,9 +177,7 @@ describe('renderGeneratedSource', () => {
     expect(out).toMatch(/0x0d33 \/\* MAX_TEXTURE_SIZE \*\//);
     expect(out).toMatch(/0x0d3a \/\* MAX_VIEWPORT_DIMS \*\//);
     expect(out).toContain('INTEL_UHD_730_D3D11_TEST');
-    expect(out).toContain(
-      'export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [',
-    );
+    expect(out).toContain('export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [');
     expect(out).toContain('  INTEL_UHD_730_D3D11_TEST,');
   });
 
@@ -258,10 +246,7 @@ describe('convert pipeline round-trip', () => {
 
   it('IntegratedProfile shape includes everything renderGeneratedSource needs', () => {
     // Smoke check: type-level invariants enforced via runtime field presence.
-    const p: IntegratedProfile = integrateOne(
-      'intel-uhd-730-d3d11-test.json',
-      freshCapture(),
-    );
+    const p: IntegratedProfile = integrateOne('intel-uhd-730-d3d11-test.json', freshCapture());
     expect(typeof p.source).toBe('string');
     expect(typeof p.id).toBe('string');
     expect(typeof p.constName).toBe('string');

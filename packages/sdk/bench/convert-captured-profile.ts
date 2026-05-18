@@ -172,32 +172,28 @@ export function detectSoftwareRenderer(unmaskedRenderer: string): SoftwareRender
     return {
       isSoftware: true,
       label: 'Microsoft Basic Render Driver (Windows D3D11 WARP — CPU rasterizer)',
-      hint:
-        'Enable hardware acceleration in your browser (Edge: edge://settings/system → "Use graphics acceleration when available"; Chrome: chrome://settings/system), then verify chrome://gpu / edge://gpu shows "Hardware accelerated" before recapturing.',
+      hint: 'Enable hardware acceleration in your browser (Edge: edge://settings/system → "Use graphics acceleration when available"; Chrome: chrome://settings/system), then verify chrome://gpu / edge://gpu shows "Hardware accelerated" before recapturing.',
     };
   }
   if (/SwiftShader/i.test(r)) {
     return {
       isSoftware: true,
       label: 'SwiftShader (Chromium portable CPU GL fallback)',
-      hint:
-        'Your browser is using the bundled CPU rasterizer. Toggle hardware acceleration on, install / update GPU drivers, or run on a host with a real GPU before recapturing.',
+      hint: 'Your browser is using the bundled CPU rasterizer. Toggle hardware acceleration on, install / update GPU drivers, or run on a host with a real GPU before recapturing.',
     };
   }
   if (/llvmpipe/i.test(r)) {
     return {
       isSoftware: true,
       label: 'Mesa llvmpipe (Linux/BSD software driver)',
-      hint:
-        'Mesa fell back to CPU rendering. Install / load proprietary or open-source GPU drivers (e.g. nvidia, amdgpu, i915), confirm with `glxinfo | grep "OpenGL renderer"`, then recapture.',
+      hint: 'Mesa fell back to CPU rendering. Install / load proprietary or open-source GPU drivers (e.g. nvidia, amdgpu, i915), confirm with `glxinfo | grep "OpenGL renderer"`, then recapture.',
     };
   }
   if (/(?:^|[^A-Za-z])Software(?:\s+Rasterizer)?(?:[^A-Za-z]|$)/i.test(r)) {
     return {
       isSoftware: true,
       label: 'Generic software rasterizer',
-      hint:
-        'The renderer string self-identifies as a software fallback. Enable GPU acceleration / install drivers and recapture.',
+      hint: 'The renderer string self-identifies as a software fallback. Enable GPU acceleration / install drivers and recapture.',
     };
   }
   return { isSoftware: false, label: '', hint: '' };
@@ -518,12 +514,8 @@ export function selfTest(): void {
     console.error(
       `self-test FAILED: capHash mismatch (got ${verify.capHash}, expected ${EXPECTED_CAP_HASH}).`,
     );
-    console.error(
-      'If you intentionally changed INTEL_UHD_730_D3D11 in webgl-profiles.ts, run',
-    );
-    console.error(
-      '  pnpm --filter @mosaiq/sdk run bench:verify-creepjs',
-    );
+    console.error('If you intentionally changed INTEL_UHD_730_D3D11 in webgl-profiles.ts, run');
+    console.error('  pnpm --filter @mosaiq/sdk run bench:verify-creepjs');
     console.error('and update EXPECTED_CAP_HASH to match.');
     process.exit(1);
   }
@@ -589,8 +581,12 @@ async function main(): Promise<void> {
   console.log(`  CreepJS gpuBrand:       "${verify.gpuBrand}"`);
   console.log(`  sortedUniqueParams (n=${verify.sortedUniqueParams.length}):`);
   console.log(`    ${verify.sortedUniqueParams.join(',')}`);
-  console.log(`  capabilitiesHash:  ${verify.capHash}   in whitelist? ${verify.capInWhitelist ? '✓ YES' : '✗ NO'}`);
-  console.log(`  brandCapabilities: ${verify.brandHashValue}    in whitelist? ${verify.brandInWhitelist ? '✓ YES' : '✗ NO'}`);
+  console.log(
+    `  capabilitiesHash:  ${verify.capHash}   in whitelist? ${verify.capInWhitelist ? '✓ YES' : '✗ NO'}`,
+  );
+  console.log(
+    `  brandCapabilities: ${verify.brandHashValue}    in whitelist? ${verify.brandInWhitelist ? '✓ YES' : '✗ NO'}`,
+  );
   console.log('');
 
   // Phase 5.4 software-renderer diagnostic — fires before the verdict so users
@@ -598,9 +594,13 @@ async function main(): Promise<void> {
   // capture is unlikely to be useful even though the convert pipeline ran clean.
   const sw = detectSoftwareRenderer(payload.renderer);
   if (sw.isSoftware) {
-    console.log('\x1b[33m───────────────────────────────────────────────────────────────────────────────\x1b[0m');
+    console.log(
+      '\x1b[33m───────────────────────────────────────────────────────────────────────────────\x1b[0m',
+    );
     console.log('\x1b[33m ⚠  Software renderer detected — this is NOT real GPU hardware\x1b[0m');
-    console.log('\x1b[33m───────────────────────────────────────────────────────────────────────────────\x1b[0m');
+    console.log(
+      '\x1b[33m───────────────────────────────────────────────────────────────────────────────\x1b[0m',
+    );
     console.log(`  Matched: ${sw.label}`);
     console.log('');
     console.log('  Why this matters:');

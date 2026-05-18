@@ -27,7 +27,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const baseDir = path.resolve(__dirname, '..', 'node_modules', '.tmp-playwright-patch', 'lib', 'server');
+const baseDir = path.resolve(
+  __dirname,
+  '..',
+  'node_modules',
+  '.tmp-playwright-patch',
+  'lib',
+  'server',
+);
 
 function patch(relPath, edits) {
   const fp = path.join(baseDir, relPath);

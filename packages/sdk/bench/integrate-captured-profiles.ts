@@ -24,7 +24,7 @@
  * ordering, no time-dependent fields, no env-dependent paths).
  */
 
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -52,10 +52,7 @@ const HERE = (() => {
 })();
 
 export const CAPTURED_PROFILES_DIR = resolve(HERE, 'captured-profiles');
-export const GENERATED_TS_PATH = resolve(
-  HERE,
-  '../src/injection/webgl-profiles-captured.ts',
-);
+export const GENERATED_TS_PATH = resolve(HERE, '../src/injection/webgl-profiles-captured.ts');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pipeline core (testable, no I/O)
@@ -150,8 +147,7 @@ export function renderGeneratedSource(profiles: readonly IntegratedProfile[]): s
   // We therefore emit GL constants inline as `0xHEX /* NAME */` literals
   // (see emitProfileTypeScript({ inlineGlKeys: true })).
   const header =
-    headerComment +
-    `import type { GlParamValue, WebglProfile } from './webgl-profiles.js';\n\n`;
+    headerComment + `import type { GlParamValue, WebglProfile } from './webgl-profiles.js';\n\n`;
 
   const blocks: string[] = [];
   for (const p of sorted) {

@@ -27,12 +27,12 @@ import { fileURLToPath } from 'node:url';
 
 import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
 import {
+  type DetectionRunRaw,
   deletePersona,
   getUserDataDir,
   personaExists,
   runDetection,
   savePersona,
-  type DetectionRunRaw,
 } from '../src/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -43,13 +43,18 @@ const DEFAULT_RETRIES = 2;
 
 function parseEnv() {
   const headed = process.env.HEADED === '1';
-  const only = process.env.ONLY?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
-  const skip = process.env.SKIP?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  const only =
+    process.env.ONLY?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
+  const skip =
+    process.env.SKIP?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
   const timeoutMs = Number(process.env.TIMEOUT_MS ?? DEFAULT_TIMEOUT);
   const retries = Number(process.env.RETRIES ?? DEFAULT_RETRIES);
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const resultsDir =
-    process.env.RESULTS_DIR ?? resolve(__dirname, 'results', ts);
+  const resultsDir = process.env.RESULTS_DIR ?? resolve(__dirname, 'results', ts);
   return { headed, only, skip, timeoutMs, retries, resultsDir };
 }
 
@@ -58,9 +63,7 @@ async function main() {
 
   mkdirSync(resultsDir, { recursive: true });
   console.log(`[bench] results dir: ${resultsDir}`);
-  console.log(
-    `[bench] only: ${only.join(',') || '(all)'} skip: ${skip.join(',') || '(none)'}`,
-  );
+  console.log(`[bench] only: ${only.join(',') || '(all)'} skip: ${skip.join(',') || '(none)'}`);
   console.log(`[bench] headless: ${!headed}`);
   console.log(`[bench] retries per site: ${retries}`);
 
@@ -94,14 +97,10 @@ async function main() {
         } else if (evt.phase === 'site-start') {
           console.log(`[bench] → ${evt.siteId}`);
         } else if (evt.phase === 'site-retry') {
-          console.log(
-            `[bench]   retry ${evt.retryAttempt}/${retries} for ${evt.siteId}`,
-          );
+          console.log(`[bench]   retry ${evt.retryAttempt}/${retries} for ${evt.siteId}`);
         } else if (evt.phase === 'site-end') {
           const tag = evt.siteOk ? 'OK' : 'FAIL';
-          console.log(
-            `[bench]   ${tag} ${evt.siteId} in ${evt.siteDurationMs}ms`,
-          );
+          console.log(`[bench]   ${tag} ${evt.siteId} in ${evt.siteDurationMs}ms`);
         } else if (evt.phase === 'done') {
           console.log('[bench] done');
         } else if (evt.phase === 'canceled') {

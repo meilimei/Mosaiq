@@ -13,7 +13,7 @@
  *     可直接传给 Stagehand / browser-use 等上层框架
  */
 
-import { chromium, type BrowserContext, type LaunchOptions } from 'playwright-core';
+import { type BrowserContext, type LaunchOptions, chromium } from 'playwright-core';
 
 import type { Persona } from '@mosaiq/persona-schema';
 
@@ -21,7 +21,7 @@ import { BrowserSession } from './browser-session.js';
 import { getInstalledChromeMajor, getInstalledChromeVersion } from './chromium-version.js';
 import { buildInjectionConfig } from './injection/build-config.js';
 import { injectAll } from './injection/runner.js';
-import { getUserDataDir, type PathConfig } from './paths.js';
+import { type PathConfig, getUserDataDir } from './paths.js';
 import { toPlaywrightProxy } from './proxy.js';
 import { buildAcceptLanguage } from './ua.js';
 
@@ -124,8 +124,7 @@ export async function launchPersona(
   // 必须用 string 形式 addInitScript（callback 形式会让 Playwright 跳过 prepend）
   // 在 injectAll 之前 polyfill `__name = (f) => f`（identity 函数即可，只用于保留 name）。
   const initialPages = context.pages();
-  const namePolyfill =
-    'globalThis.__name=globalThis.__name||function(f){return f};';
+  const namePolyfill = 'globalThis.__name=globalThis.__name||function(f){return f};';
   const script = `${namePolyfill}(${injectAll.toString()})(${JSON.stringify(injectionConfig)});`;
   await context.addInitScript({ content: script });
   await context.newPage();

@@ -510,9 +510,9 @@ describe('Phase 6.1: per-(buffer, channel) idempotent noise memoization', () => 
       bufA.getChannelData(0)[mid] === 0 ? Math.random() : 0,
       bufA.getChannelData(0)[end] === 0 ? Math.random() : 0,
     ];
-    const fromResult = [
-      ...new Set([...bufA.getChannelData(0), ...copyA, ...attackA]),
-    ].filter((x) => x !== 0);
+    const fromResult = [...new Set([...bufA.getChannelData(0), ...copyA, ...attackA])].filter(
+      (x) => x !== 0,
+    );
 
     // ── getCopyTo ──
     const bufB = new MockAudioBuffer({
@@ -536,9 +536,7 @@ describe('Phase 6.1: per-(buffer, channel) idempotent noise memoization', () => 
     expect(result.length).toBe(1);
     expect(result[0]).toBe(RAND);
 
-    const noiseFactor = +(
-      result.length !== 1 && result.reduce((acc, n) => (acc += +n!), 0)
-    );
+    const noiseFactor = +(result.length !== 1 && result.reduce((acc, n) => (acc += +n!), 0));
     expect(noiseFactor).toBe(0);
   });
 

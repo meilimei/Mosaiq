@@ -119,19 +119,8 @@ describe('detection-runs path helpers', () => {
   });
 
   it('getDetectionRunFile returns <root>/detection-runs/<personaId>/<runId>.json', () => {
-    const f = getDetectionRunFile(
-      'alice',
-      '2026-05-17T10-00-00-000Z',
-      { runtimeRoot: tmpRoot },
-    );
-    expect(f).toBe(
-      join(
-        tmpRoot,
-        'detection-runs',
-        'alice',
-        '2026-05-17T10-00-00-000Z.json',
-      ),
-    );
+    const f = getDetectionRunFile('alice', '2026-05-17T10-00-00-000Z', { runtimeRoot: tmpRoot });
+    expect(f).toBe(join(tmpRoot, 'detection-runs', 'alice', '2026-05-17T10-00-00-000Z.json'));
     expect(existsSync(f)).toBe(false);
   });
 
@@ -139,10 +128,7 @@ describe('detection-runs path helpers', () => {
     // 不直接 import getDetectionRunArtifactDir（住在 run-store.ts），但用 join 模拟
     // 以验证 paths.ts 的命名约定让两者天然 prefix-aligned。
     const file = getDetectionRunFile('alice', 'r1', { runtimeRoot: tmpRoot });
-    const sibling = join(
-      getDetectionRunsDir('alice', { runtimeRoot: tmpRoot }),
-      'r1',
-    );
+    const sibling = join(getDetectionRunsDir('alice', { runtimeRoot: tmpRoot }), 'r1');
     expect(file).toBe(`${sibling}.json`);
   });
 });

@@ -4,7 +4,7 @@
  *
  *   pnpm --filter @mosaiq/sdk exec tsx bench/probe-fpcollect-source.ts
  */
-import { rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 
 import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';

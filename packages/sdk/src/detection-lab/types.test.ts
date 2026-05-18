@@ -13,9 +13,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  SITES,
-  emptyHitsBySurface,
-  extractCreepjsFromDocument,
   type DetectionRun,
   type DetectionRunRaw,
   type DetectionScore,
@@ -23,10 +20,13 @@ import {
   type HitsBySurface,
   type RunProgressEvent,
   type RunStatus,
+  SITES,
   type SiteResult,
   type SiteSpec,
   type SurfaceHit,
   type SurfaceName,
+  emptyHitsBySurface,
+  extractCreepjsFromDocument,
 } from '../index.js';
 
 /**

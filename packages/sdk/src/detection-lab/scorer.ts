@@ -71,17 +71,49 @@ export const SURFACE_PATTERNS: ReadonlyArray<{
   severity: HitSeverity;
 }> = [
   { pattern: /\bwebdriver\b/i, surface: 'webdriver', severity: 'high' },
-  { pattern: /chromedriver|sequentum|phantomjs|selenium|automation/i, surface: 'webdriver', severity: 'high' },
-  { pattern: /\bcanvas\b.*\b(hash|signature|fingerprint|noise|unique)/i, surface: 'canvas', severity: 'high' },
-  { pattern: /\b(canvas\s+(2d|fingerprint|hash|toDataURL))\b/i, surface: 'canvas', severity: 'high' },
-  { pattern: /\bwebgl\b.*(vendor|renderer|hash|fingerprint|unique)/i, surface: 'webgl', severity: 'high' },
+  {
+    pattern: /chromedriver|sequentum|phantomjs|selenium|automation/i,
+    surface: 'webdriver',
+    severity: 'high',
+  },
+  {
+    pattern: /\bcanvas\b.*\b(hash|signature|fingerprint|noise|unique)/i,
+    surface: 'canvas',
+    severity: 'high',
+  },
+  {
+    pattern: /\b(canvas\s+(2d|fingerprint|hash|toDataURL))\b/i,
+    surface: 'canvas',
+    severity: 'high',
+  },
+  {
+    pattern: /\bwebgl\b.*(vendor|renderer|hash|fingerprint|unique)/i,
+    surface: 'webgl',
+    severity: 'high',
+  },
   { pattern: /\b(unmasked\s+(vendor|renderer))\b/i, surface: 'webgl', severity: 'high' },
   { pattern: /\baudio(context)?\s*(fingerprint|hash|unique)/i, surface: 'audio', severity: 'high' },
-  { pattern: /\b(font|fonts)\s*(fingerprint|enumeration|list|unique)/i, surface: 'font', severity: 'medium' },
+  {
+    pattern: /\b(font|fonts)\s*(fingerprint|enumeration|list|unique)/i,
+    surface: 'font',
+    severity: 'medium',
+  },
   { pattern: /\bwebrtc\b/i, surface: 'webrtc', severity: 'high' },
-  { pattern: /\b(local|public|private)\s*ip\s*(leak|address)/i, surface: 'webrtc', severity: 'high' },
-  { pattern: /\bnavigator\.(userAgent|platform|hardwareConcurrency|deviceMemory|languages)/i, surface: 'navigator', severity: 'medium' },
-  { pattern: /\b(screen|viewport|window)\s*(width|height|resolution)/i, surface: 'screen', severity: 'low' },
+  {
+    pattern: /\b(local|public|private)\s*ip\s*(leak|address)/i,
+    surface: 'webrtc',
+    severity: 'high',
+  },
+  {
+    pattern: /\bnavigator\.(userAgent|platform|hardwareConcurrency|deviceMemory|languages)/i,
+    surface: 'navigator',
+    severity: 'medium',
+  },
+  {
+    pattern: /\b(screen|viewport|window)\s*(width|height|resolution)/i,
+    surface: 'screen',
+    severity: 'low',
+  },
   { pattern: /\b(permissions|notifications)\b/i, surface: 'permissions', severity: 'low' },
   { pattern: /\b(timezone|locale|intl)\b/i, surface: 'timezone', severity: 'medium' },
   { pattern: /\bplugin/i, surface: 'plugins', severity: 'low' },
@@ -550,9 +582,8 @@ export function scoreFingerprintScan(extracted: Record<string, unknown>): SitePa
 
 export function scorePixelscan(extracted: Record<string, unknown>): SitePartialScore {
   const cards =
-    (extracted.cards as
-      | Array<{ title: string; status: string; summary: string }>
-      | undefined) ?? [];
+    (extracted.cards as Array<{ title: string; status: string; summary: string }> | undefined) ??
+    [];
   const challengeDetected = extracted.challengeDetected as boolean | undefined;
   const stillLoading = extracted.stillLoading as boolean | undefined;
   const hits: SurfaceHit[] = [];

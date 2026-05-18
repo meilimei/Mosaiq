@@ -222,7 +222,7 @@ async function main() {
           [`function () { [native code] }`]: true,
         };
       }
-      function hasValidStack(err: unknown, reg: RegExp, i: number = 1) {
+      function hasValidStack(err: unknown, reg: RegExp, i = 1) {
         const e = err as { stack?: string; message?: string };
         if (i === 0) return reg.test(e.message ?? '');
         return reg.test((e.stack ?? '').split('\n')[i] ?? '');
@@ -230,7 +230,11 @@ async function main() {
       const AT_FUNCTION = /at Function\.toString /;
       const AT_OBJECT = /at Object\.toString/;
 
-      function queryLies(apiFunction: Function, lieProps: Record<string, number>, ownerObj?: { name?: string }): string[] {
+      function queryLies(
+        apiFunction: Function,
+        lieProps: Record<string, number>,
+        ownerObj?: { name?: string },
+      ): string[] {
         if (typeof apiFunction !== 'function') return [];
         const name = (apiFunction.name || '').replace(/get\s/, '');
         const objName = ownerObj?.name;
@@ -286,15 +290,17 @@ async function main() {
               () => Object.create(new Proxy(apiFunction, {})).toString(),
               (err) => IS_BLINK && !hasValidStack(err, AT_OBJECT),
             ),
-          'failed at too much recursion error': failsTypeError(() => {
-            Object.setPrototypeOf(apiFunction, Object.create(apiFunction)).toString();
-          }, undefined, () => Object.setPrototypeOf(apiFunction, nativeProto)),
+          'failed at too much recursion error': failsTypeError(
+            () => {
+              Object.setPrototypeOf(apiFunction, Object.create(apiFunction)).toString();
+            },
+            undefined,
+            () => Object.setPrototypeOf(apiFunction, nativeProto),
+          ),
         };
         // detectProxies 升级位
         const detectProxies =
-          name === 'toString' ||
-          !!lieProps['Function.toString'] ||
-          !!lieProps['Permissions.query'];
+          name === 'toString' || !!lieProps['Function.toString'] || !!lieProps['Permissions.query'];
         if (detectProxies) {
           // 这里我们只关心**额外触发**的检测，跳过 instanceof / define properties 等噪声
           (lies as Record<string, boolean>)['__proxyDetectionEscalated__'] = true;
@@ -334,11 +340,7 @@ async function main() {
                 }
                 continue;
               }
-              if (
-                name !== 'name' &&
-                name !== 'length' &&
-                name[0] !== name[0].toUpperCase()
-              ) {
+              if (name !== 'name' && name !== 'length' && name[0] !== name[0].toUpperCase()) {
                 const lies = ['failed descriptor.value undefined'];
                 results.push({ prop: name, lies });
                 lieProps[`${(ownerObj as { name?: string })?.name ?? '?'}.${name}`] = lies.length;
@@ -365,11 +367,30 @@ async function main() {
       out.scan_Navigator = scanProto(
         () => (self as unknown as { Navigator: typeof Navigator }).Navigator,
         [
-          'appCodeName', 'appName', 'appVersion', 'connection', 'deviceMemory',
-          'getBattery', 'getGamepads', 'hardwareConcurrency', 'language', 'languages',
-          'maxTouchPoints', 'mimeTypes', 'platform', 'plugins', 'product', 'productSub',
-          'sendBeacon', 'serviceWorker', 'storage', 'userAgent', 'vendor', 'vendorSub',
-          'webdriver', 'gpu',
+          'appCodeName',
+          'appName',
+          'appVersion',
+          'connection',
+          'deviceMemory',
+          'getBattery',
+          'getGamepads',
+          'hardwareConcurrency',
+          'language',
+          'languages',
+          'maxTouchPoints',
+          'mimeTypes',
+          'platform',
+          'plugins',
+          'product',
+          'productSub',
+          'sendBeacon',
+          'serviceWorker',
+          'storage',
+          'userAgent',
+          'vendor',
+          'vendorSub',
+          'webdriver',
+          'gpu',
         ],
         { name: 'Navigator' },
       );
@@ -384,8 +405,9 @@ async function main() {
         { name: 'DOMRect' },
       );
       out.scan_WebGL = scanProto(
-        () => (self as unknown as { WebGLRenderingContext: typeof WebGLRenderingContext })
-          .WebGLRenderingContext,
+        () =>
+          (self as unknown as { WebGLRenderingContext: typeof WebGLRenderingContext })
+            .WebGLRenderingContext,
         ['bufferData', 'getParameter', 'readPixels'],
         { name: 'WebGLRenderingContext' },
       );
@@ -401,15 +423,23 @@ async function main() {
       );
       out.scan_Date = scanProto(
         () => Date,
-        ['getTimezoneOffset', 'toString', 'toLocaleString', 'toLocaleDateString', 'toLocaleTimeString',
-         'toTimeString', 'toDateString'],
+        [
+          'getTimezoneOffset',
+          'toString',
+          'toLocaleString',
+          'toLocaleDateString',
+          'toLocaleTimeString',
+          'toTimeString',
+          'toDateString',
+        ],
         { name: 'Date' },
       );
 
       // ─────────────────────────────────────────────────────────────────
       // 4. Stack 取证 —— 捕获 failed object toString error 的实际 stack frame
       // ─────────────────────────────────────────────────────────────────
-      const stackCapture: Record<string, { name: string; message: string; stackLines: string[] }> = {};
+      const stackCapture: Record<string, { name: string; message: string; stackLines: string[] }> =
+        {};
       const captureStack = (label: string, fn: () => void) => {
         try {
           fn();
@@ -468,8 +498,7 @@ async function main() {
         intlLocale: localeLang,
         // 完全复现 CreepJS 的条件
         triggersLowerEntropyTimeZone:
-          !!defaultLang &&
-          defaultLang.split('-')[0] !== localeLang.split('-')[0],
+          !!defaultLang && defaultLang.split('-')[0] !== localeLang.split('-')[0],
       };
     });
     Object.assign(probe, speechProbe);

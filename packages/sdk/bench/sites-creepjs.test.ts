@@ -126,11 +126,7 @@ describe('extractCreepjsFromDocument — synthetic DOM', () => {
 // committed snapshot CI cannot reproduce the regression check.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const FIXTURE_PATH = resolve(
-  __dirname,
-  'fixtures',
-  'creepjs-v0.5.0-snapshot.html',
-);
+const FIXTURE_PATH = resolve(__dirname, 'fixtures', 'creepjs-v0.5.0-snapshot.html');
 
 describe('extractCreepjsFromDocument — v0.5.0 bench fixture', () => {
   it('collapses the 23 v0.5.0 phantom <unknown> entries to 2 real surface markers', () => {

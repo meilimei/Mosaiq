@@ -9,16 +9,16 @@ import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from
 import { join } from 'node:path';
 
 import {
-  deriveSeed,
-  parsePersona,
-  randomNoiseSeed,
   type NoiseSeed,
   type Persona,
   type PersonaId,
   type ProxyConfig,
+  deriveSeed,
+  parsePersona,
+  randomNoiseSeed,
 } from '@mosaiq/persona-schema';
 
-import { getPersonaDir, getPersonaFile, type PathConfig } from './paths.js';
+import { type PathConfig, getPersonaDir, getPersonaFile } from './paths.js';
 
 /**
  * 保存 persona 到磁盘。内部会：
@@ -109,11 +109,7 @@ export interface PersonaPatch {
  * 注意：如果该 persona 当前正在运行，磁盘 JSON 会更新，但 chromium 进程已用旧
  * 配置启动，新值要等用户重启浏览器后才会生效。调用方应在 UI 上提示这点。
  */
-export function updatePersona(
-  id: PersonaId,
-  patch: PersonaPatch,
-  config?: PathConfig,
-): Persona {
+export function updatePersona(id: PersonaId, patch: PersonaPatch, config?: PathConfig): Persona {
   const current = loadPersona(id, config);
 
   // 解释 patch.proxy 三态
@@ -134,9 +130,7 @@ export function updatePersona(
       tags: patch.tags !== undefined ? [...patch.tags] : current.metadata.tags,
       notes: patch.notes ?? current.metadata.notes,
     },
-    system: patch.timezone
-      ? { ...current.system, timezone: patch.timezone }
-      : current.system,
+    system: patch.timezone ? { ...current.system, timezone: patch.timezone } : current.system,
     network: {
       ...current.network,
       proxy: newProxy,

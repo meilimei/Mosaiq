@@ -22,9 +22,10 @@ import type { GlParamValue, WebglProfile } from './webgl-profiles.js';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
-  id: "intel-hd-520-d3d11-self",
-  name: "ANGLE (Intel, Intel(R) HD Graphics 520 (0x00001916) Direct3D11 vs_5_0 ps_5_0, D3D11)",
-  matchRenderer: /ANGLE \(Intel, Intel\(R\) HD Graphics 520 \(0x00001916\) Direct3D11 vs_5_0 ps_5_0, D3D11\)/,
+  id: 'intel-hd-520-d3d11-self',
+  name: 'ANGLE (Intel, Intel(R) HD Graphics 520 (0x00001916) Direct3D11 vs_5_0 ps_5_0, D3D11)',
+  matchRenderer:
+    /ANGLE \(Intel, Intel\(R\) HD Graphics 520 \(0x00001916\) Direct3D11 vs_5_0 ps_5_0, D3D11\)/,
   knownInCreepjsWhitelist: false,
   webgl1: new Map<number, GlParamValue>([
     [0x0b93 /* STENCIL_VALUE_MASK */, 4294967295],
@@ -38,7 +39,7 @@ export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
     [0x0d55 /* ALPHA_BITS */, 8],
     [0x0d56 /* DEPTH_BITS */, 24],
     [0x0d57 /* STENCIL_BITS */, 0],
-    [0x1f02 /* VERSION */, "WebGL 1.0 (OpenGL ES 2.0 Chromium)"],
+    [0x1f02 /* VERSION */, 'WebGL 1.0 (OpenGL ES 2.0 Chromium)'],
     [0x80a8 /* SAMPLE_BUFFERS */, 1],
     [0x80a9 /* SAMPLES */, 4],
     [0x846d /* ALIASED_POINT_SIZE_RANGE */, [1, 1024]],
@@ -49,7 +50,7 @@ export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
     [0x8872 /* MAX_TEXTURE_IMAGE_UNITS */, 16],
     [0x8b4c /* MAX_VERTEX_TEXTURE_IMAGE_UNITS */, 16],
     [0x8b4d /* MAX_COMBINED_TEXTURE_IMAGE_UNITS */, 32],
-    [0x8b8c /* SHADING_LANGUAGE_VERSION */, "WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)"],
+    [0x8b8c /* SHADING_LANGUAGE_VERSION */, 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)'],
     [0x8ca4 /* STENCIL_BACK_VALUE_MASK */, 4294967295],
     [0x8ca5 /* STENCIL_BACK_WRITEMASK */, 4294967295],
     [0x8dfb /* MAX_VERTEX_UNIFORM_VECTORS */, 4096],
@@ -57,7 +58,7 @@ export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
     [0x8dfd /* MAX_FRAGMENT_UNIFORM_VECTORS */, 1024],
   ]),
   webgl2: new Map<number, GlParamValue>([
-    [0x1f02 /* VERSION */, "WebGL 2.0 (OpenGL ES 3.0 Chromium)"],
+    [0x1f02 /* VERSION */, 'WebGL 2.0 (OpenGL ES 3.0 Chromium)'],
     [0x8073 /* MAX_3D_TEXTURE_SIZE */, 2048],
     [0x80e8 /* MAX_ELEMENTS_VERTICES */, 0x7fffffff],
     [0x80e9 /* MAX_ELEMENTS_INDICES */, 0x7fffffff],
@@ -76,7 +77,7 @@ export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
     [0x8b49 /* MAX_FRAGMENT_UNIFORM_COMPONENTS */, 4096],
     [0x8b4a /* MAX_VERTEX_UNIFORM_COMPONENTS */, 16384],
     [0x8b4b /* MAX_VARYING_COMPONENTS */, 120],
-    [0x8b8c /* SHADING_LANGUAGE_VERSION */, "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"],
+    [0x8b8c /* SHADING_LANGUAGE_VERSION */, 'WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)'],
     [0x8c80 /* MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS */, 4],
     [0x8c8a /* MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS */, 120],
     [0x8c8b /* MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS */, 4],
@@ -90,6 +91,4 @@ export const INTEL_HD_520_D3D11_SELF: WebglProfile = {
   ]),
 };
 
-export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [
-  INTEL_HD_520_D3D11_SELF,
-];
+export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [INTEL_HD_520_D3D11_SELF];

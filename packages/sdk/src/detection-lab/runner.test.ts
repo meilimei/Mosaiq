@@ -17,12 +17,8 @@ import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
 import type { Page } from 'playwright-core';
 
 import type { BrowserSession } from '../browser-session.js';
-import {
-  runDetection,
-  snapshotPersona,
-  type RunDetectionDeps,
-} from './runner.js';
 import type { SiteWorkerContext } from './runner-core.js';
+import { type RunDetectionDeps, runDetection, snapshotPersona } from './runner.js';
 import type { RunProgressEvent, SiteResult, SiteSpec } from './types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,9 +65,7 @@ function captureProgress(): {
 }
 
 /** 默认 mock deps — launch 返回 fakeSession，runOnePage 永远 ok。 */
-function defaultDeps(
-  overrides: Partial<RunDetectionDeps> = {},
-): RunDetectionDeps {
+function defaultDeps(overrides: Partial<RunDetectionDeps> = {}): RunDetectionDeps {
   return {
     launch: async () => fakeSession(),
     runOnePage: async (_page, spec) => ({
@@ -156,11 +150,7 @@ describe('runDetection: happy path', () => {
   });
 
   it('generates ISO-like runId when omitted', async () => {
-    const result = await runDetection(
-      makePersona(),
-      { only: ['sannysoft'] },
-      defaultDeps(),
-    );
+    const result = await runDetection(makePersona(), { only: ['sannysoft'] }, defaultDeps());
     // runId 形如 "2026-01-01T00:00:00.000Z" → replace `:`/`.` 后是 "2026-01-01T00-00-00-000Z"
     expect(result.runId).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/);
   });
@@ -369,11 +359,7 @@ describe('runDetection: canceled', () => {
     const ac = new AbortController();
     ac.abort();
     await expect(
-      runDetection(
-        makePersona(),
-        { only: ['sannysoft'], signal: ac.signal },
-        defaultDeps(),
-      ),
+      runDetection(makePersona(), { only: ['sannysoft'], signal: ac.signal }, defaultDeps()),
     ).resolves.toBeDefined();
   });
 });

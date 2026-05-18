@@ -34,7 +34,8 @@ export interface PlaywrightProxy {
 export function toPlaywrightProxy(proxy: ProxyConfig): PlaywrightProxy {
   return {
     server: buildProxyServerArg(proxy),
-    bypass: proxy.bypassList && proxy.bypassList.length > 0 ? proxy.bypassList.join(',') : undefined,
+    bypass:
+      proxy.bypassList && proxy.bypassList.length > 0 ? proxy.bypassList.join(',') : undefined,
     username: proxy.username,
     password: proxy.password,
   };

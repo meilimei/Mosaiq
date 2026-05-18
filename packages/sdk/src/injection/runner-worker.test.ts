@@ -80,7 +80,7 @@ beforeAll(async () => {
   //    happy-dom 应该有 URL.createObjectURL 但返回 fake URL。我们 wrap 之以捕获 blob 文本。
   const origCreateObjectURL = URL.createObjectURL;
   let lastBlobText = '';
-  URL.createObjectURL = function (blob: Blob): string {
+  URL.createObjectURL = (blob: Blob): string => {
     // happy-dom Blob.text() 是 Promise；我们同步读不到。退路：访问 blob 内部
     // 私有结构。但更稳：blob.size 至少能验证非空，然后用 async 读。
     // 测试 setup 是 async（beforeAll allows async），先 await。
@@ -171,9 +171,7 @@ describe('Phase 2.6 worker IIFE: WebGL 49-param full mirror', () => {
   });
 
   it('IIFE replaces WebGLRenderingContext.prototype.getParameter (not just UNMASKED_VENDOR/RENDERER)', () => {
-    expect(capturedIIFE).toMatch(
-      /WebGLRenderingContext\.prototype\.getParameter\s*=\s*_makeGP/,
-    );
+    expect(capturedIIFE).toMatch(/WebGLRenderingContext\.prototype\.getParameter\s*=\s*_makeGP/);
   });
 
   it('IIFE handles WebGL2 own descriptor (Object.getOwnPropertyDescriptor)', () => {
@@ -211,9 +209,7 @@ describe('Phase 2.6 worker IIFE: OffscreenCanvas spoof mirror', () => {
   });
 
   it('IIFE replaces OffscreenCanvasRenderingContext2D.prototype.getImageData', () => {
-    expect(capturedIIFE).toMatch(
-      /OffscreenCanvasRenderingContext2D\.prototype\.getImageData\s*=/,
-    );
+    expect(capturedIIFE).toMatch(/OffscreenCanvasRenderingContext2D\.prototype\.getImageData\s*=/);
   });
 
   it('IIFE perturbation uses mulberry32 PRNG (same algo as main scope)', () => {

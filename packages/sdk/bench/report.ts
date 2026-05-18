@@ -177,8 +177,7 @@ function analyzeDbiBot(extracted: Record<string, unknown>): string {
         surface: 'other' as SurfaceName,
         severity: 'medium' as const,
       };
-      const icon =
-        route.severity === 'high' ? '🔴' : route.severity === 'medium' ? '🟡' : '⚪';
+      const icon = route.severity === 'high' ? '🔴' : route.severity === 'medium' ? '🟡' : '⚪';
       md += `- ${icon} **\`${key}\`** → surface: \`${route.surface}\`\n`;
     }
   }
@@ -237,9 +236,7 @@ function analyzeAmIUnique(extracted: Record<string, unknown>): string {
  */
 function analyzeAntoinevastel(extracted: Record<string, unknown>): string {
   const rows =
-    (extracted.rows as
-      | Array<{ name: string; status: string; raw: string }>
-      | undefined) ?? [];
+    (extracted.rows as Array<{ name: string; status: string; raw: string }> | undefined) ?? [];
   const total = (extracted.rowsTotal as number | undefined) ?? rows.length;
   const consistent = (extracted.consistent as number | undefined) ?? 0;
   const unsure = (extracted.unsure as number | undefined) ?? 0;
@@ -436,9 +433,8 @@ function analyzeFingerprintScan(extracted: Record<string, unknown>): string {
  */
 function analyzePixelscan(extracted: Record<string, unknown>): string {
   const cards =
-    (extracted.cards as
-      | Array<{ title: string; status: string; summary: string }>
-      | undefined) ?? [];
+    (extracted.cards as Array<{ title: string; status: string; summary: string }> | undefined) ??
+    [];
   const danger = (extracted.dangerCards as number | undefined) ?? 0;
   const warning = (extracted.warningCards as number | undefined) ?? 0;
   const success = (extracted.successCards as number | undefined) ?? 0;
@@ -461,7 +457,13 @@ function analyzePixelscan(extracted: Record<string, unknown>): string {
       md += `\n<details><summary>展开 ${cards.length} 个白名单卡片（仅观察）</summary>\n\n`;
       for (const c of cards) {
         const icon =
-          c.status === 'danger' ? '🔴' : c.status === 'warning' ? '🟡' : c.status === 'success' ? '✅' : '⚪';
+          c.status === 'danger'
+            ? '🔴'
+            : c.status === 'warning'
+              ? '🟡'
+              : c.status === 'success'
+                ? '✅'
+                : '⚪';
         md += `- ${icon} **${c.title}** _(status: ${c.status})_\n`;
       }
       md += `\n</details>\n`;
@@ -477,7 +479,13 @@ function analyzePixelscan(extracted: Record<string, unknown>): string {
   md += `<details><summary>展开 ${cards.length} 个核心卡片详情</summary>\n\n`;
   for (const c of cards) {
     const icon =
-      c.status === 'danger' ? '🔴' : c.status === 'warning' ? '🟡' : c.status === 'success' ? '✅' : '⚪';
+      c.status === 'danger'
+        ? '🔴'
+        : c.status === 'warning'
+          ? '🟡'
+          : c.status === 'success'
+            ? '✅'
+            : '⚪';
     md += `- ${icon} **${c.title}** _(status: ${c.status})_\n`;
   }
   md += `\n</details>\n`;
@@ -571,11 +579,15 @@ function summarizeSurfacePriority(hits: readonly SurfaceHit[]): string {
     const action = recommendAction(surface, c);
     md += `| ${i + 1} | **${surface}** | ${c.high} | ${c.medium} | ${c.low} | ${score.toFixed(1)} | ${action} |\n`;
   });
-  if (ranked.length === 0) md += `| — | — | — | — | — | — | _所有站点未检测到失败项 — 现状已较好_ |\n`;
+  if (ranked.length === 0)
+    md += `| — | — | — | — | — | — | _所有站点未检测到失败项 — 现状已较好_ |\n`;
   return md;
 }
 
-function recommendAction(surface: Surface, c: { high: number; medium: number; low: number }): string {
+function recommendAction(
+  surface: Surface,
+  c: { high: number; medium: number; low: number },
+): string {
   const total = c.high + c.medium + c.low;
   if (total === 0) return '保持现状';
   switch (surface) {
@@ -699,7 +711,9 @@ function generate(rawPath: string, outDir: string): void {
       arr.push(h);
       bySurface.set(h.surface, arr);
     }
-    for (const [surface, arr] of [...bySurface.entries()].sort((a, b) => b[1].length - a[1].length)) {
+    for (const [surface, arr] of [...bySurface.entries()].sort(
+      (a, b) => b[1].length - a[1].length,
+    )) {
       md += `### \`${surface}\` (${arr.length} 项)\n\n`;
       for (const h of arr.slice(0, 30)) {
         const sevIcon = h.severity === 'high' ? '🔴' : h.severity === 'medium' ? '🟡' : '⚪';

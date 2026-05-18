@@ -66,10 +66,7 @@ describe('runner.ts WebGL spoof regression guards', () => {
    * 本 white-box test 只是廉价的回归保护：防止有人误把 Proxy 改回普通 function 替换。
    */
   it('runner.ts WebGL spoof must use Proxy (not direct function replacement)', () => {
-    const src = readFileSync(
-      join(__dirname, 'injection', 'runner.ts'),
-      'utf-8',
-    );
+    const src = readFileSync(join(__dirname, 'injection', 'runner.ts'), 'utf-8');
 
     // 必须包含 makeGetParameterProxy（Day 2.1 引入的 Proxy factory）
     expect(src).toContain('makeGetParameterProxy');
@@ -83,10 +80,7 @@ describe('runner.ts WebGL spoof regression guards', () => {
   });
 
   it('runner.ts WebGL spoof must handle WebGL2RenderingContext separately', () => {
-    const src = readFileSync(
-      join(__dirname, 'injection', 'runner.ts'),
-      'utf-8',
-    );
+    const src = readFileSync(join(__dirname, 'injection', 'runner.ts'), 'utf-8');
 
     // WebGL2 单独处理，避免 WebGL1/WebGL2 共享同一原始函数时 race
     expect(src).toContain('WebGL2RenderingContext.prototype');
@@ -106,10 +100,7 @@ describe('runner.ts Timezone + SpeechSynthesis spoof regression guards', () => {
    * 真实 e2e 验证：`bench/diagnose-creepjs.ts` + `bench/baseline-detection.ts`。
    */
   it('runner.ts Date.getTimezoneOffset spoof must use Proxy', () => {
-    const src = readFileSync(
-      join(__dirname, 'injection', 'runner.ts'),
-      'utf-8',
-    );
+    const src = readFileSync(join(__dirname, 'injection', 'runner.ts'), 'utf-8');
     expect(src).toContain('proxiedGTO');
     expect(src).toContain('Date.prototype.getTimezoneOffset = proxiedGTO');
     // 不允许回退到旧 `Date.prototype.getTimezoneOffset = function (` 形式
@@ -117,10 +108,7 @@ describe('runner.ts Timezone + SpeechSynthesis spoof regression guards', () => {
   });
 
   it('runner.ts Intl.DateTimeFormat spoof must use Proxy with construct/apply traps', () => {
-    const src = readFileSync(
-      join(__dirname, 'injection', 'runner.ts'),
-      'utf-8',
-    );
+    const src = readFileSync(join(__dirname, 'injection', 'runner.ts'), 'utf-8');
     expect(src).toContain('proxiedDTF');
     // 必须同时拦 construct 与 apply（spec 允许两种调用方式）
     // Day 3.6 起改用 wrapStealth 自注册 toString，兼容两种写法
@@ -128,10 +116,7 @@ describe('runner.ts Timezone + SpeechSynthesis spoof regression guards', () => {
   });
 
   it('runner.ts must spoof SpeechSynthesis.getVoices to avoid OS TTS leak', () => {
-    const src = readFileSync(
-      join(__dirname, 'injection', 'runner.ts'),
-      'utf-8',
-    );
+    const src = readFileSync(join(__dirname, 'injection', 'runner.ts'), 'utf-8');
     // Day 3.5 关键改造 — 防止真实 OS voices（如中文系统的 Microsoft Huihui [zh-CN]）泄露
     expect(src).toContain('SpeechSynthesis.prototype.getVoices');
     expect(src).toContain('voiceTemplates');

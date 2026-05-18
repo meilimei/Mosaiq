@@ -6,13 +6,14 @@
  *   - clone 必须派生全新 noise seeds（否则克隆出的 persona 会被识别为「同一设备」）
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
 
+import type { PathConfig } from './paths.js';
 import {
   clonePersona,
   loadPersona,
@@ -20,7 +21,6 @@ import {
   savePersona,
   updatePersona,
 } from './persona-store.js';
-import type { PathConfig } from './paths.js';
 
 let tmpRoot: string;
 let cfg: PathConfig;
@@ -157,11 +157,7 @@ describe('clonePersona', () => {
 
   it('assigns new id / displayName / timestamps / resets launch stats', () => {
     makeSource();
-    const cloned = clonePersona(
-      'src',
-      { newId: 'clone-three', newDisplayName: 'Clone 3' },
-      cfg,
-    );
+    const cloned = clonePersona('src', { newId: 'clone-three', newDisplayName: 'Clone 3' }, cfg);
     expect(cloned.metadata.id).toBe('clone-three');
     expect(cloned.metadata.displayName).toBe('Clone 3');
     expect(cloned.metadata.launchCount).toBe(0);
@@ -210,9 +206,9 @@ describe('clonePersona', () => {
     makeSource();
     clonePersona('src', { newId: 'dup-id', newDisplayName: 'D1' }, cfg);
 
-    expect(() =>
-      clonePersona('src', { newId: 'dup-id', newDisplayName: 'D2' }, cfg),
-    ).toThrow(/already exists/);
+    expect(() => clonePersona('src', { newId: 'dup-id', newDisplayName: 'D2' }, cfg)).toThrow(
+      /already exists/,
+    );
   });
 
   it('throws if source does not exist', () => {
@@ -224,9 +220,7 @@ describe('clonePersona', () => {
   it('throws if newId is invalid (schema violation caught at save time)', () => {
     makeSource();
     // savePersona 现在在写盘前做 schema 校验
-    expect(() =>
-      clonePersona('src', { newId: 'ab', newDisplayName: 'Too Short' }, cfg),
-    ).toThrow();
+    expect(() => clonePersona('src', { newId: 'ab', newDisplayName: 'Too Short' }, cfg)).toThrow();
   });
 
   it('reproducible when masterSeed provided', () => {

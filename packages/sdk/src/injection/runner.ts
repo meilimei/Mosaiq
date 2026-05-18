@@ -109,13 +109,13 @@ export function injectAll(config: InjectionConfig): void {
             }
             // 模拟 V8 在直接传 raw target 时的循环检测：newProto 链含 target → throw。
             if (hasPrototypeCycle(target as unknown as object, newProto)) {
-              throw new TypeError("Cyclic __proto__ value");
+              throw new TypeError('Cyclic __proto__ value');
             }
             // 同时，调用方常常拿到的是 proxy 而非 raw target；对 V8 来说，proxy 的
             //   [[GetPrototypeOf]] 默认 forward 到 target，所以 newProto 链中出现
             // proxyRef 时也等价于一个会立刻形成的循环。我们也要抛 TypeError。
             if (proxyRef && hasPrototypeCycle(proxyRef as unknown as object, newProto)) {
-              throw new TypeError("Cyclic __proto__ value");
+              throw new TypeError('Cyclic __proto__ value');
             }
             return Reflect.setPrototypeOf(target, newProto);
           },
@@ -476,9 +476,10 @@ export function injectAll(config: InjectionConfig): void {
           const parts = query.trim().split(/\s+and\s+/i);
           if (parts.length === 0) return null;
           for (const partRaw of parts) {
-            const m = /^\(\s*(min-|max-)?(device-width|device-height|resolution|width|height):\s*([\d.]+)\s*(px|dppx|dpi|dpcm)?\s*\)$/i.exec(
-              partRaw.trim(),
-            );
+            const m =
+              /^\(\s*(min-|max-)?(device-width|device-height|resolution|width|height):\s*([\d.]+)\s*(px|dppx|dpi|dpcm)?\s*\)$/i.exec(
+                partRaw.trim(),
+              );
             if (!m) return null;
             const prefix = (m[1] ?? '').toLowerCase();
             const axis = (m[2] ?? '').toLowerCase();
@@ -708,7 +709,7 @@ export function injectAll(config: InjectionConfig): void {
         const out = new Map<number, SpoofVal>();
         if (!serialized) return out;
         for (const [hex, val] of Object.entries(serialized)) {
-          const pname = parseInt(hex, 16);
+          const pname = Number.parseInt(hex, 16);
           if (Array.isArray(val)) {
             // CreepJS 等 hash typed array 的 BYTES_PER_ELEMENT + .length + .buffer
             // 指纹，必须用真正的 Int32Array / Float32Array 而非普通 number[]。
@@ -726,7 +727,9 @@ export function injectAll(config: InjectionConfig): void {
           } else if (typeof val === 'string') {
             // sanity: string 仅允许在 VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION
             if (!STRING_PNAMES.has(pname)) {
-              console.debug(`[mosaiq] webgl spoof: unexpected string for pname 0x${pname.toString(16)}`);
+              console.debug(
+                `[mosaiq] webgl spoof: unexpected string for pname 0x${pname.toString(16)}`,
+              );
             }
             out.set(pname, val);
           }
@@ -740,10 +743,7 @@ export function injectAll(config: InjectionConfig): void {
       // **关键**：webgl2 优先 —— VERSION / SHADING_LANGUAGE_VERSION 在 WebGL1 是
       // "WebGL 1.0..."，WebGL2 是 "WebGL 2.0..."，merge 时 webgl2 必须覆盖 webgl1 同 key。
       // Map 构造按入参顺序后写覆盖前写，所以 [...webgl1Spoof, ...webgl2Spoof] 即正确顺序。
-      const webgl2MergedSpoof = new Map<number, SpoofVal>([
-        ...webgl1Spoof,
-        ...webgl2Spoof,
-      ]);
+      const webgl2MergedSpoof = new Map<number, SpoofVal>([...webgl1Spoof, ...webgl2Spoof]);
 
       // 用 Proxy 替换 getParameter — 关键点：Proxy 不重写 `toString`，所以
       //   `WebGLRenderingContext.prototype.getParameter.toString()`
@@ -906,12 +906,7 @@ export function injectAll(config: InjectionConfig): void {
             const ctx = thisArg.getContext('2d');
             // Phase 2.4: skip probe-size canvas（防 CreepJS Check 2 "suspicious
             // pixel data"，2x2 probe 走原 path → 命中 KnownImageData → low entropy 不触发）
-            if (
-              ctx &&
-              thisArg.width > 0 &&
-              thisArg.height > 0 &&
-              !isProbeCanvas(thisArg)
-            ) {
+            if (ctx && thisArg.width > 0 && thisArg.height > 0 && !isProbeCanvas(thisArg)) {
               try {
                 const imageData = ctx.getImageData(0, 0, thisArg.width, thisArg.height);
                 perturbImageData(imageData);
@@ -1037,11 +1032,7 @@ export function injectAll(config: InjectionConfig): void {
       const noisedChannels = new WeakMap<AudioBuffer, Set<number>>();
 
       // 幂等 noise applier：(buf, channel) 第一次调用施加 PRNG noise；后续 no-op
-      const ensureNoised = (
-        buf: AudioBuffer,
-        channel: number,
-        underlying: Float32Array,
-      ): void => {
+      const ensureNoised = (buf: AudioBuffer, channel: number, underlying: Float32Array): void => {
         let set = noisedChannels.get(buf);
         if (!set) {
           set = new Set();
@@ -1285,11 +1276,31 @@ export function injectAll(config: InjectionConfig): void {
 
     // ---- 1. PDF plugins & mime metadata (Chrome 88+ 公开常量) ----
     const pluginData = [
-      { name: 'PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-      { name: 'Chrome PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-      { name: 'Chromium PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-      { name: 'Microsoft Edge PDF Viewer', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
-      { name: 'WebKit built-in PDF', description: 'Portable Document Format', filename: 'internal-pdf-viewer' },
+      {
+        name: 'PDF Viewer',
+        description: 'Portable Document Format',
+        filename: 'internal-pdf-viewer',
+      },
+      {
+        name: 'Chrome PDF Viewer',
+        description: 'Portable Document Format',
+        filename: 'internal-pdf-viewer',
+      },
+      {
+        name: 'Chromium PDF Viewer',
+        description: 'Portable Document Format',
+        filename: 'internal-pdf-viewer',
+      },
+      {
+        name: 'Microsoft Edge PDF Viewer',
+        description: 'Portable Document Format',
+        filename: 'internal-pdf-viewer',
+      },
+      {
+        name: 'WebKit built-in PDF',
+        description: 'Portable Document Format',
+        filename: 'internal-pdf-viewer',
+      },
     ];
     const mimeData = [
       { type: 'application/pdf', suffixes: 'pdf', description: 'Portable Document Format' },
@@ -1788,16 +1799,13 @@ export function injectAll(config: InjectionConfig): void {
             const inline = buildWorkerInline(absoluteUrl, isModule);
             const blob = new Blob([inline], { type: 'application/javascript' });
             const blobUrl = URL.createObjectURL(blob);
-            return Reflect.construct(
-              target as unknown as new (...args: unknown[]) => Worker,
-              [blobUrl, opts],
-            );
+            return Reflect.construct(target as unknown as new (...args: unknown[]) => Worker, [
+              blobUrl,
+              opts,
+            ]);
           } catch {
             // CSP / cross-origin / 任何异常 → fallback 原始构造，不阻塞应用
-            return Reflect.construct(
-              target as unknown as new (...args: unknown[]) => Worker,
-              args,
-            );
+            return Reflect.construct(target as unknown as new (...args: unknown[]) => Worker, args);
           }
         },
       }) as unknown as typeof Worker;
@@ -1831,11 +1839,10 @@ export function injectAll(config: InjectionConfig): void {
                   const wrapped = workerSpoofSrc + '\n' + text;
                   const blob = new Blob([wrapped], { type: 'application/javascript' });
                   const blobUrl = URL.createObjectURL(blob);
-                  return await Reflect.apply(
-                    target as unknown as Function,
-                    thisArg,
-                    [blobUrl, options],
-                  );
+                  return await Reflect.apply(target as unknown as Function, thisArg, [
+                    blobUrl,
+                    options,
+                  ]);
                 } catch (err) {
                   // Chrome 自 M96 起拒绝 blob:/data: 协议注册 SW，无法把 spoof 注入
                   // SW realm。这种情况下走原始 register 会让指纹站拿到真实 navigator
@@ -1866,10 +1873,7 @@ export function injectAll(config: InjectionConfig): void {
         const wrappedShared = wrapStealth(OrigSharedWorker as unknown as Function, {
           construct(target, args: unknown[]) {
             try {
-              const [scriptUrl, opts] = args as [
-                string | URL,
-                string | WorkerOptions | undefined,
-              ];
+              const [scriptUrl, opts] = args as [string | URL, string | WorkerOptions | undefined];
               const absoluteUrl = resolveWorkerScriptUrl(scriptUrl);
               const optObj = typeof opts === 'object' ? opts : undefined;
               const isModule = optObj?.type === 'module';
@@ -1877,12 +1881,16 @@ export function injectAll(config: InjectionConfig): void {
               const blob = new Blob([inline], { type: 'application/javascript' });
               const blobUrl = URL.createObjectURL(blob);
               return Reflect.construct(
-                target as unknown as new (...args: unknown[]) => SharedWorker,
+                target as unknown as new (
+                  ...args: unknown[]
+                ) => SharedWorker,
                 [blobUrl, opts],
               );
             } catch {
               return Reflect.construct(
-                target as unknown as new (...args: unknown[]) => SharedWorker,
+                target as unknown as new (
+                  ...args: unknown[]
+                ) => SharedWorker,
                 args,
               );
             }
@@ -1943,11 +1951,7 @@ export function injectAll(config: InjectionConfig): void {
       const d = desc as PropertyDescriptor;
       return typeof d.get === 'function' || typeof d.set === 'function';
     }
-    function shouldBlockStackHook(
-      obj: unknown,
-      prop: PropertyKey,
-      desc: unknown,
-    ): boolean {
+    function shouldBlockStackHook(obj: unknown, prop: PropertyKey, desc: unknown): boolean {
       return prop === 'stack' && isErrorInstance(obj) && hasAccessor(desc);
     }
 
@@ -1984,11 +1988,7 @@ export function injectAll(config: InjectionConfig): void {
       apply(target, thisArg: unknown, args: unknown[]) {
         if (args.length >= 2) {
           const [obj, descs] = args as [unknown, unknown];
-          if (
-            isErrorInstance(obj) &&
-            descs != null &&
-            typeof descs === 'object'
-          ) {
+          if (isErrorInstance(obj) && descs != null && typeof descs === 'object') {
             // 过滤掉 stack 上的 accessor descriptor，其它正常透传。
             const filtered: PropertyDescriptorMap = {};
             const src = descs as Record<string, unknown>;
@@ -2080,13 +2080,8 @@ export function injectAll(config: InjectionConfig): void {
     };
     const origPrep = ErrorCtor.prepareStackTrace;
 
-    const ourPrep = function prepareStackTrace(
-      err: Error,
-      structuredStack: unknown[],
-    ): string {
-      const filtered = (structuredStack as CallSite[]).filter(
-        (cs) => !isSuspiciousFrame(cs),
-      );
+    const ourPrep = function prepareStackTrace(err: Error, structuredStack: unknown[]): string {
+      const filtered = (structuredStack as CallSite[]).filter((cs) => !isSuspiciousFrame(cs));
       // 委托给原 hook（如果有），否则走 V8 default 格式
       if (typeof origPrep === 'function') {
         try {
@@ -2154,7 +2149,11 @@ export function injectAll(config: InjectionConfig): void {
           let frameOwner: 'Function' | 'Object' = 'Function';
           if (typeof proto === 'function' && !stealthRegistry.has(proto)) {
             try {
-              const source = Reflect.apply(stealthState.nativeFunctionToString, proto, []) as string;
+              const source = Reflect.apply(
+                stealthState.nativeFunctionToString,
+                proto,
+                [],
+              ) as string;
               if (source === 'function () { [native code] }') frameOwner = 'Object';
             } catch {
               frameOwner = 'Object';

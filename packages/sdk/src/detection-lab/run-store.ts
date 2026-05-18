@@ -32,11 +32,7 @@ import { join } from 'node:path';
 
 import type { PersonaId } from '@mosaiq/persona-schema';
 
-import {
-  getDetectionRunFile,
-  getDetectionRunsDir,
-  type PathConfig,
-} from '../paths.js';
+import { type PathConfig, getDetectionRunFile, getDetectionRunsDir } from '../paths.js';
 import type { DetectionRun } from './types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,9 +108,7 @@ export function loadDetectionRun(
 ): DetectionRun {
   const file = getDetectionRunFile(personaId, runId, config);
   if (!existsSync(file)) {
-    throw new Error(
-      `DetectionRun not found: ${personaId}/${runId} (expected at ${file})`,
-    );
+    throw new Error(`DetectionRun not found: ${personaId}/${runId} (expected at ${file})`);
   }
   const raw = readFileSync(file, 'utf-8');
   const parsed = JSON.parse(raw) as unknown;

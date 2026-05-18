@@ -19,12 +19,7 @@
 
 import type { PersonaId } from '@mosaiq/persona-schema';
 
-import type {
-  DetectionRunRaw,
-  RunProgressEvent,
-  SiteResult,
-  SiteSpec,
-} from './types.js';
+import type { DetectionRunRaw, RunProgressEvent, SiteResult, SiteSpec } from './types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 类型契约
@@ -51,10 +46,7 @@ export interface SiteWorkerContext {
  *   - 不调 onProgress（由 executeRun 统一发）
  *   - 不实现 retry（由 executeRun 包装）
  */
-export type SiteWorker = (
-  spec: SiteSpec,
-  ctx: SiteWorkerContext,
-) => Promise<SiteResult>;
+export type SiteWorker = (spec: SiteSpec, ctx: SiteWorkerContext) => Promise<SiteResult>;
 
 export interface ExecuteRunOptions {
   /** 写进每个 RunProgressEvent.runId。 */
@@ -206,8 +198,7 @@ async function runWithRetry(
       r = await worker(spec, ctx);
     } catch (err) {
       // worker 不该抛——兜底
-      const message =
-        err instanceof Error ? err.message : String(err ?? 'unknown error');
+      const message = err instanceof Error ? err.message : String(err ?? 'unknown error');
       r = {
         id: spec.id,
         name: spec.name,
@@ -251,8 +242,7 @@ export async function executeRun(
 ): Promise<DetectionRunRaw> {
   const sleep = options.sleep ?? defaultSleep;
   const now = options.now ?? Date.now;
-  const isoTimestamp =
-    options.isoTimestamp ?? (() => new Date().toISOString());
+  const isoTimestamp = options.isoTimestamp ?? (() => new Date().toISOString());
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
 

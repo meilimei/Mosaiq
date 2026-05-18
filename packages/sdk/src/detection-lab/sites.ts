@@ -241,8 +241,7 @@ async function extractIphey(page: Page): Promise<Record<string, unknown>> {
       if (text.length < 3 || text.length > 200) return;
       const cls = el.className.toLowerCase();
       let status: 'pass' | 'fail' | 'unknown' = 'unknown';
-      if (cls.includes('success') || cls.includes('pass') || cls.includes('valid'))
-        status = 'pass';
+      if (cls.includes('success') || cls.includes('pass') || cls.includes('valid')) status = 'pass';
       else if (cls.includes('fail') || cls.includes('error') || cls.includes('invalid'))
         status = 'fail';
       // 用图标 fallback
@@ -409,7 +408,8 @@ async function extractDbiBot(page: Page): Promise<Record<string, unknown>> {
       const text = (node.textContent ?? '').trim();
       if (!text || text.length > 50_000) continue;
       // 一个 quick heuristic：含有 `hasWebdriverTrue` 或 `isPlaywright` 关键字
-      if (!/\bisPlaywright\b|\bhasWebdriverTrue\b|\bhasInconsistentClientHints\b/.test(text)) continue;
+      if (!/\bisPlaywright\b|\bhasWebdriverTrue\b|\bhasInconsistentClientHints\b/.test(text))
+        continue;
       try {
         parsedFromJson = JSON.parse(text);
         break;
@@ -507,9 +507,7 @@ async function extractAmIUnique(page: Page): Promise<Record<string, unknown>> {
     result.attrs = attrs;
     result.attrsTotal = attrs.length;
     // outlier = similarity 小于 0.5%（极罕见，提示 spoof 值组合脱离主流）
-    const outliers = attrs.filter(
-      (a) => a.similarityPct !== null && a.similarityPct < 0.5,
-    );
+    const outliers = attrs.filter((a) => a.similarityPct !== null && a.similarityPct < 0.5);
     result.outliers = outliers;
     result.outlierCount = outliers.length;
     return result;
@@ -540,7 +538,9 @@ async function extractPixelscan(page: Page): Promise<Record<string, unknown>> {
 
     // ── 全文信号 ──
     const allText = document.body?.textContent ?? '';
-    const maskMatch = allText.match(/mask\s+(?:is\s+)?(detected|not detected|consistent|inconsistent)/i);
+    const maskMatch = allText.match(
+      /mask\s+(?:is\s+)?(detected|not detected|consistent|inconsistent)/i,
+    );
     result.maskVerdict = maskMatch ? maskMatch[0] : null;
     result.challengeDetected = /just a moment|verify you are human|cf-mitigated|turnstile/i.test(
       allText.slice(0, 5_000),
@@ -581,7 +581,9 @@ async function extractPixelscan(page: Page): Promise<Record<string, unknown>> {
 
         // SVG 元素的 className 是 SVGAnimatedString 而非 string，要兜底
         const rawCls = el.className;
-        const cls = (typeof rawCls === 'string' ? rawCls : (rawCls as SVGAnimatedString).baseVal ?? '').toLowerCase();
+        const cls = (
+          typeof rawCls === 'string' ? rawCls : ((rawCls as SVGAnimatedString).baseVal ?? '')
+        ).toLowerCase();
         let status: PsCard['status'] = 'unknown';
         if (/success|consistent|valid|good/.test(cls)) status = 'success';
         else if (/warning|warn/.test(cls)) status = 'warning';
@@ -591,8 +593,10 @@ async function extractPixelscan(page: Page): Promise<Record<string, unknown>> {
         if (status === 'unknown') {
           if (/collecting\s+data/.test(innerText)) {
             status = 'unknown'; // 仍在加载，明确不算 danger
-          } else if (/(mask\s+detected|inconsistent|mismatch|fingerprint\s+detected)/.test(innerText) &&
-                     !/not detected/.test(innerText)) {
+          } else if (
+            /(mask\s+detected|inconsistent|mismatch|fingerprint\s+detected)/.test(innerText) &&
+            !/not detected/.test(innerText)
+          ) {
             status = 'danger';
           } else if (/(warning|attention|review)/.test(innerText)) {
             status = 'warning';
@@ -600,10 +604,7 @@ async function extractPixelscan(page: Page): Promise<Record<string, unknown>> {
             status = 'success';
           }
         }
-        const summary = (el.textContent ?? '')
-          .slice(0, 240)
-          .replace(/\s+/g, ' ')
-          .trim();
+        const summary = (el.textContent ?? '').slice(0, 240).replace(/\s+/g, ' ').trim();
         cards.push({ title, status, summary });
       });
     result.cards = cards;
@@ -702,9 +703,7 @@ async function extractAntoinevastel(page: Page): Promise<Record<string, unknown>
     result.consistent = rows.filter((r) => r.status === 'consistent').length;
     result.unsure = rows.filter((r) => r.status === 'unsure').length;
     result.inconsistent = rows.filter((r) => r.status === 'inconsistent').length;
-    result.inconsistentTests = rows
-      .filter((r) => r.status === 'inconsistent')
-      .map((r) => r.name);
+    result.inconsistentTests = rows.filter((r) => r.status === 'inconsistent').map((r) => r.name);
     result.unsureTests = rows.filter((r) => r.status === 'unsure').map((r) => r.name);
 
     // ── 2. fp-collect JSON dump（如果暴露在 `<pre>` 里）──
@@ -867,7 +866,9 @@ async function extractFingerprintScan(page: Page): Promise<Record<string, unknow
     let botRiskScore: number | null = null;
     let scoreSourceText: string | null = null;
     const candidates = Array.from(
-      document.querySelectorAll('h1, h2, h3, [class*="score"], [class*="Score"], [class*="risk"], [class*="Risk"], strong, b, span'),
+      document.querySelectorAll(
+        'h1, h2, h3, [class*="score"], [class*="Score"], [class*="risk"], [class*="Risk"], strong, b, span',
+      ),
     ) as HTMLElement[];
     for (const el of candidates) {
       const t = (el.textContent ?? '').trim();

@@ -78,8 +78,7 @@ const PROFILE_TO_RENDERER: Record<string, string> = {
     'ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)',
   'nvidia-rtx-3060-d3d11':
     'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
-  'amd-rx-6600-d3d11':
-    'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+  'amd-rx-6600-d3d11': 'ANGLE (AMD, AMD Radeon RX 6600 Direct3D11 vs_5_0 ps_5_0, D3D11)',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,19 +152,27 @@ function main(): void {
   }
 
   for (const r of results) {
-    console.log('\n───────────────────────────────────────────────────────────────────────────────');
+    console.log(
+      '\n───────────────────────────────────────────────────────────────────────────────',
+    );
     console.log(`Profile: ${r.id}  (${r.name})`);
     console.log(`  brand (CreepJS getGpuBrand):  "${r.brand}"`);
     console.log(`  sorted unique params (n=${r.sortedUniqueParams.length}):`);
     console.log(`    ${r.sortedUniqueParams.join(',')}`);
-    console.log(`  capabilitiesHash:    ${r.capHash}     in whitelist? ${r.capInWhitelist ? '✓ YES' : '✗ NO'}`);
-    console.log(`  brandCapabilities:   ${r.brandHashValue}    in whitelist? ${r.brandInWhitelist ? '✓ YES' : '✗ NO'}`);
+    console.log(
+      `  capabilitiesHash:    ${r.capHash}     in whitelist? ${r.capInWhitelist ? '✓ YES' : '✗ NO'}`,
+    );
+    console.log(
+      `  brandCapabilities:   ${r.brandHashValue}    in whitelist? ${r.brandInWhitelist ? '✓ YES' : '✗ NO'}`,
+    );
     if (!r.capInWhitelist) {
       const near = nearestCapHash(r.capHash);
       console.log(`  nearest cap whitelist hash: ${near.value} (diff ${near.diff})`);
     }
     const verdict =
-      r.creepjsResult === 'PASS' ? `\x1b[32m✓ ${r.creepjsResult}\x1b[0m` : `\x1b[31m✗ ${r.creepjsResult}\x1b[0m`;
+      r.creepjsResult === 'PASS'
+        ? `\x1b[32m✓ ${r.creepjsResult}\x1b[0m`
+        : `\x1b[31m✗ ${r.creepjsResult}\x1b[0m`;
     console.log(`  ⇒ creepjs.com WebGL section: ${verdict}`);
   }
 

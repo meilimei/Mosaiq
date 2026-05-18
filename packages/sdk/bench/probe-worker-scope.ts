@@ -108,11 +108,7 @@ async function main() {
       const w = JSON.stringify(worker[f]);
       const ok = m === w;
       if (!ok) allMatch = false;
-      console.log(
-        (ok ? '  ' : '✗ ') + f.padEnd(20),
-        (m ?? '').slice(0, 48).padEnd(50),
-        w ?? '',
-      );
+      console.log((ok ? '  ' : '✗ ') + f.padEnd(20), (m ?? '').slice(0, 48).padEnd(50), w ?? '');
     }
     console.log('-'.repeat(120));
     console.log(allMatch ? '✅ ALL MATCH — worker scope spoof works' : '❌ MISMATCH detected');

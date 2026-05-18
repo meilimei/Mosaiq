@@ -62,9 +62,7 @@ describe('serializePersona', () => {
     expect(parsed.network.proxy?.password).toBe('');
     // 其他代理字段保留 —— 导入端能识别出代理结构，只需重填密码
     expect(parsed.network.proxy?.host).toBe('residential.iproyal.com');
-    expect(parsed.network.proxy?.username).toBe(
-      'brd-customer-xxx-zone-residential-session-001',
-    );
+    expect(parsed.network.proxy?.username).toBe('brd-customer-xxx-zone-residential-session-001');
     expect(parsed.network.proxy?.label).toBe('iproyal-us-001');
   });
 
@@ -109,9 +107,9 @@ describe('exportPersonaJson', () => {
   });
 
   it('throws when persona does not exist on disk', () => {
-    expect(() =>
-      exportPersonaJson('nonexistent' as PersonaId, { runtimeRoot: tmpRoot }),
-    ).toThrow(/not found/i);
+    expect(() => exportPersonaJson('nonexistent' as PersonaId, { runtimeRoot: tmpRoot })).toThrow(
+      /not found/i,
+    );
   });
 });
 
@@ -171,9 +169,7 @@ describe('importPersonaJson', () => {
       savePersona(persona, { runtimeRoot: tmpRoot });
       const json = serializePersona(persona);
 
-      expect(() => importPersonaJson(json, { runtimeRoot: tmpRoot })).toThrow(
-        /already exists/i,
-      );
+      expect(() => importPersonaJson(json, { runtimeRoot: tmpRoot })).toThrow(/already exists/i);
     });
 
     it("'rename' generates <id>-imported on first conflict", () => {
@@ -186,9 +182,9 @@ describe('importPersonaJson', () => {
       });
       expect(imported.metadata.id).toBe('rename-test-imported');
       expect(personaExists('rename-test' as PersonaId, { runtimeRoot: tmpRoot })).toBe(true);
-      expect(
-        personaExists('rename-test-imported' as PersonaId, { runtimeRoot: tmpRoot }),
-      ).toBe(true);
+      expect(personaExists('rename-test-imported' as PersonaId, { runtimeRoot: tmpRoot })).toBe(
+        true,
+      );
     });
 
     it("'rename' generates <id>-imported-2 on second conflict", () => {
@@ -235,8 +231,6 @@ describe('importPersonaJson', () => {
   });
 
   it('rejects invalid JSON before touching disk', () => {
-    expect(() =>
-      importPersonaJson('{not-json}', { runtimeRoot: tmpRoot }),
-    ).toThrow();
+    expect(() => importPersonaJson('{not-json}', { runtimeRoot: tmpRoot })).toThrow();
   });
 });
