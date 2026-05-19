@@ -17,6 +17,7 @@
  *   130 = SIGINT 取消
  */
 
+import { runDetectionLabCompare } from './commands/detection-lab/compare.js';
 import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js';
 import { runDetectionLabListRuns } from './commands/detection-lab/list-runs.js';
 import { runDetectionLabCommand } from './commands/detection-lab/run.js';
@@ -32,11 +33,12 @@ Usage:
   mosaiq <command> <subcommand> [args...]
 
 Commands:
-  detection-lab run         <persona-id>             Run a Detection Lab pass
-  detection-lab list-runs   <persona-id>             List historical runs
-  detection-lab show-run    <persona-id> <run-id>    Print a saved run
-  detection-lab delete-run  <persona-id> <run-id>    Delete a saved run
-  personas      list                                 List all stored personas
+  detection-lab run         <persona-id>                     Run a Detection Lab pass
+  detection-lab list-runs   <persona-id>                     List historical runs
+  detection-lab show-run    <persona-id> <run-id>            Print a saved run
+  detection-lab delete-run  <persona-id> <run-id>            Delete a saved run
+  detection-lab compare     <persona-id> <run-a> <run-b>     Diff two runs (B - A)
+  personas      list                                         List all stored personas
 
 Global:
   -h, --help                        Show this help (or per-command help)
@@ -48,6 +50,7 @@ Examples:
   mosaiq detection-lab list-runs baseline-bench-mp9itrpe
   mosaiq detection-lab show-run baseline-bench-mp9itrpe 2026-05-19T11-01-32-216Z
   mosaiq detection-lab delete-run baseline-bench-mp9itrpe 2026-... --yes
+  mosaiq detection-lab compare baseline-bench-mp9itrpe 2026-05-18T... 2026-05-19T... --fail-on-regression
   mosaiq detection-lab run my-persona --only creepjs,sannysoft --headed
   mosaiq detection-lab run my-persona --json > run.json
 `;
@@ -80,6 +83,9 @@ async function main(): Promise<number> {
   }
   if (top === 'detection-lab' && sub === 'delete-run') {
     return runDetectionLabDeleteRun(rest);
+  }
+  if (top === 'detection-lab' && sub === 'compare') {
+    return runDetectionLabCompare(rest);
   }
   if (top === 'personas' && sub === 'list') {
     return runPersonasList(rest);

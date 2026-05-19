@@ -3,9 +3,9 @@
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
 
-> **Status:** v0.9 phase 9.1 — initial scope is `detection-lab run` and
-> `personas list`. More subcommands (`show-run`, `delete-run`, `compare`,
-> persona crud) land as v0.9 progresses.
+> **Status:** v0.9 phase 9.2b — supports `detection-lab run` / `list-runs` /
+> `show-run` / `delete-run` / `compare`, plus `personas list`. Persona crud
+> and other helpers follow as v0.9 progresses.
 
 ## Install
 
@@ -126,6 +126,41 @@ pnpm mosaiq detection-lab delete-run my-persona 2026-05-18T13-49-09-107Z --yes
 Exits `2` if the run does not exist; refuses to run on a non-TTY without
 `--yes`. Already-deleted runs are surfaced as a yellow warning rather than a
 silent success.
+
+### `mosaiq detection-lab compare <persona-id> <run-a> <run-b>`
+
+Diffs two runs of the same persona. Convention: **A** is the baseline (older /
+reference), **B** is the candidate (newer / under test); deltas are computed
+as `B - A`.
+
+```bash
+# Pretty diff between two runs:
+pnpm mosaiq detection-lab compare my-persona 2026-05-18T13-44-26-599Z 2026-05-19T11-01-32-216Z
+
+# CI mode — exit 1 if B regresses (added hits, higher weightedHits, sites flipped ok→fail):
+pnpm mosaiq detection-lab compare my-persona <runA> <runB> --fail-on-regression
+
+# Machine-readable RunDiff (for jq / dashboards):
+pnpm mosaiq detection-lab compare my-persona <runA> <runB> --json
+```
+
+Hit identity for the diff is `(surface, site, detector)` — same identity ⇒
+same conceptual issue. Severity / evidence changes within an identity show up
+under **Changed**, not Added / Removed. Site-level flips (`ok ↔ fail`) are
+called out separately under **Sites flipped**.
+
+A yellow `⚠ site lists differ` banner appears if the two runs attempted
+different site sets (e.g. one used `--only` and the other didn't).
+
+#### Verdict logic
+
+| condition                                                    | verdict             |
+|--------------------------------------------------------------|---------------------|
+| `Δ weightedHits > 0` OR `added.length > 0` OR `okToFail > 0` | **B regresses**     |
+| `Δ weightedHits < 0` OR `removed.length > 0`                 | **B improves**      |
+| neither of the above                                         | **no material change** |
+
+`--fail-on-regression` exits `1` only on the first row.
 
 ## Notes
 
