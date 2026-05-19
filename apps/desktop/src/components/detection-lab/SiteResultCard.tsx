@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils.js';
 import type { PersonaId } from '@mosaiq/persona-schema';
 import type { SiteResult, SurfaceHit } from '@mosaiq/sdk';
 
+import { ScreenshotLightbox } from './ScreenshotLightbox.js';
 import { SurfaceHitBadge } from './SurfaceHitBadge.js';
 
 interface SiteResultCardProps {
@@ -43,6 +44,7 @@ export function SiteResultCard({
 }: SiteResultCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [thumbFailed, setThumbFailed] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const extractedEntries = site.extracted ? Object.entries(site.extracted) : [];
   const hasExtracted = extractedEntries.length > 0;
 
@@ -96,13 +98,12 @@ export function SiteResultCard({
         </div>
       )}
 
-      {/* screenshot thumbnail (v0.9 phase 9.3) */}
+      {/* screenshot thumbnail (v0.9 phase 9.3) — click opens in-app lightbox */}
       {thumbnailUrl && (
-        <a
-          href={thumbnailUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-2 block overflow-hidden rounded-md border border-border/60 bg-muted/30 transition-colors hover:border-border"
+        <button
+          type="button"
+          onClick={() => setLightboxOpen(true)}
+          className="mt-2 block w-full overflow-hidden rounded-md border border-border/60 bg-muted/30 transition-colors hover:border-border"
           title="点击查看全图"
         >
           <img
@@ -113,7 +114,15 @@ export function SiteResultCard({
             className="h-28 w-full object-cover object-top"
             onError={() => setThumbFailed(true)}
           />
-        </a>
+        </button>
+      )}
+      {thumbnailUrl && (
+        <ScreenshotLightbox
+          src={thumbnailUrl}
+          alt={`${site.name} 截图`}
+          open={lightboxOpen}
+          onClose={() => setLightboxOpen(false)}
+        />
       )}
       {!running && site.ok && site.screenshot && thumbFailed && (
         <div className="mt-2 flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/20 px-2 py-1 text-xs text-muted-foreground">

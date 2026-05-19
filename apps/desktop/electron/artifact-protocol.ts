@@ -13,13 +13,9 @@
  * The handler resolves to:
  *   <getDetectionRunArtifactDir(personaId, runId)> / <filename>
  *
- * Security boundary (defense in depth):
- *   1. personaId / runId / filename must each match `[A-Za-z0-9._-]+`
- *      (no slashes, no '..', no nulls)
- *   2. extension allowlist: png, jpg, jpeg, webp, html
- *   3. resolved absolute path **must** stay inside the artifact dir
- *      (path.resolve + startsWith assertion — catches symlink shenanigans)
- *   4. file must exist + be a regular file
+ * Pure validation + path resolution lives in `./artifact-protocol-core.ts`
+ * so it can be unit-tested without an Electron runtime. This file glues
+ * the core helpers to Electron's protocol API and to the SDK's path helper.
  *
  * Why a custom scheme instead of `file://`:
  *   - Renderer is sandboxed + contextIsolation: true; loading file:// from
@@ -37,20 +33,12 @@
  */
 
 import { type Stats, existsSync, statSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
 import { getDetectionRunArtifactDir } from '@mosaiq/sdk';
 import { net, protocol } from 'electron';
 
-const SCHEME = 'mosaiq-artifact';
-
-/** Allowed file extensions (lowercased, no leading dot). */
-const ALLOWED_EXTENSIONS: ReadonlySet<string> = new Set(['png', 'jpg', 'jpeg', 'webp', 'html']);
-
-/** Identifier syntax — letters, digits, dot, dash, underscore. No slashes / null bytes / `..`. */
-const ID_RE = /^[A-Za-z0-9._-]+$/;
+import { SCHEME, extensionOf, mimeForExt, resolveArtifactPath } from './artifact-protocol-core.js';
 
 /**
  * Privileged-scheme registration. **Call before `app.whenReady()`.**
@@ -90,7 +78,7 @@ export function registerArtifactScheme(): void {
 export function registerArtifactHandler(): void {
   protocol.handle(SCHEME, async (req) => {
     const url = new URL(req.url);
-    const result = resolveArtifactPath(url);
+    const result = resolveArtifactPath(url, getDetectionRunArtifactDir);
     if (!result.ok) {
       return new Response(`bad request: ${result.reason}`, {
         status: 400,
@@ -122,93 +110,4 @@ export function registerArtifactHandler(): void {
       headers,
     });
   });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Internal helpers (exported for tests once we add them)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ResolveOk {
-  ok: true;
-  abs: string;
-}
-interface ResolveFail {
-  ok: false;
-  reason: string;
-}
-
-/**
- * Pure: given a parsed `URL`, validate + resolve to an absolute filesystem
- * path inside the run's artifact dir. Does **not** touch the filesystem.
- */
-export function resolveArtifactPath(url: URL): ResolveOk | ResolveFail {
-  if (url.protocol !== `${SCHEME}:`) {
-    return { ok: false, reason: 'wrong scheme' };
-  }
-
-  // host = personaId. URL parsing already lowercases the host for `standard`
-  // schemes, but our persona ids are lowercase by convention; reject anything
-  // suspicious explicitly.
-  const personaId = decodeURIComponent(url.host);
-  if (!ID_RE.test(personaId)) {
-    return { ok: false, reason: 'invalid personaId' };
-  }
-
-  // pathname starts with '/'; expect exactly two non-empty segments.
-  const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  if (segments.length !== 2) {
-    return { ok: false, reason: 'expected /<runId>/<filename>' };
-  }
-  const runId = segments[0];
-  const filename = segments[1];
-  // segments.length === 2 guarantees both are defined, but the strict
-  // noUncheckedIndexedAccess tsconfig still narrows them as `string|undefined`.
-  if (runId === undefined || filename === undefined) {
-    return { ok: false, reason: 'expected /<runId>/<filename>' };
-  }
-  if (!ID_RE.test(runId)) {
-    return { ok: false, reason: 'invalid runId' };
-  }
-  if (!ID_RE.test(filename)) {
-    return { ok: false, reason: 'invalid filename' };
-  }
-
-  const ext = extensionOf(filename);
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    return { ok: false, reason: `extension '${ext}' not allowed` };
-  }
-
-  // Resolve + containment assertion. `getDetectionRunArtifactDir` is the
-  // single source of truth for where artifacts live; we trust it for the
-  // base, then double-check that the join + resolve doesn't escape via
-  // weird casing / trailing slashes.
-  const baseAbs = resolve(getDetectionRunArtifactDir(personaId as PersonaId, runId));
-  const targetAbs = resolve(baseAbs, filename);
-  if (targetAbs !== baseAbs && !targetAbs.startsWith(baseAbs + sep)) {
-    return { ok: false, reason: 'path escape' };
-  }
-
-  return { ok: true, abs: targetAbs };
-}
-
-function extensionOf(filename: string): string {
-  const dot = filename.lastIndexOf('.');
-  if (dot < 0) return '';
-  return filename.slice(dot + 1).toLowerCase();
-}
-
-function mimeForExt(ext: string): string {
-  switch (ext) {
-    case 'png':
-      return 'image/png';
-    case 'jpg':
-    case 'jpeg':
-      return 'image/jpeg';
-    case 'webp':
-      return 'image/webp';
-    case 'html':
-      return 'text/html; charset=utf-8';
-    default:
-      return 'application/octet-stream';
-  }
 }
