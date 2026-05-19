@@ -5,6 +5,148 @@ All notable changes to Mosaiq are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) while
 in 0.x (minor bumps may include breaking changes).
 
+## [Unreleased]
+
+The **v0.9 work-in-progress series** — pre-release dev cycle that pairs the
+existing desktop Detection Lab with a new headless `@mosaiq/cli` workflow,
+adds CI-friendly run comparison gates, and enriches the desktop UI with
+screenshot thumbnails / pool comparison.
+
+`apps/desktop` and `packages/cli` track `0.9.0-dev.0`; `@mosaiq/sdk` is
+unchanged from `0.8.0` (no API additions or behavior changes — the v0.9
+features compose existing SDK primitives).
+
+### Added
+
+- **Phase 9.1 — `@mosaiq/cli` package with `detection-lab run` + `personas list`**
+  (`commit b82700d`).
+  - New workspace package `packages/cli`. Single binary entry
+    `mosaiq` via `bin: { mosaiq: "./bin/mosaiq.js" }` (the
+    `bin/mosaiq.js` shim spawns `dist/cli.js`) shipped under
+    `Apache-2.0`.
+  - Subcommand `mosaiq detection-lab run <persona-id> [--headed]
+    [--only <ids>] [--skip <ids>] [--retries <n>] [--timeout <ms>]
+    [--template <name>] [--json] [--quiet]
+    [--fail-on-hits none|any|medium|high]`: thin wrapper over
+    `runDetection` from `@mosaiq/sdk`. Streams the same
+    `RunProgressEvent` phases the desktop renderer consumes (init /
+    site-start / site-retry / site-end / done / canceled / error),
+    prints a TTY-aware progress bar by default, `--quiet` collapses
+    per-site lines but still emits the final summary, `--json` swaps
+    the human summary for the full `DetectionRun` JSON. SIGINT
+    triggers a cooperative `AbortController` (second Ctrl-C
+    force-quits with code 130). Saves to the same
+    `~/.mosaiq/detection-runs/` store the desktop reads, so a CLI
+    run shows up in the dashboard immediately.
+  - Subcommand `mosaiq personas list [--json]`: reads
+    `~/.mosaiq/personas/` via `listPersonas` from `@mosaiq/sdk`
+    and pretty-prints an `ID / DISPLAY NAME / TEMPLATE / UPDATED`
+    table. The `TEMPLATE` column is recovered from the convention
+    `tags: ['template:<id>', ...]` (same rule the desktop main
+    uses). `--json` emits the raw `Persona[]` array for piping
+    into `jq`.
+  - `packages/cli/src/output.ts` (99 LOC): tiny color/box/table helper
+    so the CLI doesn't pull in `chalk`/`cli-table3` dependencies.
+- **Phase 9.2 — `detection-lab list-runs` / `show-run` / `delete-run`**
+  (`commit 693a7d3`).
+  - `mosaiq detection-lab list-runs <persona-id> [--json]`: lists
+    every saved run for the persona, sorted by `startedAt` desc,
+    with status-colored badges and a weighted-hits column. `--json`
+    emits the raw `DetectionRunSummary[]` array.
+  - `mosaiq detection-lab show-run <persona-id> <run-id> [--json]`:
+    full `printRunSummary` — header / hits-by-surface bar chart /
+    per-site grid / top hits sorted by severity*weight.
+  - `mosaiq detection-lab delete-run <persona-id> <run-id> [--yes]`:
+    confirms before unlink unless `--yes`. Removes the artifact dir
+    too (mirrors the desktop "delete run" button).
+- **Phase 9.2b — `detection-lab compare` with regression gate**
+  (`commit 4b4b272`).
+  - `mosaiq detection-lab compare <persona-id> <run-a> <run-b>
+    [--fail-on-regression] [--json]`: side-by-side `weightedHits`,
+    `sitesOk/sitesAttempted`, per-surface delta, top hits added /
+    removed. With `--fail-on-regression` the process exits 1 when
+    run-b regresses vs run-a (added hits, OR ΔweightedHits > 0, OR
+    any site flips ok→fail), making it a one-line CI gate against
+    persona detection-profile drift. Exit codes: `0` = equivalent
+    or B better, `1` = regression detected, `2` = run not found /
+    arg error.
+  - The compare summary mirrors the desktop's `RunsTrendChart` story
+    (downward = improvement) so docs / mental models stay aligned.
+- **Phase 9.3 — Screenshot thumbnails on `SiteResultCard`**
+  (`commit b28a65b`).
+  - Custom `mosaiq-artifact://` Electron protocol scheme registered
+    in `apps/desktop/electron/artifact-protocol.ts`. Resolver
+    accepts `mosaiq-artifact://detection-run/<personaId>/<runId>/<file>`
+    and serves the matching file from the run's artifact dir under
+    `~/.mosaiq/detection-runs/<personaId>/<runId>/`.
+  - Hardened against path traversal: scheme + segment-count guard,
+    persona-id / run-id syntax allowlist, literal `..` reject, URL-
+    decoded `..` reject, null-byte reject, extension allowlist
+    (`.png` / `.jpg` / `.jpeg` / `.html`), final realpath containment
+    check inside the artifact root.
+  - `apps/desktop/src/lib/artifact-url.ts`: pure URL builder (encodes
+    Windows backslashes to forward slashes, percent-encodes special
+    chars). `SiteResultCard` renders a 96px-wide thumbnail when a
+    `screenshot` artifact path is present, with hover-zoom +
+    click-to-open intent.
+- **Phase 9.3 polish — Lightbox + unit tests** (`commit 5c3de19`).
+  - In-app lightbox using a native `<dialog>` element (Esc-to-close,
+    backdrop-click-to-close, focus trap free via `showModal()`).
+    Replaces the previous "open in new window" intent with a proper
+    in-app overlay so the desktop window keeps focus.
+  - Pure helpers split out: `electron/artifact-protocol-core.ts`
+    (138 LOC, no Electron import) so the resolver can be unit-tested
+    with vitest in renderer-style. 33 cases for `resolveArtifactPath`
+    (scheme / segment / id syntax / traversal / containment / DI),
+    12 cases for `buildArtifactUrl` (encoding / Windows backslash /
+    runId timestamp shapes). `vitest@^2.1.2` added to the desktop
+    workspace; `tsconfig.json` excludes `**/*.test.ts`.
+- **Phase 9.4 — Persona pool comparison page** (`commit 49ecdd2`).
+  - New desktop page `PersonaPoolPage` (`apps/desktop/src/pages/
+    PersonaPoolPage.tsx`, 511 LOC). Lets the user pick 2-8 personas
+    and renders side-by-side: header strip with status / score
+    summary per persona, multi-polygon `HitsBySurface` radar with
+    one polygon per persona (8-color palette, recharts legend
+    toggles per persona), per-surface heat-map table with weighted-
+    hits totals per persona.
+  - New components `PoolRadarChart` (multi-polygon recharts radar
+    sharing the 12-surface axes from the v0.8 single-run radar) and
+    `PoolSurfaceTable` (heat-mapped cells, color dots in column
+    headers match the radar palette).
+  - Persona list header gains a `BarChart3`-icon "对比池" button
+    next to "导入" / "新建", disabled until persona count ≥ 2.
+  - No SDK / IPC changes — the page composes existing
+    `detectionLabListRuns` (latest summary) + `detectionLabGetRun`
+    (full score) for each selected persona.
+
+### Documented gotchas
+
+- **Vite renderer cannot bundle `@mosaiq/sdk` runtime imports**
+  (lesson hit during 9.4 implementation). The SDK entry transitively
+  pulls in `playwright-core/lib/server/bidi/...` which in turn
+  requires `chromium-bidi/lib/cjs/...` — neither resolves in a
+  browser-target Vite dep optimization pass. All renderer-side
+  imports from `@mosaiq/sdk` must be `import type { ... }` so tsc
+  erases them. The `PersonaPoolPage` now inlines a local
+  `EMPTY_HITS_BY_SURFACE` constant (typed against the SDK's
+  `HitsBySurface`) instead of importing the runtime
+  `emptyHitsBySurface()` helper. Future contributors who hit the
+  same dep-optimization error need to clean
+  `apps/desktop/node_modules/.vite` to flush the poisoned cache
+  after correcting the import.
+
+### Compatibility
+
+- `~/.mosaiq/detection-runs/` JSON shape unchanged from v0.8.0. CLI
+  writes the same `DetectionRun` files the desktop reads, and the
+  desktop's run-list ↔ CLI's `list-runs` agree on row counts. No
+  migrations.
+- `@mosaiq/sdk` public API unchanged. Existing consumers of
+  `runDetection` / `loadDetectionRun` / `listDetectionRuns` /
+  `deleteDetectionRun` are bit-compatible with v0.8.0.
+- The `mosaiq-artifact://` protocol scheme is desktop-only; nothing
+  outside the renderer can reference it.
+
 ## [0.8.0] — 2026-05-18
 
 The **"v0.8 Detection Lab in the desktop app"** release. Closes the v0.7
