@@ -176,6 +176,69 @@ features compose existing SDK primitives).
     change — same prefix-then-bare resolution rule.
   - **CLI vitest:** 0 → 29 (first cli-package test files; SDK / desktop
     test counts unchanged). Workspace-wide typecheck stays clean.
+- **Phase 9.5b — `personas update` + `clone`** (this entry).
+  - `mosaiq personas update <id> [--display-name <n>] [--tags <a,b,c>]
+    [--notes <t>] [--timezone <iana>] [--proxy <url> | --no-proxy]
+    [--proxy-label <l>] [--json]`: thin wrapper around SDK
+    `updatePersona(id, PersonaPatch)`. Patches the **soft** fields
+    (display name / tags / notes / timezone / proxy); hardware
+    fingerprint, OS, and browser version are intentionally locked
+    (use `personas clone` for a different baseline). Mutual
+    exclusion `--proxy` / `--no-proxy` enforced; empty patch (no
+    flags) rejected with `exit 2` to avoid silent no-ops. Re-using
+    the proxy URL parser from 9.5 means the same encoded-credential
+    rules apply.
+  - `mosaiq personas clone <source-id> <new-id> --display-name <n>
+    [--tags <a,b,c>] [--notes <t>] [--timezone <iana>]
+    [--proxy <url> | --no-proxy] [--proxy-label <l>]
+    [--master-seed <hex>] [--json]`: thin wrapper around SDK
+    `clonePersona(sourceId, CloneOptions)`. Source baseline is
+    copied; canvas / webgl / audio noise seeds are re-derived from
+    a fresh master seed (or `--master-seed <hex>` for reproducible
+    fixtures, identical to the equivalent flag on `create`). Pre-
+    flight checks `personaExists` for both source (must exist) and
+    `new-id` (must not), surfacing clearer "Source not found" /
+    "Target already exists" messages than the SDK's raw throw.
+- **Phase 9.5c — `personas export` + `import`** (this entry).
+  - `mosaiq personas export <id> [--out <file>] [--include-secrets]`:
+    wraps SDK `exportPersonaJson` / `serializePersona`. Default
+    redacts `proxy.password` to keep credentials out of shared
+    exports and git history; `--include-secrets` opts into raw
+    export with a stderr `⚠` warning. With `--out` writes to a file;
+    without, streams to stdout (pipe-friendly: TTY detection adds a
+    trailing newline only when stdout is a terminal so `> file.json`
+    yields strict JSON).
+  - `mosaiq personas import <file> [--on-conflict
+    error|rename|overwrite] [--json]`: wraps SDK `importPersonaJson`.
+    Reads from a file path, or from stdin if the positional is `-`
+    (so `cat foo.json | mosaiq personas import -` works on Windows
+    too — `fs.readFileSync('-')` doesn't, hence the explicit stream
+    helper). Schema validated against `PERSONA_SCHEMA_VERSION = 1`;
+    `--on-conflict` strategies match SDK semantics 1:1 (error /
+    rename / overwrite). When a stripped-secret import surfaces a
+    proxy with username but no password, the human summary
+    highlights it with a yellow note suggesting
+    `personas update --proxy …` to restore the password before
+    launch.
+  - 4 new commands in `packages/cli/src/commands/personas/`:
+    `update.ts` (~250 LOC), `clone.ts` (~250 LOC), `export.ts`
+    (~120 LOC), `import.ts` (~190 LOC). Help text + flag tables
+    documented in `packages/cli/README.md`.
+  - Top-level `mosaiq <command>` USAGE block listing the now-9
+    `personas <subcommand>` entries (was 5 in 9.5, plus
+    `templates list`). Router is still flat per-pair pattern-match.
+  - **Tests / typecheck:** 4-package workspace typecheck stays
+    clean; CLI vitest count unchanged at 29 (these are integration
+    commands that compose existing SDK functions; no new pure logic
+    that warrants its own test file beyond what proxy-url /
+    template-tag already cover). Manual smoke run validates 13
+    scenarios end-to-end (create + update display-name + update
+    --no-proxy + nothing-to-update reject + --proxy/--no-proxy
+    mutual exclusion + clone basic + clone seed reproducibility +
+    clone source-not-found + clone id-conflict + export stdout +
+    export file + import file + import stdin + import on-conflict
+    error/rename/overwrite + import bad JSON + import missing
+    file + import bad --on-conflict).
 
 ### Documented gotchas
 

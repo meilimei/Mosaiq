@@ -3,10 +3,10 @@
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
 
-> **Status:** v0.9 phase 9.5 — supports `detection-lab run` / `list-runs` /
-> `show-run` / `delete-run` / `compare`, plus `personas list` / `show` /
-> `create` / `delete` / `templates list`. Update / clone / export / import
-> follow in 9.5b / 9.5c.
+> **Status:** v0.9 phase 9.5c — full persona CRUD: `personas list` /
+> `show` / `create` / `update` / `clone` / `delete` / `export` / `import` /
+> `templates list`, plus `detection-lab run` / `list-runs` / `show-run` /
+> `delete-run` / `compare`.
 
 ## Install
 
@@ -140,6 +140,96 @@ fragment in the URL are rejected (they are never part of a proxy URL).
 | 0    | persona created and saved to disk                                    |
 | 2    | argument error / unknown template / id conflict / proxy parse error  |
 
+### `mosaiq personas update <persona-id>`
+
+Edits a persona's "soft" fields (display name / tags / notes / timezone /
+proxy). Hardware fingerprint, OS family, and browser version are **not**
+editable — `personas clone` is the right escape hatch when you actually
+need a different hardware baseline (it preserves the original persona's
+warming history).
+
+At least one patch flag is required; running `update` with only the id
+is rejected with `exit 2` to avoid silent no-ops.
+
+```bash
+# Rename and refresh tags
+pnpm mosaiq personas update reddit-alice \
+  --display-name "Reddit Alice (warm)" \
+  --tags reddit,us,warming,template:win11-chrome-us
+
+# Drop proxy (e.g. moved to direct VPN)
+pnpm mosaiq personas update reddit-alice --no-proxy
+
+# Switch to a new sticky-session proxy
+pnpm mosaiq personas update reddit-alice \
+  --proxy http://brd-customer-XXX:p%40ss@brd.example:33335 \
+  --proxy-label "Bright Data US-east session-7"
+```
+
+#### Patch flags
+
+| flag                      | behavior                                                     |
+|---------------------------|--------------------------------------------------------------|
+| `--display-name <name>`   | New display name (1–128 chars)                               |
+| `--tags <a,b,c>`          | **Replace** tags (`""` clears). Pre-existing tags are NOT preserved unless re-listed — re-add `template:<id>` if you want list/show to keep recognizing the template |
+| `--notes <text>`          | New notes (≤2048 chars; `""` clears)                         |
+| `--timezone <iana>`       | New IANA timezone                                            |
+| `--proxy <url>`           | Replace the proxy entirely (same URL format as `create`)     |
+| `--proxy-label <label>`   | Friendly proxy label (only with `--proxy`)                   |
+| `--no-proxy`              | Remove the proxy. Mutually exclusive with `--proxy`          |
+| `--json`                  | Print full updated Persona JSON instead of a summary         |
+
+If the persona is currently running in the desktop browser, the JSON on
+disk updates immediately, but Chromium has already started with the old
+config — a restart is required for the new value to take effect.
+
+### `mosaiq personas clone <source-id> <new-id>`
+
+Copies a persona's full identity baseline (OS, browser, hardware, font
+list, locale) but **re-derives** the canvas / webgl / audio noise seeds
+from a fresh master seed, so the clone has a fingerprint independent
+from the source. Use this for multi-account matrices that share a
+visual / capability profile but must not collide at detection time.
+
+`launchCount` and `lastLaunchedAt` are reset on the clone (it's a
+fresh identity); `createdAt` is set to "now" so the persona's age is
+trackable.
+
+```bash
+# Standard clone for a multi-account matrix
+pnpm mosaiq personas clone reddit-alice reddit-alice-alt \
+  --display-name "Reddit Alice (alt)"
+
+# Clone but switch to a different proxy region
+pnpm mosaiq personas clone reddit-alice reddit-alice-uk \
+  --display-name "Reddit Alice (UK)" \
+  --proxy http://user:p%40ss@proxy.example.com:8080 \
+  --timezone Europe/London \
+  --tags reddit,uk
+
+# Reproducible clone (CI / detection-lab regression fixtures)
+pnpm mosaiq personas clone bench-fixture bench-fixture-replay \
+  --display-name "Bench Fixture (replay)" \
+  --master-seed deadbeef
+```
+
+#### Required + optional flags
+
+| flag                  | required | notes                                                            |
+|-----------------------|----------|------------------------------------------------------------------|
+| `--display-name <n>`  | ✓        | UI label for the clone                                           |
+| `--tags <a,b,c>`      |          | Replace tag list (default: copy source's verbatim, including any `template:<id>` tag) |
+| `--notes <text>`      |          | Replace notes (default: copy source's)                           |
+| `--timezone <iana>`   |          | Override timezone (default: copy source's)                       |
+| `--proxy <url>`       |          | Replace proxy (default: copy source's)                           |
+| `--proxy-label <s>`   |          | Friendly proxy label (only with `--proxy`)                       |
+| `--no-proxy`          |          | Drop the proxy on the clone                                      |
+| `--master-seed <hex>` |          | Pin the master noise seed for reproducibility                    |
+| `--json`              |          | Print full cloned Persona JSON instead of a summary              |
+
+Exits `2` on missing source / id-conflict / mutually-exclusive flags
+(`--proxy` + `--no-proxy`).
+
 ### `mosaiq personas delete <persona-id>`
 
 Removes the `~/.mosaiq/personas/<id>.json` file. Does **not** remove the
@@ -158,6 +248,70 @@ pnpm mosaiq personas delete reddit-alice --yes
 
 Exits `2` if the persona id is unknown, or if `stdin` is not a TTY and
 `--yes` was not supplied (so a piped invocation never silently deletes).
+
+### `mosaiq personas export <persona-id>`
+
+Serializes a persona to JSON. Output is byte-identical to the on-disk
+file at `~/.mosaiq/personas/<id>.json` (modulo proxy password
+redaction), so an exported file can be dropped directly into another
+machine's personas directory and the SDK will recognize it.
+
+By default `proxy.password` is redacted to `''` to keep credentials out
+of shared exports / git history. Pass `--include-secrets` to opt into
+exporting the raw password (with a stderr warning). Cookies / localStorage /
+IndexedDB are stored separately in the chromium user-data-dir and are
+NOT included in the persona export — exports move identity, not session.
+
+```bash
+# Stream to stdout (default; pipe-friendly)
+pnpm mosaiq personas export reddit-alice > backup/reddit-alice.json
+
+# Direct write
+pnpm mosaiq personas export reddit-alice --out backup/reddit-alice.json
+
+# Include credentials (only for moves to a trusted machine)
+pnpm mosaiq personas export reddit-alice \
+  --include-secrets \
+  --out /secure/transfer/reddit-alice.json
+```
+
+### `mosaiq personas import <file>`
+
+Imports a persona JSON into `~/.mosaiq/personas/`. Use `-` for the file
+positional to read from stdin (e.g. `cat foo.json | mosaiq personas
+import -`). Schema is validated against `PERSONA_SCHEMA_VERSION = 1`;
+malformed JSON or schema-incompatible files are rejected with `exit 2`.
+
+`launchCount` and `lastLaunchedAt` are reset on import (fresh identity
+on the new machine); `createdAt` is preserved for provenance, and
+`updatedAt` refreshes to the import timestamp.
+
+```bash
+# Import from a file (errors on id conflict)
+pnpm mosaiq personas import backup/reddit-alice.json
+
+# Import + auto-rename on conflict
+pnpm mosaiq personas import backup/reddit-alice.json --on-conflict rename
+
+# Replay from a pipeline / stdin
+cat backup/reddit-alice.json | pnpm mosaiq personas import -
+
+# Print imported persona JSON (for jq / pipelines)
+pnpm mosaiq personas import backup/reddit-alice.json --json
+```
+
+#### `--on-conflict` strategies
+
+| strategy   | behavior                                                                |
+|------------|-------------------------------------------------------------------------|
+| `error`    | (default) Abort with `exit 2`; existing persona untouched               |
+| `rename`   | Append `-imported` (then `-imported-2` / `-imported-3` / …) to the id   |
+| `overwrite`| Replace the on-disk persona JSON. **The chromium user-data-dir is preserved**, so the new persona may end up with cookies that don't match its fingerprint — use only when you know the cookies / session can be reset |
+
+If the imported persona was exported with the default secret-stripping,
+the proxy `username` will be present but `password` will be empty. Run
+`mosaiq personas update <id> --proxy <url>` afterwards to restore the
+real password before launching.
 
 ### `mosaiq detection-lab run <persona-id>`
 

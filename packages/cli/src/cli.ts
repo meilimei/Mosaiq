@@ -22,11 +22,15 @@ import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js
 import { runDetectionLabListRuns } from './commands/detection-lab/list-runs.js';
 import { runDetectionLabCommand } from './commands/detection-lab/run.js';
 import { runDetectionLabShowRun } from './commands/detection-lab/show-run.js';
+import { runPersonasClone } from './commands/personas/clone.js';
 import { runPersonasCreate } from './commands/personas/create.js';
 import { runPersonasDelete } from './commands/personas/delete.js';
+import { runPersonasExport } from './commands/personas/export.js';
+import { runPersonasImport } from './commands/personas/import.js';
 import { runPersonasList } from './commands/personas/list.js';
 import { runPersonasShow } from './commands/personas/show.js';
 import { runPersonasTemplatesList } from './commands/personas/templates.js';
+import { runPersonasUpdate } from './commands/personas/update.js';
 import { fmt } from './output.js';
 
 const CLI_VERSION = '0.9.0-dev.0';
@@ -45,7 +49,11 @@ Commands:
   personas      list                                         List all stored personas
   personas      show        <persona-id>                     Print one persona's details
   personas      create      <persona-id>                     Create a new persona from a template
+  personas      update      <persona-id>                     Edit a persona's soft fields
+  personas      clone       <source-id> <new-id>             Clone a persona with fresh seeds
   personas      delete      <persona-id>                     Delete a persona JSON
+  personas      export      <persona-id>                     Export a persona to JSON (stdout or file)
+  personas      import      <file>                           Import a persona JSON (use '-' for stdin)
   personas      templates   list                             List available persona templates
 
 Global:
@@ -108,8 +116,20 @@ async function main(): Promise<number> {
   if (top === 'personas' && sub === 'create') {
     return runPersonasCreate(rest);
   }
+  if (top === 'personas' && sub === 'update') {
+    return runPersonasUpdate(rest);
+  }
+  if (top === 'personas' && sub === 'clone') {
+    return runPersonasClone(rest);
+  }
   if (top === 'personas' && sub === 'delete') {
     return runPersonasDelete(rest);
+  }
+  if (top === 'personas' && sub === 'export') {
+    return runPersonasExport(rest);
+  }
+  if (top === 'personas' && sub === 'import') {
+    return runPersonasImport(rest);
   }
   // `personas templates list` —— 三段式 subcommand。`personas templates`
   // 没有 `list` 后缀的孤儿调用直接打印帮助（按 `templates list` 的别名兜底）。
