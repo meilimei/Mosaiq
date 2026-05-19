@@ -10,6 +10,7 @@ import { PersonaClonePage } from './pages/PersonaClonePage.js';
 import { PersonaCreatePage } from './pages/PersonaCreatePage.js';
 import { PersonaEditPage } from './pages/PersonaEditPage.js';
 import { PersonaListPage } from './pages/PersonaListPage.js';
+import { PersonaPoolPage } from './pages/PersonaPoolPage.js';
 
 type Page =
   | { kind: 'list' }
@@ -17,7 +18,8 @@ type Page =
   | { kind: 'edit'; personaId: PersonaId }
   | { kind: 'clone'; sourceId: PersonaId }
   | { kind: 'detectionLab'; personaId: PersonaId; personaName?: string }
-  | { kind: 'detectionRun'; personaId: PersonaId; personaName?: string; runId: string };
+  | { kind: 'detectionRun'; personaId: PersonaId; personaName?: string; runId: string }
+  | { kind: 'personaPool' };
 
 export default function App() {
   const [page, setPage] = useState<Page>({ kind: 'list' });
@@ -28,7 +30,9 @@ export default function App() {
       <div className="dark min-h-screen bg-background text-foreground">
         <div className="draggable flex h-10 items-center border-b border-border px-4 text-sm font-semibold">
           <span className="non-draggable">🎭 Mosaiq Desktop</span>
-          <span className="ml-auto text-xs text-muted-foreground non-draggable">v{pkg.version}</span>
+          <span className="ml-auto text-xs text-muted-foreground non-draggable">
+            v{pkg.version}
+          </span>
         </div>
         <main className="mx-auto max-w-6xl p-6">
           {page.kind === 'list' && (
@@ -39,6 +43,7 @@ export default function App() {
               onDetectionLab={(id, displayName) =>
                 setPage({ kind: 'detectionLab', personaId: id, personaName: displayName })
               }
+              onPersonaPool={() => setPage({ kind: 'personaPool' })}
             />
           )}
           {page.kind === 'create' && <PersonaCreatePage onDone={goList} onCancel={goList} />}
@@ -73,6 +78,14 @@ export default function App() {
                   personaId: page.personaId,
                   personaName: page.personaName,
                 })
+              }
+            />
+          )}
+          {page.kind === 'personaPool' && (
+            <PersonaPoolPage
+              onBack={goList}
+              onOpenLab={(id, displayName) =>
+                setPage({ kind: 'detectionLab', personaId: id, personaName: displayName })
               }
             />
           )}

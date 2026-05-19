@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   Check,
   Copy,
   Download,
@@ -32,6 +33,8 @@ interface PersonaListPageProps {
   onClone: (id: PersonaId) => void;
   /** 跳转到 Detection Lab 页（detection run 历史 + 启动新 run）。displayName 用作页头副标题 */
   onDetectionLab: (id: PersonaId, displayName: string) => void;
+  /** v0.9 phase 9.4: 跳转到多-persona 对比池页面 */
+  onPersonaPool: () => void;
 }
 
 /** 删除二次确认 5 秒后自动取消，避免误点 */
@@ -44,6 +47,7 @@ export function PersonaListPage({
   onEdit,
   onClone,
   onDetectionLab,
+  onPersonaPool,
 }: PersonaListPageProps) {
   const toast = useToast();
   const [personas, setPersonas] = useState<PersonaSummary[]>([]);
@@ -306,6 +310,14 @@ export function PersonaListPage({
           )}
           <Button variant="outline" size="icon" onClick={handleManualRefresh} title="立即刷新">
             <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onPersonaPool}
+            title="并排对比 N 个 persona 的检测得分"
+            disabled={loading || personas.length < 2}
+          >
+            <BarChart3 className="mr-2 h-4 w-4" /> 对比池
           </Button>
           <Button variant="outline" onClick={handleImport} title="从 JSON 导入 Persona">
             <Upload className="mr-2 h-4 w-4" /> 导入
