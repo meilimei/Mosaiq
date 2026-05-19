@@ -22,7 +22,11 @@ import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js
 import { runDetectionLabListRuns } from './commands/detection-lab/list-runs.js';
 import { runDetectionLabCommand } from './commands/detection-lab/run.js';
 import { runDetectionLabShowRun } from './commands/detection-lab/show-run.js';
+import { runPersonasCreate } from './commands/personas/create.js';
+import { runPersonasDelete } from './commands/personas/delete.js';
 import { runPersonasList } from './commands/personas/list.js';
+import { runPersonasShow } from './commands/personas/show.js';
+import { runPersonasTemplatesList } from './commands/personas/templates.js';
 import { fmt } from './output.js';
 
 const CLI_VERSION = '0.9.0-dev.0';
@@ -39,6 +43,10 @@ Commands:
   detection-lab delete-run  <persona-id> <run-id>            Delete a saved run
   detection-lab compare     <persona-id> <run-a> <run-b>     Diff two runs (B - A)
   personas      list                                         List all stored personas
+  personas      show        <persona-id>                     Print one persona's details
+  personas      create      <persona-id>                     Create a new persona from a template
+  personas      delete      <persona-id>                     Delete a persona JSON
+  personas      templates   list                             List available persona templates
 
 Global:
   -h, --help                        Show this help (or per-command help)
@@ -46,6 +54,10 @@ Global:
 
 Examples:
   mosaiq personas list
+  mosaiq personas templates list
+  mosaiq personas create reddit-alice --template win11-chrome-us --display-name "Reddit Alice"
+  mosaiq personas show reddit-alice
+  mosaiq personas delete reddit-alice --yes
   mosaiq detection-lab run baseline-bench-mp9itrpe
   mosaiq detection-lab list-runs baseline-bench-mp9itrpe
   mosaiq detection-lab show-run baseline-bench-mp9itrpe 2026-05-19T11-01-32-216Z
@@ -89,6 +101,27 @@ async function main(): Promise<number> {
   }
   if (top === 'personas' && sub === 'list') {
     return runPersonasList(rest);
+  }
+  if (top === 'personas' && sub === 'show') {
+    return runPersonasShow(rest);
+  }
+  if (top === 'personas' && sub === 'create') {
+    return runPersonasCreate(rest);
+  }
+  if (top === 'personas' && sub === 'delete') {
+    return runPersonasDelete(rest);
+  }
+  // `personas templates list` —— 三段式 subcommand。`personas templates`
+  // 没有 `list` 后缀的孤儿调用直接打印帮助（按 `templates list` 的别名兜底）。
+  if (top === 'personas' && sub === 'templates') {
+    const templatesSub = rest[0];
+    if (templatesSub === undefined || templatesSub === 'list') {
+      return runPersonasTemplatesList(templatesSub === 'list' ? rest.slice(1) : rest);
+    }
+    process.stderr.write(
+      `${fmt.red(`Unknown subcommand: personas templates ${templatesSub}`)}\n\n${USAGE}`,
+    );
+    return 2;
   }
 
   process.stderr.write(`${fmt.red(`Unknown command: ${top}${sub ? ` ${sub}` : ''}`)}\n\n${USAGE}`);

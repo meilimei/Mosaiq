@@ -3,9 +3,10 @@
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
 
-> **Status:** v0.9 phase 9.2b — supports `detection-lab run` / `list-runs` /
-> `show-run` / `delete-run` / `compare`, plus `personas list`. Persona crud
-> and other helpers follow as v0.9 progresses.
+> **Status:** v0.9 phase 9.5 — supports `detection-lab run` / `list-runs` /
+> `show-run` / `delete-run` / `compare`, plus `personas list` / `show` /
+> `create` / `delete` / `templates list`. Update / clone / export / import
+> follow in 9.5b / 9.5c.
 
 ## Install
 
@@ -40,6 +41,123 @@ pnpm mosaiq personas list
 # Machine-readable variant (full Persona JSON array):
 pnpm mosaiq personas list --json
 ```
+
+The `TEMPLATE` column reads from a `template:<id>` tag (auto-injected by
+`mosaiq personas create`) or — for legacy desktop-created personas —
+from a bare-tag match against the known template catalog. Personas with
+neither show `unknown`.
+
+### `mosaiq personas templates list`
+
+Lists every template available to `mosaiq personas create --template`.
+Same data the desktop "新建 Persona" page renders as cards.
+
+```bash
+pnpm mosaiq personas templates list
+
+# Machine-readable: { id, displayName, description }[]
+pnpm mosaiq personas templates list --json
+```
+
+### `mosaiq personas show <persona-id>`
+
+Pretty-prints one persona's details: identity (id / display name /
+template / tags / notes / timestamps), system (OS / locale / timezone /
+screen), browser (brand / version / UA override), hardware (CPU / GPU /
+audio / touch), fingerprint signature (canvas / webgl / audio noise
+seeds, font count, webrtc mode), and network (proxy + label, with
+password redacted). Does not launch Chromium.
+
+```bash
+pnpm mosaiq personas show reddit-alice
+
+# Full Persona JSON (incl. fingerprint seeds + font list):
+pnpm mosaiq personas show reddit-alice --json | jq '.metadata.id'
+```
+
+Exits `2` if the persona id is unknown or the JSON file is corrupt.
+
+### `mosaiq personas create <persona-id>`
+
+Creates a new persona under `~/.mosaiq/personas/<id>.json`. Mirrors the
+desktop "新建 Persona" form: same templates, same fields, same disk
+layout — a CLI-created persona is immediately visible in the desktop UI
+and vice versa.
+
+```bash
+# Minimal: kebab-case id + template + display name
+pnpm mosaiq personas create reddit-alice \
+  --template win11-chrome-us \
+  --display-name "Reddit Alice"
+
+# With proxy + tags + override timezone
+pnpm mosaiq personas create reddit-bob \
+  --template win11-chrome-us \
+  --display-name "Reddit Bob" \
+  --proxy http://user:p%40ss@proxy.example.com:8080 \
+  --proxy-label "IPRoyal residential US" \
+  --tags reddit,us,warming \
+  --timezone America/Los_Angeles
+
+# Reproducible run (pin master noise seed for benchmark / comparison):
+pnpm mosaiq personas create bench-fixture \
+  --template win11-chrome-us \
+  --display-name "Bench Fixture" \
+  --master-seed deadbeef
+
+# Machine-readable: full Persona JSON (incl. derived seeds)
+pnpm mosaiq personas create bot-test \
+  --template ubuntu-2204-chrome-us \
+  --display-name "Bot Test" \
+  --json | jq '.fingerprint.canvas.noiseSeed'
+```
+
+#### Required + optional flags
+
+| flag                   | required | notes                                                  |
+|------------------------|----------|--------------------------------------------------------|
+| `--template <id>`      | ✓        | One of `mosaiq personas templates list` ids            |
+| `--display-name <n>`   | ✓        | UI label, 1–128 chars                                  |
+| `--tags <a,b,c>`       |          | Comma-separated; `template:<id>` always auto-appended  |
+| `--notes <text>`       |          | Free-form notes (≤2048 chars)                          |
+| `--timezone <iana>`    |          | Override template default (e.g. `America/Los_Angeles`) |
+| `--proxy <url>`        |          | `<protocol>://[user[:pass]@]host:port`                 |
+| `--proxy-label <s>`    |          | UI label for the proxy (e.g. `IPRoyal US`)             |
+| `--master-seed <hex>`  |          | Persist fingerprint noise seed for reproducibility     |
+| `--json`               |          | Print full Persona JSON instead of human summary       |
+
+#### Proxy URL format
+
+Supported protocols: `http`, `https`, `socks5`. Credentials must be
+URL-encoded (e.g. `pass%40word` for a literal `pass@word`); the CLI
+auto-decodes them before storing in the persona JSON. Path / query /
+fragment in the URL are rejected (they are never part of a proxy URL).
+
+#### Exit codes
+
+| code | meaning                                                              |
+|------|----------------------------------------------------------------------|
+| 0    | persona created and saved to disk                                    |
+| 2    | argument error / unknown template / id conflict / proxy parse error  |
+
+### `mosaiq personas delete <persona-id>`
+
+Removes the `~/.mosaiq/personas/<id>.json` file. Does **not** remove the
+chromium user-data-dir (`~/.mosaiq/profiles/<id>/`) or the persona's
+detection-run history (`~/.mosaiq/detection-runs/<id>/`) — same behavior
+as the desktop UI's delete button. If you want to wipe everything for
+that persona, also `rm -rf` those two directories.
+
+```bash
+# Interactive (default) — shows a 1-line preview then prompts y/N:
+pnpm mosaiq personas delete reddit-alice
+
+# Non-interactive (CI / scripts):
+pnpm mosaiq personas delete reddit-alice --yes
+```
+
+Exits `2` if the persona id is unknown, or if `stdin` is not a TTY and
+`--yes` was not supplied (so a piped invocation never silently deletes).
 
 ### `mosaiq detection-lab run <persona-id>`
 

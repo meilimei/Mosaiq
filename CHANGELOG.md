@@ -118,6 +118,64 @@ features compose existing SDK primitives).
   - No SDK / IPC changes — the page composes existing
     `detectionLabListRuns` (latest summary) + `detectionLabGetRun`
     (full score) for each selected persona.
+- **Phase 9.5 — Persona CRUD CLI** (this entry).
+  - `mosaiq personas templates list [--json]`: prints the
+    `TEMPLATE_CATALOG` from `@mosaiq/persona-schema/templates` (the
+    same data desktop's "新建 Persona" page renders as cards). Acts
+    as the discovery surface for `--template` ids before calling
+    `personas create`. `--json` emits `{ id, displayName,
+    description }[]` (omits the non-serializable `create` fn).
+  - `mosaiq personas show <persona-id> [--json]`: pretty-prints
+    identity / system / browser / hardware / fingerprint signature
+    (canvas / webgl / audio noise seeds + font count + webrtc mode)
+    / network (proxy with password redacted as `***`). `--json`
+    emits the full `Persona` blob — same shape that's on disk, so
+    desktop and CLI agree byte-for-byte.
+  - `mosaiq personas create <persona-id> --template <id>
+    --display-name <name> [--tags <a,b,c>] [--notes <text>]
+    [--timezone <iana>] [--proxy <url>] [--proxy-label <label>]
+    [--master-seed <hex>] [--json]`: thin wrapper around
+    `TEMPLATE_CATALOG[t].create(...)` + `savePersona`. Mirrors the
+    desktop create form 1:1. PersonaId regex validated up-front;
+    duplicate-id detected via `personaExists` and surfaced as
+    `exit 2`. `--proxy <url>` parses `<protocol>://[user[:pass]@]
+    host:port` (http / https / socks5; URL-encoded credentials
+    auto-decoded). `template:<id>` tag is auto-appended to the
+    user's tags so `personas list` / `show` can round-trip the
+    template id (legacy desktop-created personas without this tag
+    still resolve via bare-tag fallback in
+    `template-tag.ts:extractTemplateTag`).
+  - `mosaiq personas delete <persona-id> [--yes | -y]`: interactive
+    confirmation by default (1-line preview → `(y/N)` prompt; same
+    pattern as `detection-lab delete-run`). Non-TTY without `--yes`
+    is rejected with `exit 2` to keep piped invocations from
+    silently deleting. Removes only the `<id>.json` file —
+    `~/.mosaiq/profiles/<id>/` (chromium user-data-dir) and
+    `~/.mosaiq/detection-runs/<id>/` (run history) are intentionally
+    preserved, mirroring desktop's delete button behavior.
+  - Top-level `mosaiq <command>` routing supports the new 3-segment
+    form `mosaiq personas templates list` (router special-cases
+    `top=personas, sub=templates` and dispatches on the next
+    positional). Existing 2-segment commands (`personas list`,
+    `personas show`, etc.) unchanged.
+  - 4 new commands + 2 helpers in `packages/cli/src/commands/personas/`:
+    - `proxy-url.ts` (~125 LOC): WHATWG `URL`-based parser with a
+      regex fallback that recovers explicit default ports
+      (`http://h:80`, `https://h:443` — WHATWG URL elides these
+      from `url.port`, naive checks would mis-flag as "missing").
+      21 vitest cases (happy paths, scheme rejection, port edges,
+      path / query / fragment rejection, encoded credentials).
+    - `template-tag.ts` (~45 LOC): canonical `template:<id>` ↔
+      Persona conversion. `extractTemplateTag` checks
+      CLI-prefix-style first, then bare-tag fallback for desktop-
+      created personas. `makeTemplateTag` is the inverse.
+      8 vitest cases.
+  - `packages/cli/src/commands/personas/list.ts` and `show.ts` were
+    de-duplicated to share the `extractTemplateTag` helper from
+    `template-tag.ts` (deleted the inline copies). No behavior
+    change — same prefix-then-bare resolution rule.
+  - **CLI vitest:** 0 → 29 (first cli-package test files; SDK / desktop
+    test counts unchanged). Workspace-wide typecheck stays clean.
 
 ### Documented gotchas
 

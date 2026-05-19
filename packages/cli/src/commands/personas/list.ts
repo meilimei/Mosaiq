@@ -12,9 +12,10 @@
 
 import { parseArgs } from 'node:util';
 
-import { type Persona, listPersonas } from '@mosaiq/sdk';
+import { listPersonas } from '@mosaiq/sdk';
 
 import { fmt, renderTable } from '../../output.js';
+import { extractTemplateTag } from './template-tag.js';
 
 const HELP = `Usage: mosaiq personas list [options]
 
@@ -88,18 +89,6 @@ export async function runPersonasList(argv: readonly string[]): Promise<number> 
     `${fmt.dim(`(${personas.length} persona${personas.length === 1 ? '' : 's'})`)}\n`,
   );
   return 0;
-}
-
-/**
- * Persona schema 不持久化 template；约定用 `template:<id>` tag 标记。
- * Desktop main 也用同样规则反查 template（见 main.ts:getPersonaTemplate）。
- */
-function extractTemplateTag(p: Persona): string | undefined {
-  const tags = p.metadata.tags ?? [];
-  for (const tag of tags) {
-    if (tag.startsWith('template:')) return tag.slice('template:'.length);
-  }
-  return undefined;
 }
 
 function formatDate(iso: string | undefined): string {
