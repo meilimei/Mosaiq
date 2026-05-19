@@ -3,10 +3,10 @@
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
 
-> **Status:** v0.9 phase 9.5c — full persona CRUD: `personas list` /
+> **Status:** v0.9 phase 9.6 — full persona CRUD: `personas list` /
 > `show` / `create` / `update` / `clone` / `delete` / `export` / `import` /
 > `templates list`, plus `detection-lab run` / `list-runs` / `show-run` /
-> `delete-run` / `compare`.
+> `delete-run` / `compare` / `export-run`.
 
 ## Install
 
@@ -433,6 +433,47 @@ different site sets (e.g. one used `--only` and the other didn't).
 | neither of the above                                         | **no material change** |
 
 `--fail-on-regression` exits `1` only on the first row.
+
+### `mosaiq detection-lab export-run <persona-id> <run-id>`
+
+Renders a saved Detection Lab run as a shareable report. Default format
+is **GitHub Flavored Markdown** — suitable for pasting into PR / Issue
+comments, Slack snippets, or Notion pages. The markdown projection is
+done by the pure SDK helper `formatDetectionRunMarkdown` (no I/O), so
+the same output is reachable from desktop tooling in the future.
+
+```bash
+# Pretty markdown to stdout (paste into a PR comment / Slack):
+pnpm mosaiq detection-lab export-run my-persona 2026-05-18T13-49-09-107Z
+
+# Save the report to a file:
+pnpm mosaiq detection-lab export-run my-persona 2026-05-18T13-49-09-107Z \
+  --out report.md
+
+# Lean version for chat snippets (no per-site grid, no drill-down hits):
+pnpm mosaiq detection-lab export-run my-persona 2026-05-18T13-49-09-107Z \
+  --no-site-details --no-hits
+
+# Full DetectionRun JSON — byte-identical to `show-run --json`:
+pnpm mosaiq detection-lab export-run my-persona 2026-05-18T13-49-09-107Z \
+  --format json | jq '.score.weightedHits'
+```
+
+#### Flags
+
+| flag                  | behavior                                                              |
+|-----------------------|-----------------------------------------------------------------------|
+| `--format <fmt>`      | `md` (default, GFM) or `json` (full DetectionRun blob)                |
+| `--out <file>`        | Write to `<file>` instead of stdout (overwrites existing file)        |
+| `--no-site-details`   | Omit the **Per-site results** table from the markdown output          |
+| `--no-hits`           | Omit the per-severity **Hits** drill-down list (matrix is kept)       |
+| `--no-meta`           | Omit the SDK / chromium / template `**Environment:**` line            |
+
+The three `--no-*` flags are ignored under `--format json` (the JSON is
+always the on-disk shape).
+
+Exits `2` if `<persona-id>` / `<run-id>` is missing, the run is not
+found, `--format` is unrecognized, or `--out` fails to write.
 
 ## Notes
 

@@ -19,6 +19,7 @@
 
 import { runDetectionLabCompare } from './commands/detection-lab/compare.js';
 import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js';
+import { runDetectionLabExportRun } from './commands/detection-lab/export-run.js';
 import { runDetectionLabListRuns } from './commands/detection-lab/list-runs.js';
 import { runDetectionLabCommand } from './commands/detection-lab/run.js';
 import { runDetectionLabShowRun } from './commands/detection-lab/show-run.js';
@@ -46,6 +47,7 @@ Commands:
   detection-lab show-run    <persona-id> <run-id>            Print a saved run
   detection-lab delete-run  <persona-id> <run-id>            Delete a saved run
   detection-lab compare     <persona-id> <run-a> <run-b>     Diff two runs (B - A)
+  detection-lab export-run  <persona-id> <run-id>            Render a saved run as markdown / json
   personas      list                                         List all stored personas
   personas      show        <persona-id>                     Print one persona's details
   personas      create      <persona-id>                     Create a new persona from a template
@@ -106,6 +108,9 @@ async function main(): Promise<number> {
   }
   if (top === 'detection-lab' && sub === 'compare') {
     return runDetectionLabCompare(rest);
+  }
+  if (top === 'detection-lab' && sub === 'export-run') {
+    return runDetectionLabExportRun(rest);
   }
   if (top === 'personas' && sub === 'list') {
     return runPersonasList(rest);

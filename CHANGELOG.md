@@ -239,6 +239,53 @@ features compose existing SDK primitives).
     export file + import file + import stdin + import on-conflict
     error/rename/overwrite + import bad JSON + import missing
     file + import bad --on-conflict).
+- **Phase 9.6 — `detection-lab export-run` + pure markdown formatter**
+  (this entry).
+  - `mosaiq detection-lab export-run <persona-id> <run-id>
+    [--format md|json] [--out <file>] [--no-site-details] [--no-hits]
+    [--no-meta]`: renders a saved `DetectionRun` as a shareable report.
+    Default `--format md` is **GitHub Flavored Markdown** — suitable
+    for pasting into PR / Issue comments, Slack snippets, or Notion;
+    `--format json` emits the full DetectionRun JSON (byte-identical
+    to `show-run --json`, so `diff <(show-run --json) <(export-run
+    --format json)` is empty by design — the symmetric branch exists
+    so users only have to memorize one command + a `--format` toggle).
+    `--out <file>` writes to disk (with a green `✓ Exported run …`
+    confirmation on stdout); without it the report streams to stdout
+    for `> report.md` / `| pbcopy` / `| clip` style use. The three
+    `--no-*` flags skip the per-site results table / per-severity
+    hits drill-down / environment line respectively, for smaller chat-
+    snippet excerpts; they're ignored under `--format json`.
+    Exits `2` on missing arg / unknown persona or run / bad
+    `--format` value / failed `--out` write.
+  - New SDK module `packages/sdk/src/detection-lab/run-format.ts`
+    (~310 LOC): `formatDetectionRunMarkdown(run: DetectionRun,
+    options?: FormatMarkdownOptions): string` — pure projection, no
+    I/O. GFM pipe-tables only (no external template engine; no HTML /
+    PDF / shareable URL — those are out-of-scope for 9.6). Output is
+    structured into Title / Header / Error (only for failed runs) /
+    Summary (metric table + non-zero surface matrix) / Hits (grouped
+    high → medium → low with escaped detector + evidence) / Per-site
+    results / Footer. `options.headingLevel` (1/2/3) shifts every
+    `#` in the report so it can be embedded into a larger Markdown
+    document without breaking the outer TOC depth. Re-exported from
+    both `@mosaiq/sdk/detection-lab` and the package root.
+  - **Tests:** 20 new vitest cases in
+    `packages/sdk/src/detection-lab/run-format.test.ts` (clean runs,
+    failed / canceled runs, surface matrix, severity ordering,
+    markdown escaping for `*` / backtick / pipe, environment-line
+    composition with / without chromium + template, `--no-*` flag
+    semantics, heading-level offset, duration formatting edges).
+    SDK vitest: 544 → 564 tests, all passing. CLI vitest count
+    unchanged at 29. Workspace typecheck stays clean.
+  - Manual smoke matrix run against a real saved baseline
+    (`baseline-bench-mp6uss3k` / `2026-05-18T13-49-09-107Z`):
+    md to stdout / md to `--out file` / `--no-site-details --no-hits
+    --no-meta` lean variant / `--format json` (verified
+    byte-identical to `show-run --json` via `diff <(…) <(…)`) /
+    missing positionals / unknown run / unknown `--format html` /
+    failing `--out` to a non-existent directory — all 8 paths
+    behave as documented.
 
 ### Documented gotchas
 

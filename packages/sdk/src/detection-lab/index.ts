@@ -69,6 +69,11 @@ export {
 } from './run-store.js';
 
 export {
+  formatDetectionRunMarkdown,
+  type FormatMarkdownOptions,
+} from './run-format.js';
+
+export {
   // 主入口
   computeScore,
   // helpers（bench / desktop renderer 复用）

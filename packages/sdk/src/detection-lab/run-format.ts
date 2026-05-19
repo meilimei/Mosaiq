@@ -1,0 +1,297 @@
+/**
+ * Pure DetectionRun → human-readable report formatter.
+ *
+ * 用途：CLI `detection-lab export-run`、桌面端「导出报告」按钮（未来）共用。
+ * 严格无 I/O；纯 string 投影 —— 把内存里的 `DetectionRun` 投到一份可粘贴 / 可
+ * `git add` / 可发邮件的文本。
+ *
+ * 输出格式：**GitHub Flavored Markdown**（GFM）
+ *   - GFM pipe-table 是 GitHub / GitLab / Notion / Slack snippets 都识别的最大公约数
+ *   - 不引外部模板引擎（mustache / handlebars / marked）；仅做字符串拼接
+ *   - 不依赖颜色 / ANSI / emoji 之外的修饰，保证纯文本流也能读
+ *
+ * 不在本模块做的事（明确 out-of-scope）：
+ *   - HTML / PDF / shareable URL（v0.9 的 9.6 只做 Markdown，9.7+ 再扩）
+ *   - 截图 base64 内嵌（路径已经在 `run.raw.results[].screenshot` 里，调用方
+ *     如果想在最终 .md 里显示图，自行附带 artifact 目录）
+ *   - 国际化 / 多语言（SDK 层始终用英文术语，desktop UI 自己映射中文标签）
+ *
+ * 设计原则（与现有 scorer 等 pure 模块对齐）：
+ *   - 输入是 const-ref 的 `DetectionRun`，不修改
+ *   - 输出是 `string`，不写文件、不调用 console
+ *   - `options.headingLevel` 让调用方把报告嵌入更大的 markdown 文档时不破坏目录层级
+ */
+
+import type { DetectionRun, DetectionScore, SurfaceHit, SurfaceName } from './types.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 公共选项
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FormatMarkdownOptions {
+  /**
+   * 是否包含「Per-site results」表（12 站 × {status, hits, duration}）。默认 true。
+   */
+  includeSiteDetails?: boolean;
+  /**
+   * 是否包含按 surface 分组的「Hits」明细列表。默认 true。
+   * 设为 false 时，输出仍然有 surface 矩阵表，仅 drill-down list 被略过。
+   */
+  includeHits?: boolean;
+  /**
+   * 是否包含运行环境元信息（sdkVersion / chromiumVersion / persona template）。
+   * 默认 true；CI 报告里通常想保留以便溯源。
+   */
+  includeMeta?: boolean;
+  /**
+   * 顶级 heading 的层级（root = "#" 时 = 1，root = "##" 时 = 2，依此类推）。默认 1。
+   * 把报告嵌进更大的 markdown 文档时调高，避免侵入外层目录。
+   */
+  headingLevel?: 1 | 2 | 3;
+}
+
+const SURFACE_ORDER: readonly SurfaceName[] = [
+  'webdriver',
+  'navigator',
+  'canvas',
+  'webgl',
+  'audio',
+  'font',
+  'webrtc',
+  'screen',
+  'permissions',
+  'timezone',
+  'plugins',
+  'other',
+];
+
+const SEVERITY_ORDER = ['high', 'medium', 'low'] as const;
+
+const STATUS_BADGE = {
+  completed: '✅ completed',
+  failed: '❌ failed',
+  canceled: '⚠️ canceled',
+  running: '🔄 running',
+  pending: '⏳ pending',
+} as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 公共 API
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function formatDetectionRunMarkdown(
+  run: DetectionRun,
+  options: FormatMarkdownOptions = {},
+): string {
+  const includeSiteDetails = options.includeSiteDetails ?? true;
+  const includeHits = options.includeHits ?? true;
+  const includeMeta = options.includeMeta ?? true;
+  const baseLevel = options.headingLevel ?? 1;
+  const h = (n: 0 | 1 | 2 | 3) => '#'.repeat(baseLevel + n);
+
+  const sections: string[] = [];
+
+  // ── Title ───────────────────────────────────────────────────────────
+  sections.push(`${h(0)} Detection Run Report`);
+
+  // ── Header ──────────────────────────────────────────────────────────
+  const headerLines: string[] = [
+    `**Run ID:** \`${run.id}\``,
+    `**Persona:** \`${run.personaId}\``,
+    `**Status:** ${STATUS_BADGE[run.status]}`,
+    `**Started at:** ${run.startedAt}`,
+  ];
+  if (run.finishedAt) {
+    headerLines.push(`**Finished at:** ${run.finishedAt}`);
+  }
+  headerLines.push(`**Duration:** ${formatMs(run.durationMs)}`);
+  if (run.sitesAttempted.length > 0) {
+    headerLines.push(`**Sites attempted:** ${run.sitesAttempted.length}`);
+  }
+  if (includeMeta) {
+    const metaParts: string[] = [];
+    metaParts.push(`SDK ${run.meta.sdkVersion ?? '?'}`);
+    if (run.meta.chromiumVersion) {
+      metaParts.push(`Chromium ${run.meta.chromiumVersion}`);
+    }
+    const template = run.raw?.persona?.template;
+    if (template && template !== 'unknown') {
+      metaParts.push(`template ${template}`);
+    }
+    headerLines.push(`**Environment:** ${metaParts.join(' · ')}`);
+  }
+  sections.push(headerLines.join('  \n'));
+
+  // ── Error block (failed runs) ───────────────────────────────────────
+  if (run.error) {
+    sections.push(`${h(1)} Error\n\n\`\`\`\n${run.error}\n\`\`\``);
+  }
+
+  // ── Score summary ───────────────────────────────────────────────────
+  if (run.score) {
+    sections.push(renderScoreSection(run.score, h));
+  } else {
+    sections.push(`${h(1)} Summary\n\n_No score available (run did not complete)._`);
+  }
+
+  // ── Hits drill-down ─────────────────────────────────────────────────
+  if (includeHits && run.score && run.score.hits.length > 0) {
+    sections.push(renderHitsSection(run.score.hits, h));
+  } else if (includeHits && run.score && run.score.hits.length === 0) {
+    sections.push(`${h(1)} Hits\n\n_No hits — all 12 surfaces clean._ ✅`);
+  }
+
+  // ── Per-site results ────────────────────────────────────────────────
+  if (includeSiteDetails && run.raw && run.raw.results.length > 0) {
+    sections.push(renderSitesSection(run.raw.results, h));
+  }
+
+  // ── Footer ──────────────────────────────────────────────────────────
+  sections.push(
+    `_Generated by Mosaiq SDK ${run.meta.sdkVersion ?? '?'} · \`formatDetectionRunMarkdown\`_`,
+  );
+
+  // 不带尾换行（让调用方自己决定写文件 / 拼接时是否补 \n）
+  return sections.join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 私有渲染 helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function renderScoreSection(score: DetectionScore, h: (n: 0 | 1 | 2 | 3) => string): string {
+  const totalHits = score.hits.length;
+  const high = score.hits.filter((x) => x.severity === 'high').length;
+  const medium = score.hits.filter((x) => x.severity === 'medium').length;
+  const low = score.hits.filter((x) => x.severity === 'low').length;
+
+  const summaryTable = renderTable(
+    ['Metric', 'Value'],
+    [
+      ['Sites attempted', String(score.sitesOk + score.sitesFail)],
+      ['Sites OK', String(score.sitesOk)],
+      ['Sites failed', String(score.sitesFail)],
+      ['Total hits', String(totalHits)],
+      ['  · high severity', String(high)],
+      ['  · medium severity', String(medium)],
+      ['  · low severity', String(low)],
+      ['Weighted hits', score.weightedHits.toFixed(2)],
+      ['CreepJS lies', String(score.creepjsLies)],
+      ['CreepJS bold-fail hashes', String(score.creepjsBoldFail)],
+      ['Sannysoft pass / total', `${score.sannysoftPass} / ${score.sannysoftTotal}`],
+      ['DBI bot flags triggered', String(score.dbiBotFlagsTriggered)],
+      ['AmIUnique outliers', String(score.amiuniqueOutliers)],
+      ['fp-scanner inconsistent', String(score.fpScannerInconsistent)],
+      ['Incolumitas bad flags', String(score.incolumitasBadFlags)],
+    ],
+  );
+
+  // surface 命中矩阵：只列出至少有一个 hit 的 surface（避免 12 行噪声）
+  const nonZeroSurfaces = SURFACE_ORDER.filter((s) => score.hitsBySurface[s] > 0);
+  const surfaceTable =
+    nonZeroSurfaces.length > 0
+      ? renderTable(
+          ['Surface', 'High', 'Medium', 'Low', 'Total'],
+          nonZeroSurfaces.map((surface) => {
+            const surfaceHits = score.hits.filter((x) => x.surface === surface);
+            const hi = surfaceHits.filter((x) => x.severity === 'high').length;
+            const me = surfaceHits.filter((x) => x.severity === 'medium').length;
+            const lo = surfaceHits.filter((x) => x.severity === 'low').length;
+            return [
+              surface,
+              String(hi),
+              String(me),
+              String(lo),
+              String(score.hitsBySurface[surface]),
+            ];
+          }),
+        )
+      : '_All 12 surfaces clean._';
+
+  return [`${h(1)} Summary`, summaryTable, `${h(2)} Hits by surface`, surfaceTable].join('\n\n');
+}
+
+function renderHitsSection(hits: readonly SurfaceHit[], h: (n: 0 | 1 | 2 | 3) => string): string {
+  const sections: string[] = [`${h(1)} Hits`];
+  for (const sev of SEVERITY_ORDER) {
+    const filtered = hits.filter((x) => x.severity === sev);
+    if (filtered.length === 0) continue;
+    sections.push(`${h(2)} ${sev} (${filtered.length})`);
+    const items: string[] = [];
+    for (const hit of filtered) {
+      const headline = `- **${hit.surface}** · \`${hit.site}\` — ${escapeMd(hit.detector)}`;
+      const evidence = hit.evidence ? `  - Evidence: ${escapeMdInline(hit.evidence)}` : '';
+      items.push(evidence ? `${headline}\n${evidence}` : headline);
+    }
+    sections.push(items.join('\n'));
+  }
+  return sections.join('\n\n');
+}
+
+function renderSitesSection(
+  results: ReadonlyArray<{
+    id: string;
+    name: string;
+    ok: boolean;
+    durationMs: number;
+    error?: string;
+    retries?: number;
+  }>,
+  h: (n: 0 | 1 | 2 | 3) => string,
+): string {
+  const rows = results.map((r) => [
+    r.id,
+    r.name,
+    r.ok ? '✅' : '❌',
+    formatMs(r.durationMs),
+    r.retries ? String(r.retries) : '0',
+    r.error ? truncate(escapeMdInline(r.error), 60) : '',
+  ]);
+  const table = renderTable(['ID', 'Name', 'Status', 'Duration', 'Retries', 'Error'], rows);
+  return [`${h(1)} Per-site results`, table].join('\n\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 字符串 utility
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 渲染一个 GFM pipe-table。所有 cell 自动 escape pipe (`|`) → `\|`。
+ * 列宽不对齐 —— GFM 不要求 padding，加了反而让原始 .md diff 噪声大。
+ */
+function renderTable(headers: readonly string[], rows: ReadonlyArray<readonly string[]>): string {
+  const headLine = `| ${headers.map(escapeCell).join(' | ')} |`;
+  const sepLine = `|${headers.map(() => '---').join('|')}|`;
+  const bodyLines = rows.map((r) => `| ${r.map(escapeCell).join(' | ')} |`);
+  return [headLine, sepLine, ...bodyLines].join('\n');
+}
+
+/** 表格 cell 内容 escape — pipe 字面量改 `\|`，换行字面量改 `<br>`。 */
+function escapeCell(s: string): string {
+  return s.replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
+}
+
+/** 一般 markdown 文本 escape — 把会被解释为格式控制的字符前置反斜杠。 */
+function escapeMd(s: string): string {
+  return s.replace(/([\\`*_{}[\]()#+\-!])/g, '\\$1');
+}
+
+/** Inline 文本 escape（不动 backslash 类，只防 pipe + 换行）。用于嵌进表 / 列表项。 */
+function escapeMdInline(s: string): string {
+  return s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1)}…`;
+}
+
+/** 格式化毫秒数为 `1m 23s` / `12.3s` / `350ms`。与 CLI output.ts 同语义但不依赖。 */
+function formatMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '?';
+  if (ms < 1_000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60_000);
+  const s = Math.floor((ms % 60_000) / 1_000);
+  return `${m}m ${s}s`;
+}

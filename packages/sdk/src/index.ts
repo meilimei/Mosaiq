@@ -97,6 +97,8 @@ export {
   listDetectionRuns,
   deleteDetectionRun,
   getDetectionRunArtifactDir,
+  formatDetectionRunMarkdown,
+  type FormatMarkdownOptions,
   type DetectionRun,
   type DetectionRunRaw,
   type DetectionRunSummary,
