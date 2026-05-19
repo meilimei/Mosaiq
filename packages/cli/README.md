@@ -84,6 +84,49 @@ pnpm mosaiq detection-lab run my-persona --fail-on-hits medium
 | `medium` | any `medium` or `high` severity hit          |
 | `high`   | any `high` severity hit                      |
 
+### `mosaiq detection-lab list-runs <persona-id>`
+
+Lists every saved detection run for the persona, newest first. Shape mirrors
+the desktop `DetectionLabPage` history list.
+
+```bash
+pnpm mosaiq detection-lab list-runs baseline-bench-mp9itrpe
+
+# Machine-readable: DetectionRunSummary[] (no embedded `raw`)
+pnpm mosaiq detection-lab list-runs baseline-bench-mp9itrpe --json
+```
+
+### `mosaiq detection-lab show-run <persona-id> <run-id>`
+
+Pretty-prints a previously-saved run without launching Chromium. Matches the
+final summary block emitted by `detection-lab run`, plus a header with run-id
+/ persona / startedAt / sdk+chrome versions.
+
+```bash
+pnpm mosaiq detection-lab show-run my-persona 2026-05-18T13-49-09-107Z
+
+# Full DetectionRun blob (incl. raw + score + meta) — same shape that's on disk
+pnpm mosaiq detection-lab show-run my-persona 2026-05-18T13-49-09-107Z --json
+```
+
+Exits `2` if the run id is unknown or the JSON file is corrupt.
+
+### `mosaiq detection-lab delete-run <persona-id> <run-id>`
+
+Removes the `<runId>.json` file plus the sibling artifact directory.
+
+```bash
+# Interactive (default) — shows a 1-line preview then prompts y/N:
+pnpm mosaiq detection-lab delete-run my-persona 2026-05-18T13-49-09-107Z
+
+# Non-interactive (CI / scripts):
+pnpm mosaiq detection-lab delete-run my-persona 2026-05-18T13-49-09-107Z --yes
+```
+
+Exits `2` if the run does not exist; refuses to run on a non-TTY without
+`--yes`. Already-deleted runs are surfaced as a yellow warning rather than a
+silent success.
+
 ## Notes
 
 - The CLI shares the same SDK (`@mosaiq/sdk`) and on-disk layout as the

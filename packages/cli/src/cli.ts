@@ -17,7 +17,10 @@
  *   130 = SIGINT 取消
  */
 
+import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js';
+import { runDetectionLabListRuns } from './commands/detection-lab/list-runs.js';
 import { runDetectionLabCommand } from './commands/detection-lab/run.js';
+import { runDetectionLabShowRun } from './commands/detection-lab/show-run.js';
 import { runPersonasList } from './commands/personas/list.js';
 import { fmt } from './output.js';
 
@@ -29,8 +32,11 @@ Usage:
   mosaiq <command> <subcommand> [args...]
 
 Commands:
-  detection-lab run <persona-id>    Run a Detection Lab pass for a persona
-  personas list                     List all stored personas
+  detection-lab run         <persona-id>             Run a Detection Lab pass
+  detection-lab list-runs   <persona-id>             List historical runs
+  detection-lab show-run    <persona-id> <run-id>    Print a saved run
+  detection-lab delete-run  <persona-id> <run-id>    Delete a saved run
+  personas      list                                 List all stored personas
 
 Global:
   -h, --help                        Show this help (or per-command help)
@@ -39,6 +45,9 @@ Global:
 Examples:
   mosaiq personas list
   mosaiq detection-lab run baseline-bench-mp9itrpe
+  mosaiq detection-lab list-runs baseline-bench-mp9itrpe
+  mosaiq detection-lab show-run baseline-bench-mp9itrpe 2026-05-19T11-01-32-216Z
+  mosaiq detection-lab delete-run baseline-bench-mp9itrpe 2026-... --yes
   mosaiq detection-lab run my-persona --only creepjs,sannysoft --headed
   mosaiq detection-lab run my-persona --json > run.json
 `;
@@ -62,6 +71,15 @@ async function main(): Promise<number> {
 
   if (top === 'detection-lab' && sub === 'run') {
     return runDetectionLabCommand(rest);
+  }
+  if (top === 'detection-lab' && sub === 'list-runs') {
+    return runDetectionLabListRuns(rest);
+  }
+  if (top === 'detection-lab' && sub === 'show-run') {
+    return runDetectionLabShowRun(rest);
+  }
+  if (top === 'detection-lab' && sub === 'delete-run') {
+    return runDetectionLabDeleteRun(rest);
   }
   if (top === 'personas' && sub === 'list') {
     return runPersonasList(rest);

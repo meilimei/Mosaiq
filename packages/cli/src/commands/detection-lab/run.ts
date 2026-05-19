@@ -41,6 +41,7 @@ import {
 } from '@mosaiq/sdk';
 
 import { fmt, formatMs } from '../../output.js';
+import { printRunSummary } from './format.js';
 
 const HELP = `Usage: mosaiq detection-lab run <persona-id> [options]
 
@@ -230,7 +231,7 @@ export async function runDetectionLabCommand(argv: readonly string[]): Promise<n
     process.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
   } else {
     process.stdout.write('\n');
-    printSummary(run);
+    printRunSummary(run);
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -380,74 +381,6 @@ function printProgress(evt: RunProgressEvent): void {
       // 终态由调用方走 summary，这里不重复
       break;
   }
-}
-
-function printSummary(run: DetectionRun): void {
-  const score = run.score;
-  const sitesOk = score?.sitesOk ?? 0;
-  const sitesFail = score?.sitesFail ?? 0;
-  const hits = score?.hits ?? [];
-  const high = hits.filter((h) => h.severity === 'high').length;
-  const medium = hits.filter((h) => h.severity === 'medium').length;
-  const low = hits.filter((h) => h.severity === 'low').length;
-
-  const statusBadge = badge(run.status);
-  process.stdout.write(`${fmt.bold('Result')}  ${statusBadge}\n`);
-  process.stdout.write(`  duration     : ${formatMs(run.durationMs)}\n`);
-  process.stdout.write(
-    `  sites        : ${fmt.green(`${sitesOk} ok`)} · ${sitesFail > 0 ? fmt.red(`${sitesFail} fail`) : `${sitesFail} fail`}\n`,
-  );
-  process.stdout.write(
-    `  hits         : ${hits.length} ${fmt.dim(`(${formatHitBreakdown(high, medium, low)})`)}\n`,
-  );
-  if (score) {
-    process.stdout.write(`  weightedHits : ${fmt.bold(score.weightedHits.toFixed(2))}\n`);
-  }
-  process.stdout.write(
-    `  saved to     : ${fmt.dim(detectionRunPathHint(run.personaId, run.id))}\n`,
-  );
-
-  if (hits.length > 0) {
-    process.stdout.write(`\n${fmt.bold('Hits:')}\n`);
-    for (const h of hits) {
-      const sevColor =
-        h.severity === 'high' ? fmt.red : h.severity === 'medium' ? fmt.yellow : fmt.dim;
-      process.stdout.write(
-        `  ${sevColor('●')} ${fmt.cyan(h.surface)} · ${fmt.dim(h.site)} — ${h.detector}\n`,
-      );
-      if (h.evidence) {
-        process.stdout.write(`      ${fmt.dim(h.evidence)}\n`);
-      }
-    }
-  }
-}
-
-function formatHitBreakdown(high: number, medium: number, low: number): string {
-  const parts: string[] = [];
-  if (high > 0) parts.push(`${high} high`);
-  if (medium > 0) parts.push(`${medium} med`);
-  if (low > 0) parts.push(`${low} low`);
-  return parts.length > 0 ? parts.join(', ') : 'none';
-}
-
-function badge(status: DetectionRun['status']): string {
-  switch (status) {
-    case 'completed':
-      return fmt.green('✓ completed');
-    case 'canceled':
-      return fmt.yellow('⚠ canceled');
-    case 'failed':
-      return fmt.red('✗ failed');
-    case 'running':
-      return fmt.cyan('· running');
-    case 'pending':
-      return fmt.dim('· pending');
-  }
-}
-
-function detectionRunPathHint(personaId: string, runId: string): string {
-  // Doesn't actually resolve the absolute path — just gives the user a copy-pastable hint
-  return `~/.mosaiq/detection-runs/${personaId}/${runId}.json`;
 }
 
 function shouldFail(hits: readonly { severity: string }[], level: RunOpts['failOnHits']): boolean {
