@@ -13,6 +13,7 @@
     "build": "pnpm -r --filter \"./packages/*\" run build",
     "build:all": "pnpm -r run build",
     "dev:desktop": "pnpm --filter @mosaiq/desktop dev",
+    "mosaiq": "tsx packages/cli/src/cli.ts",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   },
   "pnpm": {
