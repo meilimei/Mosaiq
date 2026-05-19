@@ -359,7 +359,13 @@ export function DetectionRunDetailPage({
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {run.raw.results.map((r) => (
-              <SiteResultCard key={r.id} site={r} hits={hitsBySite[r.id] ?? []} />
+              <SiteResultCard
+                key={r.id}
+                site={r}
+                hits={hitsBySite[r.id] ?? []}
+                personaId={personaId}
+                runId={runId}
+              />
             ))}
           </div>
         </div>

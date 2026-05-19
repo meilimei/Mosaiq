@@ -45,6 +45,7 @@ import {
   verifyProxy,
 } from '@mosaiq/sdk';
 
+import { registerArtifactHandler, registerArtifactScheme } from './artifact-protocol.js';
 import {
   type ClonePersonaInput,
   type CreatePersonaInput,
@@ -59,6 +60,12 @@ import {
   type ProxyVerifyInput,
   type UpdatePersonaInput,
 } from './ipc-types.js';
+
+// v0.9 phase 9.3: register the `mosaiq-artifact://` scheme as privileged
+// **before** `app.whenReady()` resolves — Electron requires privileged
+// schemes to be declared early in the process lifecycle so renderer
+// `<img>` tags can load them under default CSP.
+registerArtifactScheme();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 窗口
@@ -637,6 +644,7 @@ function registerIpcHandlers() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  registerArtifactHandler();
   registerIpcHandlers();
   await createWindow();
 });

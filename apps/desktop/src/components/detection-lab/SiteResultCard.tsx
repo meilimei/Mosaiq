@@ -5,19 +5,20 @@
  *   - 顶部 chip 行：站点 name + OK/FAIL badge + durationMs + retries（如有）
  *   - title（如有）
  *   - 该站触发的 hits 徽标（compact）
+ *   - 截图缩略图（v0.9 phase 9.3：`mosaiq-artifact://` 协议加载，需要
+ *     `personaId` + `runId` props，仅当 `site.ok && site.screenshot` 时渲染）
  *   - 可折叠的 extracted KV 表
  *   - 失败时显示 error message
- *
- * 故意不内嵌截图缩略图：electron renderer 加载本地文件需要 `file://` URL + 主进
- * 程提供绝对路径白名单；v0.8 不做（artifactDir 路径已存进 run，未来再加查看）。
  */
 
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ImageOff, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/badge.js';
+import { buildArtifactUrl } from '@/lib/artifact-url.js';
 import { formatMs } from '@/lib/detection-lab.js';
 import { cn } from '@/lib/utils.js';
+import type { PersonaId } from '@mosaiq/persona-schema';
 import type { SiteResult, SurfaceHit } from '@mosaiq/sdk';
 
 import { SurfaceHitBadge } from './SurfaceHitBadge.js';
@@ -28,12 +29,30 @@ interface SiteResultCardProps {
   hits: SurfaceHit[];
   /** 是否正在跑（live progress 用） */
   running?: boolean;
+  /** v0.9 phase 9.3: 为缩略图构造 `mosaiq-artifact://` URL。不传则不渲染缩略图。 */
+  personaId?: PersonaId;
+  runId?: string;
 }
 
-export function SiteResultCard({ site, hits, running = false }: SiteResultCardProps) {
+export function SiteResultCard({
+  site,
+  hits,
+  running = false,
+  personaId,
+  runId,
+}: SiteResultCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [thumbFailed, setThumbFailed] = useState(false);
   const extractedEntries = site.extracted ? Object.entries(site.extracted) : [];
   const hasExtracted = extractedEntries.length > 0;
+
+  // 缩略图渲染条件：run 成功、该站 ok、有 screenshot 路径、且上下文传了
+  // personaId + runId。live `running` 状态下不渲染（文件可能还没落盘）。
+  const showThumbnail =
+    !running && site.ok && !!site.screenshot && !!personaId && !!runId && !thumbFailed;
+  const thumbnailUrl = showThumbnail
+    ? buildArtifactUrl(personaId, runId, site.screenshot ?? '')
+    : null;
 
   return (
     <div
@@ -74,6 +93,32 @@ export function SiteResultCard({ site, hits, running = false }: SiteResultCardPr
           {hits.map((h, i) => (
             <SurfaceHitBadge key={`${h.surface}-${h.detector}-${i}`} hit={h} compact />
           ))}
+        </div>
+      )}
+
+      {/* screenshot thumbnail (v0.9 phase 9.3) */}
+      {thumbnailUrl && (
+        <a
+          href={thumbnailUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 block overflow-hidden rounded-md border border-border/60 bg-muted/30 transition-colors hover:border-border"
+          title="点击查看全图"
+        >
+          <img
+            src={thumbnailUrl}
+            alt={`${site.name} 截图`}
+            loading="lazy"
+            decoding="async"
+            className="h-28 w-full object-cover object-top"
+            onError={() => setThumbFailed(true)}
+          />
+        </a>
+      )}
+      {!running && site.ok && site.screenshot && thumbFailed && (
+        <div className="mt-2 flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/20 px-2 py-1 text-xs text-muted-foreground">
+          <ImageOff className="h-3.5 w-3.5" />
+          <span>缩略图加载失败</span>
         </div>
       )}
 
