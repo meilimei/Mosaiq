@@ -101,3 +101,11 @@ jobs:
       # byte-identical; this step fails if they drift.
       - name: Drift check — @mosaiq/sdk playwright-core patch
         run: pnpm run check-sdk-patch-drift
+
+      # v0.10 phase 10.3 publish gate: assert each publishable package's npm
+      # tarball contains exactly the expected files (REQUIRED present, no
+      # FORBIDDEN leaks like bench/ / src/ / chromium-fork / captured-profiles).
+      # Guards against accidentally publishing 27 GB chromium-fork artifacts
+      # or multi-MB captured-profiles JSON.
+      - name: Audit publishable tarballs
+        run: pnpm run audit-tarballs

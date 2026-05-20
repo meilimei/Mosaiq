@@ -41,6 +41,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run typecheck",
     "clean": "rimraf dist",
     "start": "tsx src/cli.ts"
   },

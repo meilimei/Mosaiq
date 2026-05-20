@@ -55,6 +55,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run typecheck",
     "postinstall": "node ./scripts/postinstall.cjs",
     "demo:humanize": "tsx examples/humanize-demo.ts",
     "bench": "tsx bench/baseline-detection.ts",
