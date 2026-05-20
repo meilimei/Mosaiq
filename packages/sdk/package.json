@@ -49,12 +49,13 @@
       "import": "./dist/injection/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": ["dist", "patches", "scripts", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
+    "postinstall": "node ./scripts/postinstall.cjs",
     "demo:humanize": "tsx examples/humanize-demo.ts",
     "bench": "tsx bench/baseline-detection.ts",
     "bench:report": "tsx bench/report.ts",
@@ -69,6 +70,7 @@
   "dependencies": {
     "@mosaiq/persona-schema": "workspace:*",
     "https-proxy-agent": "^7.0.6",
+    "patch-package": "^8.0.0",
     "playwright-core": "1.59.1",
     "socks-proxy-agent": "^8.0.5"
   },

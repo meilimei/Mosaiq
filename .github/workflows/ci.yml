@@ -92,3 +92,12 @@ jobs:
       # exact contract documented in docs/CAPTURING-WEBGL-PROFILES.md.
       - name: Drift check — captured WebGL profiles
         run: pnpm --filter @mosaiq/sdk run bench:integrate-profiles -- --check
+
+      # v0.10 phase 10.2 drift detection: the rebrowser-patches patch for
+      # playwright-core@1.59.1 is duplicated between the workspace root
+      # (`patches/`, consumed by pnpm.patchedDependencies for monorepo install)
+      # and `packages/sdk/patches/` (shipped in the npm tarball + applied by
+      # @mosaiq/sdk's postinstall for external consumers). These two MUST stay
+      # byte-identical; this step fails if they drift.
+      - name: Drift check — @mosaiq/sdk playwright-core patch
+        run: pnpm run check-sdk-patch-drift

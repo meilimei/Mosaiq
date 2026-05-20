@@ -23,6 +23,7 @@
     "format": "biome format --write .",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
+    "check-sdk-patch-drift": "node scripts/check-sdk-patch-drift.mjs",
     "clean": "pnpm -r run clean && rimraf node_modules"
   },
   "devDependencies": {
