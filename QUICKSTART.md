@@ -1,20 +1,28 @@
-# Mosaiq v0.2 — Quickstart
+# Mosaiq v0.9 — Quickstart
 
-> **当前里程碑**：v0.1 全部完成 + v0.2 humanize 引擎落地。架构是 **Playwright + CDP 注入**，不是 Chromium fork。
-> 这是务实起步：1 周可跑通，1 个月用得舒服，半年内根据实战需求决定是否继续推进 native 内核。
+> **当前里程碑**：v0.9.0 已发布（2026-05-20）。架构是 **Playwright + CDP 注入**，不是 Chromium fork（fork 路径冷藏中，详见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）。
+> 4-package monorepo：`@mosaiq/persona-schema` / `@mosaiq/sdk` / `@mosaiq/cli` / `@mosaiq/desktop`，全部 0.9.0 lock-step 发布。
+> 这是务实起步：1 周跑通自检 + 历史趋势，桌面与 CLI 双入口。Chromium fork 解冻触发器明确写在 STATUS.md 里。
 
 ---
 
 ## 你能拿到什么
 
+### 桌面应用（`@mosaiq/desktop`）
+
 打开 Mosaiq Desktop，你会看到：
 
-- **Persona 列表**：每个 Persona = 一个独立浏览器身份（自己的 Cookie、缓存、IndexedDB、指纹、代理）
+- **Persona 列表**：每个 Persona = 一个独立浏览器身份（自己的 Cookie、缓存、IndexedDB、指纹、代理）。顶部搜索框按 displayName / id / notes / 代理标签过滤；点 chip 多选标签做 AND 筛选
 - **新建 Persona**：从 **4 个模板**（Win11 / Win10 / macOS Sonoma / Ubuntu 22.04）选一个 → 填 ID + 显示名 → 选时区 → 配代理（可选） → 创建
 - **启动 / 停止**：点击启动 → 本机 Chromium 弹出，已注入完整反检测脚本 + 代理
-- **一键自检**：在已启动的 Persona 里打开 pixelscan + browserscan 检查指纹一致性
-- **搜索 + 标签筛选**：Persona 多了用顶部搜索框按 displayName / id / notes / 代理标签过滤，点 chip 多选标签做 AND 筛选
 - **导入 / 导出 JSON**：每个 Persona 卡片右上角点 ⬇️ 可导出（默认脱敏代理密码），顶部点 ⬆️ 导入；ID 冲突自动重命名为 `<id>-imported`，永不覆盖现有 persona
+- **Detection Lab**（v0.8 + v0.9 完整集成）：
+  - **历史 trend**：每个 persona 显示最近 20 个 run 的 weightedHits 折线图，跌涨一眼可见
+  - **一键新 Run**：跑 12 个反检测站点（CreepJS / browserleaks-canvas / sannysoft / fpscanner / browserscan / pixelscan / IPHey / Whoer / amiunique / iphey-2 / browser-info / mixvisit），实时进度条 + per-site phase
+  - **per-run 详情**：12-surface 雷达图（canvas / webgl / audio / fontList / webrtc / ua / hardware / platform / locale / screen / timezone / other）+ headline 数字 + per-site grid + 截图缩略图（点开 lightbox 全屏）
+  - **Persona Pool 对比**：选 2-8 个 persona 同时展示多边形 radar，找出 surface-level 差异
+  - **Compare Runs side-by-side**：两个 run 间 weighted / hits / sites Δ + ok→fail / fail→ok 翻转 + Added / Removed / Changed 命中
+  - **导出 .md**：在 run detail 一键导出 GitHub Flavored Markdown 报告（PR / Issue / Slack 直接贴）
 
 注入的反检测维度（都在浏览器加载第一行 JS 之前完成）：
 
@@ -25,11 +33,25 @@
 - `screen.*` / `window.devicePixelRatio` — 分辨率一致
 - 时区（`Intl`、`Date.getTimezoneOffset` 全协调）
 - Canvas / WebGL 噪声（每 Persona 不同的稳定种子，`getImageData` / `getParameter` 加噪）
-- AudioContext fingerprint 偏移
-- WebGL VENDOR / RENDERER 字符串（与模板 GPU 匹配）
+- AudioContext fingerprint 偏移（per-buffer + per-channel 幂等 noise）
+- WebGL VENDOR / RENDERER 字符串（与模板 GPU 匹配，49-param ANGLE 全覆盖；可选 captured profile 走真机抓取）
 - `RTCPeerConnection` 屏蔽 STUN candidate 泄漏真实 IP
 - `permissions.query`、`mediaDevices.enumerateDevices` 一致化
 - 字体探测对 fallback metric 加噪
+
+### CLI（`@mosaiq/cli`，v0.9 新增）
+
+`mosaiq` 一行入口，与桌面读同一个 `~/.mosaiq/` store：
+
+- **Detection Lab**: `run` / `run-all` / `compare` / `list-runs` / `show-run` / `delete-run` / `export-run`
+  - `run-all --fail-on-regression` 是多 persona CI gate（exit 1 = 任一 persona 回归）
+  - `compare --fail-on-regression` 是单 persona run-vs-run gate
+- **Personas**: `list` / `show` / `create` / `update` / `clone` / `delete` / `export` / `import` / `templates list`
+  - 所有 CRUD 都在桌面之外可脚本化（`--json` 输出方便 jq）
+  - `create --master-seed <hex>` 可重现 persona 用于 fixture
+  - `clone` 重新派生 canvas / webgl / audio noise seeds（即 baseline 相同但指纹独立）
+
+详见下文 [CLI 入门](#cli-入门)。
 
 ---
 
@@ -110,70 +132,104 @@ pnpm dev:desktop
 
 ---
 
-## 仓库布局（v0.2 实际状态）
+## 仓库布局（v0.9 实际状态）
 
 ```
 Mosaiq/
 ├── packages/
-│   ├── persona-schema/           # ✅ Zod schema + 4 模板（17 测试）
+│   ├── persona-schema/           # ✅ Zod schema + 4 OS 模板（26 测试）
 │   │   ├── src/
 │   │   │   ├── persona.ts        # Persona 类型定义 + parsePersona / safeParsePersona
-│   │   │   ├── templates/        # win11 / win10 / macos-sonoma / ubuntu-2204
+│   │   │   ├── templates/        # win11 / win10 / macos-sonoma / ubuntu-2204 + TEMPLATE_CATALOG
 │   │   │   ├── fingerprint.ts    # canvas / webgl / audio / fontList / webrtc 子 schema
 │   │   │   ├── system.ts         # OS / locale / timezone / screen 子 schema
-│   │   │   └── utils/seed.ts     # mulberry32 + xfnv1a，与 sdk humanize 共用 PRNG 算法
-│   │   └── 17 tests
-│   └── sdk/                      # ✅ Playwright 包装 + CDP 注入 + humanize 引擎（143 测试）
-│       ├── src/
-│       │   ├── launcher.ts             # launchPersona() 主 API
-│       │   ├── browser-session.ts      # context + firstPage + humanize getter
-│       │   ├── injection/              # 反检测 init script 模板 + runner（注入到页面）
-│       │   ├── humanize/               # ★ v0.2：mouse / keyboard / rng / Humanize 类
-│       │   ├── persona-store.ts        # 文件系统 CRUD
-│       │   ├── persona-portability.ts  # ★ v0.1：导入/导出 JSON + 冲突解决
-│       │   ├── proxy.ts                # 代理 URL 构造 + Playwright proxy 转换 + 验证
-│       │   ├── ua.ts                   # User-Agent + Accept-Language 构造
-│       │   └── chromium-version.ts     # 读取 playwright-core Chromium 版本号
-│       └── examples/humanize-demo.ts   # 一键跑通 humanize 的可执行示例
+│   │   │   └── utils/seed.ts     # mulberry32 + xfnv1a，与 sdk humanize 共用 PRNG
+│   │   └── 26 tests
+│   ├── sdk/                      # ✅ Playwright + CDP 注入 + Detection Lab（593 测试 / 28 文件）
+│   │   ├── src/
+│   │   │   ├── launcher.ts             # launchPersona() 主 API
+│   │   │   ├── browser-session.ts      # context + firstPage + humanize getter
+│   │   │   ├── injection/              # 反检测 init script + runner（canvas/webgl/audio/ua/...）
+│   │   │   ├── humanize/               # mouse / keyboard / rng / Humanize 类
+│   │   │   ├── persona-store.ts        # 文件系统 CRUD（含 updatePersona / clonePersona）
+│   │   │   ├── persona-portability.ts  # 导入/导出 JSON + 冲突解决
+│   │   │   ├── detection-lab/          # ★ v0.8/0.9：runner / scorer / run-store / run-format
+│   │   │   │                           #   types / sites / run-compare (diffRuns)
+│   │   │   ├── proxy.ts                # 代理 URL 构造 + Playwright proxy 转换 + 验证
+│   │   │   ├── ua.ts                   # User-Agent + Accept-Language 构造
+│   │   │   └── chromium-version.ts     # 读取 playwright-core Chromium 版本号
+│   │   ├── bench/                      # Phase 7 captured-WebGL-profiles pipeline
+│   │   └── examples/humanize-demo.ts
+│   ├── cli/                      # ✅ v0.9 新增：mosaiq 命令行（64 测试 / 3 文件）
+│   │   ├── bin/mosaiq.js               # bin shim
+│   │   └── src/
+│   │       ├── cli.ts                  # 入口 + 命令路由
+│   │       ├── commands/
+│   │       │   ├── detection-lab/      # run / run-all / compare / list-runs /
+│   │       │   │                       #   show-run / delete-run / export-run
+│   │       │   └── personas/           # list / show / create / update / clone /
+│   │       │                           #   delete / export / import / templates
+│   │       └── output.ts               # 轻量 color/box/table（无 chalk/cli-table3 依赖）
+│   └── (CLI = 公开发布候选，目前 private + 走 workspace 内部)
 ├── apps/
-│   └── desktop/                  # ✅ Electron + React + Vite
+│   └── desktop/                  # ✅ Electron + React + Vite（45 测试 / 2 文件）
 │       ├── electron/             # main 进程 IPC handlers + preload bridge
+│       │   ├── artifact-protocol.ts    # ★ v0.9：mosaiq-artifact:// 协议（截图缩略图）
+│       │   └── artifact-protocol-core.ts # pure 路径解析（33 测试覆盖路径穿越）
 │       ├── src/
-│       │   ├── pages/            # PersonaListPage（搜索/筛选/导入/导出）/ Create / Edit / Clone
-│       │   └── components/       # ProxyFieldset / Toast / shadcn ui
+│       │   ├── pages/            # PersonaListPage / Create / Edit / Clone /
+│       │   │                     #   DetectionLabPage / DetectionRunDetailPage /
+│       │   │                     #   DetectionRunComparePage / PersonaPoolPage
+│       │   ├── components/       # ProxyFieldset / Toast / shadcn ui /
+│       │   │                     #   detection-lab/{HitsBySurfaceRadar, RunsTrendChart,
+│       │   │                     #   SiteResultCard, SurfaceHitBadge, PoolRadarChart,
+│       │   │                     #   PoolSurfaceTable}
+│       │   └── lib/artifact-url.ts     # mosaiq-artifact:// URL builder (12 测试)
 │       └── scripts/dev.cjs       # 平台中立的 dev 启动器（含 ELECTRON_RUN_AS_NODE 修复）
-└── docs/                         # 长期愿景 + HUMANIZE-DESIGN.md（v0.2 设计稿）
+└── docs/                         # 长期愿景 + HUMANIZE-DESIGN + V0.8-DETECTION-LAB 等
 ```
+
+总测试数：26 + 593 + 64 + 45 = **728**。`pnpm test` 跑全部，CI 在 `.github/workflows/ci.yml` 每 PR + push 跑（typecheck + 4 包 vitest + captured-profiles drift check）。
 
 ---
 
 ## 常用命令
 
 ```powershell
-# 全仓库 typecheck
+# 全仓库 typecheck（4 包）
 pnpm -r typecheck
 
-# 全仓库 build
+# 全仓库 build（先 sdk + persona-schema，cli + desktop 依赖它们）
 pnpm -r build
 
-# 跑 persona-schema 测试
-pnpm --filter @mosaiq/persona-schema test
+# 跑全部测试（26 schema + 593 sdk + 64 cli + 45 desktop = 728）
+pnpm -r test
 
-# 仅 build SDK / Schema
-pnpm --filter @mosaiq/sdk build
-pnpm --filter @mosaiq/persona-schema build
+# 单包测试
+pnpm --filter @mosaiq/persona-schema test
+pnpm --filter @mosaiq/sdk test
+pnpm --filter @mosaiq/cli test
+pnpm --filter @mosaiq/desktop test
 
 # 启动 desktop 应用（dev 模式 + 热重载）
 pnpm dev:desktop
 
+# 跑 mosaiq CLI（不需要 install，直接 tsx 执行 src 入口）
+pnpm mosaiq detection-lab run <persona-id>
+pnpm mosaiq personas list
+
 # 跑 humanize 引擎 demo（启动 headed Chromium，10s 后自清理）
 pnpm --filter @mosaiq/sdk demo:humanize
 
-# 跑全部测试（17 schema + 143 sdk = 160 个）
-pnpm -r test
+# Phase 7 captured-WebGL-profiles 工作流
+pnpm --filter @mosaiq/sdk run bench:integrate-profiles            # 从 bench/captured-profiles/*.json 重新生成 TS
+pnpm --filter @mosaiq/sdk run bench:integrate-profiles -- --check # CI drift gate（exit 1 = 漂移）
 
 # 打包桌面应用为可分发安装包（使用 electron-builder）
 pnpm --filter @mosaiq/desktop electron:dist
+
+# 全仓 biome 格式化（lint 还未 CI 强制，convention 是 "changed files only clean"）
+pnpm format
 ```
 
 ---
@@ -226,17 +282,90 @@ pnpm --filter @mosaiq/sdk demo:humanize
 
 ---
 
-## v0.2 的诚实边界
+## CLI 入门
 
-⚠️ **当前还不能做的事**：
+`@mosaiq/cli` 是 v0.9 新增的 headless 入口，跟桌面读同一个 `~/.mosaiq/` store。**所有桌面能做的 persona / Detection Lab 操作，CLI 都能脚本化**。完整 per-command 文档见 [`packages/cli/README.md`](./packages/cli/README.md)（580 行）；这里只列最常用的几条。
 
-- 没有真 TLS 指纹层（JA3/JA4 在 Playwright 模式下还是 Chrome 默认）。Cloudflare BotScore 严格站点能识别为「自动化 Chrome」。
-  → v0.3+ 在 Chromium fork 后 BoringSSL 层处理，v0.2 范围之外。
-- humanize 仅覆盖鼠标 + 键盘，尚未覆盖滚动惯性 / 页面停留时长建模。
-  → v0.4 计划作 thinking pause（Pareto 分布 500–3000ms）+ scroll inertia。
-- 没有 detection lab leaderboard，只有手动自检入口。
-- 没有 Chromium fork（与 PRD/WHITEPAPER 的最终愿景有差距）。
-  → 这是有意识的：v0.1–0.2 在 < 1 个月内交付能用工具，比 6 个月才有第一个 fork patch 实在。
+```powershell
+# 第一次：列出现有 persona（与桌面 PersonaListPage 一致）
+pnpm mosaiq personas list
+
+# 列出所有 OS 模板（与桌面 "新建 Persona" 卡片一致）
+pnpm mosaiq personas templates list
+
+# 创建一个新 persona（桌面创建表单的 CLI 等价物）
+pnpm mosaiq personas create reddit-alpha `
+  --template win11-chrome-us `
+  --display-name "Reddit Alpha" `
+  --timezone America/New_York `
+  --tags "reddit,us,sticky" `
+  --proxy "http://user:pass@residential.iproyal.com:12321" `
+  --proxy-label "iproyal-us-sticky-001"
+
+# 跑一次 Detection Lab（与桌面 "新 Run" 按钮一致；同一个 ~/.mosaiq/detection-runs/ store）
+pnpm mosaiq detection-lab run reddit-alpha
+
+# 看历史
+pnpm mosaiq detection-lab list-runs reddit-alpha
+pnpm mosaiq detection-lab show-run reddit-alpha <run-id>
+
+# 导出某次 run 成 GitHub Flavored Markdown（贴 PR / Issue / Slack）
+pnpm mosaiq detection-lab export-run reddit-alpha <run-id> --out report.md
+```
+
+### CI gate（关键 v0.9 用例）
+
+**单 persona run-vs-run 回归**：
+
+```powershell
+# Exit 1 = run-b 比 run-a 有回归（新增 hits / Δweighted > 0 / 任一 site 翻 ok→fail）
+pnpm mosaiq detection-lab compare reddit-alpha <baseline-run-id> <candidate-run-id> --fail-on-regression
+```
+
+**多 persona 全量批量（推荐 nightly cron）**：
+
+```powershell
+# 跑所有 persona 一遍；任一 persona 回归 → exit 1，CI 红
+pnpm mosaiq detection-lab run-all --fail-on-regression
+
+# 子集选择 + JSON 输出（喂 jq / dashboard）
+pnpm mosaiq detection-lab run-all `
+  --only "reddit-alpha,reddit-bravo" `
+  --only-sites "creepjs,browserleaks-canvas,sannysoft" `
+  --fail-on-regression `
+  --json > batch-result.json
+```
+
+`run-all` 的 `BatchRunResult` JSON 包含每 persona status / weightedHits / regression flag + 聚合 `personasCompleted/failed`、worstPersona、Verdict 决策原因 — 直接喂 Grafana 或 Slack webhook。
+
+### 与 SDK 关系
+
+CLI 没有自己的反检测/注入逻辑 — 它是 `@mosaiq/sdk` 公共 API（`runDetection` / `formatDetectionRunMarkdown` / `diffRuns` / `listPersonas` / `savePersona` 等）的 thin wrapper。所有"算 detection score"、"format markdown"、"diff runs" 这种 pure logic 都住在 SDK，CLI 只做 argv 解析 + TTY 渲染 + 退出码策略。这意味着任何第三方脚本只要 `import { runDetection } from '@mosaiq/sdk'` 就能复制 CLI 行为。
+
+---
+
+## v0.9 的诚实边界
+
+✅ **v0.9 比 v0.2 多解决的事**（避免重复 v0.2 时期的同类讨论）：
+
+- ✅ **自检不再是手动入口** — Detection Lab 已 12 站 + 雷达图 + history trend + 池对比 + Compare Runs + Markdown 导出 + CLI run/run-all + 回归 gate；既有桌面 UI 又有脚本入口
+- ✅ **WebGL 真机指纹收集流程已有** — Phase 7 captured-profiles 工作流（`bench:integrate-profiles`），用户能贡献自己的 GPU profile
+- ✅ **AudioBuffer 已修** — Phase 6.1 per-(buffer, channel) 幂等 noise，CreepJS audio trap 关闭
+
+⚠️ **当前仍然不能做的事**：
+
+- **没有真 TLS 指纹层**（JA3/JA4 在 Playwright 模式下还是 Chrome 默认）。Cloudflare BotScore 严格站点能识别为「自动化 Chrome」。
+  → 解决需要 Chromium fork + BoringSSL 层 patch（cold storage 中，触发器见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）。Detection Lab 站集里有 `browserscan` / `iphey` 能侧面映射 TLS 失败，但不是直接 JA3 比对
+- **humanize 仅覆盖鼠标 + 键盘**，滚动惯性 / 页面停留时长 / 阅读 dwell 仍未建模
+  → v0.10+ 计划：thinking pause（Pareto 500-3000ms）+ scroll inertia
+- **没有 detection lab public leaderboard**（与 PRD 提到的 "公开 leaderboard 含 Browserbase / Multilogin / AdsPower 对比" 还有差距）
+  → 需要持续 e2e 跑收集 + 静态站点托管，是 v0.10+ 候选
+- **没有 Cloud Runtime**（与 PRD/WHITEPAPER 双引擎愿景的另一半还没开始）
+  → K8s + gVisor + CDP-over-WebSocket gateway 是大工程，看市场反馈决定时机
+- **CLI 还没 npm publish**（目前只能在 monorepo 内 `pnpm mosaiq`，外部用户无法 `npx mosaiq`）
+  → v0.10 候选方向之一
+- **CI 还没用自己的 Detection Lab 当反检测回归 gate**（v0.9 ship 了 `run-all --fail-on-regression`，但还没接到 `.github/workflows/`）
+  → v0.10 候选方向之一
 
 ---
 
@@ -244,11 +373,12 @@ pnpm --filter @mosaiq/sdk demo:humanize
 
 如果你打算在这个仓库继续推进：
 
-1. **拉一遍 `pnpm dev:desktop`，亲手跑一次自检**，体感反检测注入的实际效果
-2. **跑一跑 `pnpm --filter @mosaiq/sdk demo:humanize`**，看看 humanize 产出的鼠标轨迹 / 键盘节律
-3. **找一个 Reddit 账号实战**，跑一周，看会不会被 shadowban；这是真正的市场反馈
-4. **如果实战 OK，再投资 v0.3+**：TLS/JA4 伪装 + Chromium fork 反检测 patch
-5. **如果实战不 OK**，根据具体被检测的指标针对性增强 — 不要无脑追求"完美"。
+1. **`pnpm dev:desktop`，新建一个 persona，跑一次 Detection Lab**，看 12 站 + 雷达图 + 历史 trend；用截图缩略图打开 lightbox 检查每站抓到的页面
+2. **`pnpm --filter @mosaiq/sdk demo:humanize`**，DevTools Performance 录鼠标轨迹确认是曲线
+3. **`pnpm mosaiq detection-lab run-all`**，体感 CLI 批量入口 — 没 persona 会提示创建，有 persona 会按序跑
+4. **找一个 sensitive 站点（Reddit / X / Cloudflare 严格站）实战跑一周**，被 shadowban 的指标提 Issue
+5. **如果实战 OK 但想批量监控**：把 `mosaiq detection-lab run-all --fail-on-regression` 写到自己的 cron / GitHub Actions
+6. **如果实战不 OK**：先 `compare` 出 baseline → candidate 的具体差异，定位是哪个 surface 退化的
 
 ---
 
@@ -256,8 +386,13 @@ pnpm --filter @mosaiq/sdk demo:humanize
 
 - 完整产品白皮书 + 商业战略 → [docs/WHITEPAPER.md](./docs/WHITEPAPER.md)
 - PRD v0.2 → [docs/PRD.md](./docs/PRD.md)
-- Chromium Fork 长期路线图 → [docs/CHROMIUM-FORK-GUIDE.md](./docs/CHROMIUM-FORK-GUIDE.md)
+- Detection Lab 完整设计 → [docs/V0.8-DETECTION-LAB.md](./docs/V0.8-DETECTION-LAB.md)
+- humanize 引擎设计 → [docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)
+- Chromium Fork 长期路线图 → [docs/CHROMIUM-FORK-GUIDE.md](./docs/CHROMIUM-FORK-GUIDE.md)（cold storage 中）
+- 反检测 enterprise detector 调研 → [docs/ENTERPRISE-DETECTORS.md](./docs/ENTERPRISE-DETECTORS.md)
 
 ## 在仓库里写代码？
 
-读一下 [DEVELOPMENT.md](./DEVELOPMENT.md) —— 累积了开发中踩过的坑（SDK 改完要重启 dev:desktop、init script 在 about:blank 不触发等），帮你少走弯路。
+读一下 [DEVELOPMENT.md](./DEVELOPMENT.md) —— 累积了开发中踩过的坑（SDK 改完要重启 dev:desktop、init script 在 about:blank 不触发、UA 版本要与 chromium 引擎对齐等），帮你少走弯路。
+
+CLI 完整 per-command 文档：[`packages/cli/README.md`](./packages/cli/README.md)（580 行，所有 flag + 退出码语义 + 示例）。

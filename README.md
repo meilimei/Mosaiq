@@ -8,18 +8,16 @@
 
 ## 🚀 想立即跑起来？
 
-**v0.2.0 已发布**（2026-05-16）：Electron 桌面壳 + Playwright CDP 注入引擎 + humanize 类人输入引擎。能创建 Persona（4 模板）、启动隔离浏览器、跑指纹自检、用 SDK 跑类人鼠标键盘。**反检测注入引擎已硬化**：CreepJS lies 10→2、Canvas 双 guard 治 lies / LowerEntropy、WebGL 49-param ANGLE 全覆盖、UA-CH 全 scope spoof、worker scope 加固。
+**v0.9.0 已发布**（2026-05-20）：Electron 桌面壳 + Playwright CDP 注入引擎 + humanize 类人输入引擎 + **完整 Detection Lab**（12 站反检测自检 / 历史 trend / per-run 雷达图 / 12-surface attribution / persona pool 横向对比 / Compare Runs side-by-side / Markdown 导出）+ **`@mosaiq/cli` 命令行**（headless `detection-lab run` / `run-all` / `compare` / `list-runs` / `show-run` / `export-run` / `personas list|show|create|update|clone|delete|export|import|templates`）。所有 4 个 workspace 包（`@mosaiq/persona-schema` / `@mosaiq/sdk` / `@mosaiq/cli` / `@mosaiq/desktop`）在 v0.9 一同 lock-step 发布。
 
-→ **[CHANGELOG.md](./CHANGELOG.md)** — v0.1.0 → v0.2.0 完整变更（Phase 1.5-1.9 + Phase 2.1-2.4）
-→ **[QUICKSTART.md](./QUICKSTART.md)** — 5 分钟从 clone 到第一次自检
-→ **[docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)** — v0.2 humanize 引擎完整设计稿
+→ **[CHANGELOG.md](./CHANGELOG.md)** — v0.1.0 → v0.9.0 完整变更（最近：Phase 9.1-9.10 CLI + Detection Lab polish）
+→ **[QUICKSTART.md](./QUICKSTART.md)** — 5 分钟从 clone 到第一次自检 + Detection Lab + CLI
+→ **[docs/V0.8-DETECTION-LAB.md](./docs/V0.8-DETECTION-LAB.md)** — Detection Lab 完整 product-level 设计稿（v0.8 落地、v0.9 polish）
+→ **[docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)** — humanize 引擎设计稿（v0.2 起持续维护）
 
-**v0.3 启动中**：真正的 Chromium fork 工作流（Phase A.0 基础设施已落地，等环境就绪后启动 vanilla build → Persona Bridge → Canvas Noise → TLS/JA4 三个核心 patch）。
+**Chromium fork 路径目前冷藏中**（详见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）— 硬件 + 工程效率原因 pivot 到 SDK 注入路径，所有 fork 资产（27 GB sync + 11 个脚本 + 3 个 patch 草稿）原样保留作未来 Phase 3 解冻素材。解冻触发器明确写在 STATUS.md 里。
 
-→ **[chromium-fork/README.md](./chromium-fork/README.md)** — Phase A 工作流 + 你/Cascade 分工 + 启动步骤
-→ **[docs/CHROMIUM-FORK-GUIDE.md](./docs/CHROMIUM-FORK-GUIDE.md)** — 完整 fork 长期路线（460+ 行）
-
-下面的内容是 Mosaiq 的**长期产品愿景**（Chromium fork、双引擎、$60–115M ARR），与 v0.2 实际产物存在差距。这是有意为之 —— 先用务实方案在 1 周内验证最小可用路径，再决定哪些愿景值得砸数百人月去落地。
+下面的内容是 Mosaiq 的**长期产品愿景**（Chromium fork、双引擎、$60–115M ARR），与 v0.9 实际产物（注入路径 + 桌面 + CLI）存在差距。这是有意为之 —— 先用务实方案在 ≤ 1 个月内验证最小可用路径，再决定哪些愿景值得砸数百人月去落地。
 
 ---
 
@@ -117,19 +115,49 @@ Mosaiq/
 
 ## 当前状态
 
-📅 **2026-05-07**：Pre-Phase 0
-- ✅ PRD v0.2 完成（双引擎版本）
-- ✅ Cloud Runtime 架构文档 v0.1 完成
-- ✅ 竞品调研完成（Desktop 11 家 + Cloud 6 家）
-- ⏳ 正在筹组 Phase 0 团队（Chromium 内核 + Cloud Infra 工程师招募中）
-- ⏳ 法律主体注册中（新加坡 + Delaware C-Corp 双层结构）
+📅 **2026-05-20** — v0.9.0 已发布（详见 [`CHANGELOG.md`](./CHANGELOG.md)）
+
+实际产物（4-package monorepo，注入路径）：
+
+| Package | Version | 测试 | 角色 |
+|---|---|---|---|
+| `@mosaiq/persona-schema` | 0.9.0 | 26 | Persona Zod schema + 4 OS 模板（Win11 / Win10 / macOS / Ubuntu）的 canonical 源 |
+| `@mosaiq/sdk` | 0.9.0 | 593 | Playwright + CDP 注入引擎、humanize、persona store、Detection Lab runner + scorer + storage + 报告 formatter / diff |
+| `@mosaiq/cli` | 0.9.0 | 64 | `mosaiq` 命令行：Detection Lab 全 7 个 subcommand + Personas CRUD 全 9 个 subcommand |
+| `@mosaiq/desktop` | 0.9.0 | 45 | Electron + React + Vite 桌面应用：Persona 管理 + Detection Lab 完整 UI（trend / 雷达图 / per-site card / 池对比 / Compare Runs / Markdown 导出） |
+
+里程碑时间线：
+
+- 2026-05-10 → v0.1.0：Persona 基础、SDK launcher、桌面壳
+- 2026-05-16 → v0.2.0：humanize 引擎、UA-CH + worker scope 加固
+- 2026-05-17 → v0.7.1：captured WebGL profiles contributor pipeline、CI、ESM cycle fix
+- 2026-05-18 → v0.8.0：Detection Lab 完整桌面集成
+- 2026-05-20 → v0.9.0：CLI 上线 + Detection Lab UX polish
+
+下一步（v0.10 候选）：见下方 [下一步行动](#下一步行动)。
+
+长期愿景（**未落地，可能 v1.0+**）：
+
+- Chromium fork + 15 个 C++ patch（cold storage 中，触发器见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）
+- Cloud Runtime（K8s + gVisor headless 集群、REST + CDP-over-WebSocket、Stagehand SDK 兼容）
+- Persona auto-tune from detection results、real-hardware capture pipeline
+- 法律主体（新加坡 + Delaware C-Corp）、Phase 0 团队组建
 
 ## 下一步行动
 
-1. **本周**：阅读 [PHASE-0-LAUNCH.md](./docs/PHASE-0-LAUNCH.md)，开始执行 Week 1 任务
-2. **本月**：找到 Chromium 内核工程师联创 + Cloud Infra 工程师
-3. **下月**：跑通 Chromium fork 编译流水线，提交第一个 patch（Canvas）
-4. **M3**：Cloud 架构最终定稿 + Cloud Runtime 仓库初始化
+v0.10 候选方向（**未定**，待选）：
+
+1. **Detection Lab 作为自有 CI gate** — 在 `.github/workflows/` 用 v0.9 `detection-lab run-all --fail-on-regression` 对核心 persona 跑回归检测，闭环 SDK 注入改动的自动反检测
+2. **npm publish 流程** — `@mosaiq/sdk` + `@mosaiq/cli` 走公开发布（package.json `files` / `exports` 完善、per-package README、release-please / changesets 自动化），外部能 `npx mosaiq` 或 `npm i @mosaiq/sdk`
+3. **Real-hardware capture v2** — 仿 Phase 7.0 WebGL capture pipeline，扩展到 audio / canvas / font 多 surface 的真机指纹收集，由 desktop UI 引导用户一键贡献
+4. **Desktop UX polish** — 主题、history pagination、persona 批量操作、多窗口
+
+实战反馈优先级最高。如果你打算用 Mosaiq Desktop 跑真账号：
+
+1. `pnpm dev:desktop` 跑通自检（一键 12 站 + 雷达图）
+2. 用 `mosaiq detection-lab run-all --fail-on-regression` 把它接到你自己的 cron / CI
+3. 找几个 sensitive 站点（Reddit / X / Cloudflare 严格站）实战跑一周
+4. 把被检测的指标反馈成 Issue，会优先 v0.10 处理
 
 ## 许可证
 
