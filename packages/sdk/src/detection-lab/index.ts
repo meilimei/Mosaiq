@@ -74,6 +74,13 @@ export {
 } from './run-format.js';
 
 export {
+  diffRuns,
+  type RunDiff,
+  type RunSnapshot,
+  type ChangedHit,
+} from './run-compare.js';
+
+export {
   // 主入口
   computeScore,
   // helpers（bench / desktop renderer 复用）

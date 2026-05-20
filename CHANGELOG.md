@@ -341,6 +341,58 @@ features compose existing SDK primitives).
     --out <file>` against the same `(personaId, runId)` pair
     (validated with `diff` against `baseline-bench-mp6uss3k /
     2026-05-18T13-49-09-107Z`, exit 0).
+- **Phase 9.8 — Hoist `diffRuns` + `RunDiff` types from CLI to SDK
+  (refactor + tests)** (this entry).
+  - Pure refactor (no user-facing behavior change). The 75-LOC
+    `diffRuns(personaId, a, b): RunDiff` function and its supporting
+    types (`RunDiff`, `RunSnapshot`, `ChangedHit`) — originally
+    shipped in 9.2b as inline CLI code at
+    `packages/cli/src/commands/detection-lab/compare.ts` — are
+    lifted to a new pure SDK module
+    `packages/sdk/src/detection-lab/run-compare.ts` (~230 LOC with
+    docs). The function uses only `DetectionRun` / `SurfaceHit`
+    types already in the SDK, so this is just landing it at the
+    right architectural layer.
+  - Motivation: matches the 9.6 pattern of "pure SDK projection +
+    thin CLI / desktop consumers" — symmetric with
+    `formatDetectionRunMarkdown` (run → markdown). The hoist also
+    closes a real test-coverage gap — `diffRuns` had **zero**
+    direct tests before this commit (it was only smoke-verified
+    against real saved runs during 9.2b development). 29 new
+    vitest cases added in `run-compare.test.ts`: snapshot
+    projection (3), hit identity matching incl. severity / evidence
+    churn (9), delta math (2), site flips (4), site list
+    discrepancies (3), `hasRegression` policy (5), failed /
+    canceled runs (3).
+  - New SDK exports (`@mosaiq/sdk` + `@mosaiq/sdk/detection-lab`):
+    `diffRuns`, and types `RunDiff`, `RunSnapshot`, `ChangedHit`.
+  - CLI `compare.ts` shrinks from 422 → 268 lines (-154 net, -180
+    deleted from the pure-logic section). The remaining code is
+    just argv parsing + the colored pretty-printer
+    (`printDiff` / `printSnapshot` / `formatDelta` / `printHitLine`
+    / `printChangedHit`) which stay CLI-local. The SDK import
+    swaps four type imports + `diffRuns` for the deleted inline
+    versions; a comment block records the 9.8 hoist for future
+    readers.
+  - Foundation for a future desktop "Compare Runs" page (9.9+):
+    the renderer can consume `RunDiff` over IPC as a structured-
+    clone-safe POJO, and the desktop main process can call
+    `diffRuns(personaId, runA, runB)` the same way the CLI does
+    today — no re-implementation needed.
+  - **Validation:** workspace typecheck clean (4 packages, SDK
+    rebuilt to refresh `dist/index.d.ts` after adding the new
+    exports — needed for `@mosaiq/cli` to resolve the new names).
+    SDK vitest: 564 → **593** (+29 in `run-compare.test.ts`); CLI
+    vitest: **29** unchanged. Biome lint clean on all 5 changed
+    files (CRLF→LF auto-fix applied to the two new SDK files,
+    same as 9.6). **Byte-identity smoke:** captured `mosaiq
+    detection-lab compare baseline-bench-mp6uss3k
+    2026-05-18T13-44-26-599Z 2026-05-18T13-49-09-107Z` text and
+    `--json` output pre-refactor → ran the same two invocations
+    post-refactor → `diff` exit 0 on both pairs. Exit-code
+    smoke: `--fail-on-regression` returns 0 on equivalent runs
+    (correct: B not regressing); unknown run id returns 2
+    (correct: arg/load error).
 
 ### Documented gotchas
 
