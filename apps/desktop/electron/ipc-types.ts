@@ -8,10 +8,11 @@ import type {
   DetectionRun,
   DetectionRunSummary,
   ProxyVerifyResult,
+  RunDiff,
   RunProgressEvent,
 } from '@mosaiq/sdk';
 
-export type { DetectionRun, DetectionRunSummary, ProxyVerifyResult, RunProgressEvent };
+export type { DetectionRun, DetectionRunSummary, ProxyVerifyResult, RunDiff, RunProgressEvent };
 
 export interface ProxyVerifyInput {
   protocol: 'http' | 'https' | 'socks5';
@@ -208,6 +209,18 @@ export interface MosaiqApi {
     runId: string,
     opts?: ExportRunMarkdownOptions,
   ): Promise<ExportRunMarkdownResult>;
+  /**
+   * v0.9 phase 9.9: 对比同一 persona 的两个 run，返回 SDK `diffRuns` 计算的
+   * `RunDiff` POJO（structured-clone-safe，可直接序列化为 IPC payload）。
+   *
+   * 主进程负责 load 两个 run + 调 `diffRuns` —— 同 9.7 一样，renderer 无法
+   * 直接 import SDK 运行时（Vite 不会优化 `playwright-core/bidi/...`）。任何
+   * 一个 run load 失败都会 reject，renderer 用 try/catch 兜回 toast。
+   *
+   * 约束（与 CLI `detection-lab compare` 一致）：A = baseline / older / reference，
+   * B = candidate / newer / under test；delta 是 B - A。
+   */
+  detectionLabCompareRuns(personaId: PersonaId, runIdA: string, runIdB: string): Promise<RunDiff>;
 }
 
 /**
@@ -249,6 +262,7 @@ export const IPC_CHANNELS = {
   detectionLabGetRun: 'mosaiq:detectionLab:getRun',
   detectionLabDeleteRun: 'mosaiq:detectionLab:deleteRun',
   detectionLabExportRunMarkdown: 'mosaiq:detectionLab:exportRunMarkdown',
+  detectionLabCompareRuns: 'mosaiq:detectionLab:compareRuns',
 } as const;
 
 /**

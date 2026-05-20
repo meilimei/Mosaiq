@@ -393,6 +393,77 @@ features compose existing SDK primitives).
     smoke: `--fail-on-regression` returns 0 on equivalent runs
     (correct: B not regressing); unknown run id returns 2
     (correct: arg/load error).
+- **Phase 9.9 — Desktop "Compare Runs" page** (this entry).
+  - New desktop page `DetectionRunComparePage`
+    (`apps/desktop/src/pages/DetectionRunComparePage.tsx`, ~520 LOC).
+    Lets the user pick two saved runs of the same persona via
+    side-by-side `<select>` dropdowns and renders the SDK
+    `RunDiff` (9.8 hoist) as: A/B snapshot cards (status / duration
+    / sites OK·FAIL / hits / weighted), Δ headline (4 cells
+    weightedHits / hits / Δsites OK / Δsites FAIL with green-down /
+    red-up coloring), site flips section (`✗ ok→fail` red codes,
+    `✓ fail→ok` green codes), site-list discrepancy warning
+    (only-in-A / only-in-B for runs that used different `--only`
+    filters), Removed / Added / Changed hits sections (using the
+    existing `SurfaceHitBadge` component), and a verdict footer
+    (regression / improvement / no material change). Layout order
+    matches the 9.2b CLI `printDiff` output 1:1 so the two
+    surfaces stay mentally aligned.
+  - **Default selection:** A = second-newest run, B = newest run
+    (list sorted `startedAt` desc). Matches the 9.2b CLI
+    convention "A = baseline / older / reference, B = candidate /
+    newer / under test" so Δ = B − A answers "did my latest run
+    regress vs the previous one?" — the most common manual /
+    CI question. A "交换 A/B" button is included for the cases
+    where the user wants to flip baseline and candidate without
+    re-picking from scratch.
+  - **Auto-recompute:** changing either selector fires a fresh
+    `detectionLabCompareRuns` IPC; while the round-trip is in
+    flight the previous diff stays rendered (avoids flicker), and
+    a small "对比中…" spinner sits between the picker cards.
+  - New IPC channel `mosaiq:detectionLab:compareRuns`
+    (`MosaiqApi.detectionLabCompareRuns(personaId, runIdA,
+    runIdB): Promise<RunDiff>`). Unlike 9.7's three-state
+    `{ok, canceled, error}` envelope (which fits a save-dialog
+    flow), this one throws on either-run-load failure → IPC
+    rejects → renderer's `try/catch` surfaces a toast + retry
+    button. Reason: a compare-page error is page-fatal (the page
+    has nothing to render); a save-dialog error is sidecar
+    (the page itself still works).
+  - **Architecture:** identical to 9.7 — the `loadDetectionRun
+    + loadDetectionRun + diffRuns` chain runs in **main**
+    (Node), not the renderer (browser-target Vite). Renderer
+    holds `import type { RunDiff }` only, which tsc erases.
+    Re-uses 9.7's documented gotcha about not pulling SDK runtime
+    into the renderer bundle.
+  - Entry point: a new "对比 Runs" button on `DetectionLabPage`'s
+    header (`<ArrowRightLeft>` icon, between "刷新" and the
+    Run/Cancel toggle), `disabled` while `runs.length < 2` with
+    a tooltip explaining why. App.tsx adds a 7th `Page` kind
+    `detectionCompare` and threads `onOpenCompare` through to the
+    lab page (back-nav: compare → lab → list, mirroring the
+    detail-page chain).
+  - **Validation:** workspace typecheck clean (4 packages); desktop
+    vitest 45/45 unchanged (this change is integration plumbing
+    composing the 9.8 SDK `diffRuns` — `run-compare.test.ts` has
+    29 cases covering the pure logic, no new test file needed in
+    desktop, matching the 9.7 precedent); biome lint clean on the
+    6 changed files. Desktop production build (`pnpm --filter
+    @mosaiq/desktop build`) succeeds — 2309 renderer modules
+    transformed with no Vite dep-optimization complaints, proving
+    the new code didn't accidentally pull SDK runtime into the
+    renderer bundle.
+  - **Byte-identity smoke:** the IPC handler's chain
+    (`loadDetectionRun(A) + loadDetectionRun(B) + diffRuns`) is
+    structurally identical to the CLI's `compare.ts:87-99`
+    chain, and Electron structured-clone of a POJO `RunDiff` is
+    byte-equivalent to `JSON.parse(JSON.stringify(diff))` — so
+    the desktop's IPC payload matches `mosaiq detection-lab
+    compare --json <persona> <A> <B>` by construction. The CLI
+    invocation against the same `(baseline-bench-mp6uss3k,
+    2026-05-18T13-44-26-599Z, 2026-05-18T13-49-09-107Z)` pair
+    9.8 used returns exit 0 + 37-line JSON, confirming the
+    fixtures and chain resolve.
 
 ### Documented gotchas
 

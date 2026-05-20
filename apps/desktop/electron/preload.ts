@@ -55,6 +55,8 @@ const api: MosaiqApi = {
     runId: string,
     opts?: ExportRunMarkdownOptions,
   ) => ipcRenderer.invoke(IPC_CHANNELS.detectionLabExportRunMarkdown, personaId, runId, opts ?? {}),
+  detectionLabCompareRuns: (personaId: PersonaId, runIdA: string, runIdB: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.detectionLabCompareRuns, personaId, runIdA, runIdB),
 };
 
 const events: MosaiqEvents = {

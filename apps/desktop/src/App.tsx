@@ -5,6 +5,7 @@ import type { PersonaId } from '@mosaiq/persona-schema';
 import pkg from '../package.json';
 import { ToastProvider } from './components/Toast.js';
 import { DetectionLabPage } from './pages/DetectionLabPage.js';
+import { DetectionRunComparePage } from './pages/DetectionRunComparePage.js';
 import { DetectionRunDetailPage } from './pages/DetectionRunDetailPage.js';
 import { PersonaClonePage } from './pages/PersonaClonePage.js';
 import { PersonaCreatePage } from './pages/PersonaCreatePage.js';
@@ -19,6 +20,7 @@ type Page =
   | { kind: 'clone'; sourceId: PersonaId }
   | { kind: 'detectionLab'; personaId: PersonaId; personaName?: string }
   | { kind: 'detectionRun'; personaId: PersonaId; personaName?: string; runId: string }
+  | { kind: 'detectionCompare'; personaId: PersonaId; personaName?: string }
   | { kind: 'personaPool' };
 
 export default function App() {
@@ -66,12 +68,32 @@ export default function App() {
                   runId,
                 })
               }
+              onOpenCompare={() =>
+                setPage({
+                  kind: 'detectionCompare',
+                  personaId: page.personaId,
+                  personaName: page.personaName,
+                })
+              }
             />
           )}
           {page.kind === 'detectionRun' && (
             <DetectionRunDetailPage
               personaId={page.personaId}
               runId={page.runId}
+              onBack={() =>
+                setPage({
+                  kind: 'detectionLab',
+                  personaId: page.personaId,
+                  personaName: page.personaName,
+                })
+              }
+            />
+          )}
+          {page.kind === 'detectionCompare' && (
+            <DetectionRunComparePage
+              personaId={page.personaId}
+              personaName={page.personaName}
               onBack={() =>
                 setPage({
                   kind: 'detectionLab',

@@ -25,6 +25,7 @@ import {
   type RunStatus,
   SDK_VERSION,
   deleteDetectionRun,
+  diffRuns,
   exportPersonaJson,
   formatDetectionRunMarkdown,
   getDetectionRunArtifactDir,
@@ -61,6 +62,7 @@ import {
   type ImportPersonaResult,
   type PersonaSummary,
   type ProxyVerifyInput,
+  type RunDiff,
   type UpdatePersonaInput,
 } from './ipc-types.js';
 
@@ -686,6 +688,25 @@ function registerIpcHandlers() {
       } catch (err) {
         return { ok: false, error: (err as Error).message };
       }
+    },
+  );
+
+  /**
+   * v0.9 phase 9.9: 对比同一 persona 的两个 run。Reuse SDK pure `diffRuns`，
+   * 同 9.7 一样在主进程跑（renderer 不能 import SDK 运行时）。
+   *
+   * 与 9.7 (`exportRunMarkdown`) 错误处理风格不同：这里直接 throw，让 IPC
+   * reject 端到 renderer 的 try/catch（与 `detectionLabGetRun` 行为对齐）。
+   * Reason: 对比页面的 error 一定要让 UI 知道（否则页面就空着），而不是像
+   * 「保存失败」那种侧边的 dialog 报错。
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabCompareRuns,
+    (_evt, personaId: PersonaId, runIdA: string, runIdB: string): RunDiff => {
+      // 任何一边 load 失败 → throw → IPC reject。Renderer 用 toast.error 兜。
+      const runA = loadDetectionRun(personaId, runIdA);
+      const runB = loadDetectionRun(personaId, runIdB);
+      return diffRuns(personaId, runA, runB);
     },
   );
 }

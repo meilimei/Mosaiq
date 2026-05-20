@@ -16,7 +16,16 @@
  * "New Run" 按钮兜底，避免误点等回程报错。
  */
 
-import { AlertCircle, ArrowLeft, Loader2, Play, RefreshCw, Square, Trash2 } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRightLeft,
+  Loader2,
+  Play,
+  RefreshCw,
+  Square,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useToast } from '@/components/Toast.js';
@@ -34,6 +43,11 @@ interface DetectionLabPageProps {
   personaName?: string;
   onBack: () => void;
   onOpenRun: (runId: string) => void;
+  /**
+   * v0.9 phase 9.9: 进入对比页（同 persona 的两个 run 间 diff）。父级负责
+   * 路由切换；本页只提供入口按钮，run 数 < 2 时按钮 disabled。
+   */
+  onOpenCompare: () => void;
 }
 
 /**
@@ -62,6 +76,7 @@ export function DetectionLabPage({
   personaName,
   onBack,
   onOpenRun,
+  onOpenCompare,
 }: DetectionLabPageProps) {
   const toast = useToast();
   const [runs, setRuns] = useState<DetectionRunSummary[]>([]);
@@ -240,6 +255,15 @@ export function DetectionLabPage({
             title="刷新历史 run 列表"
           >
             <RefreshCw className="mr-1 h-4 w-4" /> 刷新
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenCompare}
+            disabled={runs.length < 2}
+            title={runs.length < 2 ? '至少需要 2 次 run 才能对比' : '对比两次 run 之间的差异'}
+          >
+            <ArrowRightLeft className="mr-1 h-4 w-4" /> 对比 Runs
           </Button>
           {active ? (
             <Button variant="destructive" size="sm" onClick={handleCancel}>
