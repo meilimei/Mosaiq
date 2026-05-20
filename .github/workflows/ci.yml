@@ -1,13 +1,19 @@
 # CI — runs on every PR + push to main
 #
 # Guards:
-#   1. typecheck across the whole workspace (persona-schema, sdk, desktop)
-#   2. unit tests for persona-schema + sdk (vitest)
+#   1. typecheck across the whole workspace (persona-schema, sdk, cli, desktop)
+#   2. unit tests for all 4 packages (persona-schema, sdk, cli, desktop) via vitest
 #   3. captured-WebGL-profiles drift check — bench/captured-profiles/*.json
 #      must stay in lock-step with src/injection/webgl-profiles-captured.ts
 #      (Phase 7.0 contributor pipeline). Re-run
 #      `pnpm --filter @mosaiq/sdk run bench:integrate-profiles` locally and
 #      commit the regenerated TS to fix a drift failure.
+#
+# Biome lint is NOT enforced here yet — project convention is "clean on
+# changed files only" and full-repo `pnpm lint` currently reports 147
+# legacy errors on pre-v0.8 bench scripts + a few renderer pages. The
+# cleanup + CI gate is tracked as a separate follow-up so v0.9 release
+# isn't blocked on it.
 #
 # We run on ubuntu-latest. Mosaiq desktop runs on Windows, but the test
 # surface (pure functions, vitest) is platform-agnostic. Windows-specific
@@ -53,9 +59,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Desktop's typecheck imports workspace packages through their built
-      # dist `.d.ts` files (per DEVELOPMENT.md). Build the packages first so
-      # the resolution succeeds. SDK + persona-schema build is fast (<10s).
+      # Desktop + CLI typecheck imports workspace packages through their
+      # built dist `.d.ts` files (per DEVELOPMENT.md). Build the upstream
+      # packages first so the resolution succeeds. SDK + persona-schema
+      # build is fast (<10s).
       - name: Build workspace packages
         run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" build
 
@@ -67,6 +74,18 @@ jobs:
 
       - name: Test — sdk
         run: pnpm --filter @mosaiq/sdk test
+
+      # CLI vitest covers pure helpers under packages/cli/src/commands/**
+      # (selectPersonas / aggregateBatch / decideBatchExitCode / template-
+      # tag parsing / proxy-url shaping). Does not spawn Chromium.
+      - name: Test — cli
+        run: pnpm --filter @mosaiq/cli test
+
+      # Desktop vitest covers pure renderer helpers (artifact-url) and the
+      # main-process artifact protocol core (path resolution, MIME). No
+      # Electron runtime is started — these are happy-dom / Node tests.
+      - name: Test — desktop
+        run: pnpm --filter @mosaiq/desktop test
 
       # Phase 7.0 drift detection: regenerate the captured-profiles TS in
       # `--check` mode and fail if the on-disk file differs. This is the
