@@ -4,6 +4,10 @@
   "private": true,
   "description": "Mosaiq — Browser infrastructure for the agentic AI economy",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meilimei/Mosaiq.git"
+  },
   "engines": {
     "node": ">=20.10.0",
     "pnpm": ">=9.0.0"

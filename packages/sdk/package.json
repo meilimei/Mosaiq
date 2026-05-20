@@ -3,6 +3,39 @@
   "version": "0.9.0",
   "description": "Mosaiq SDK — launch Chromium with persona-driven anti-detection. Drop-in for Playwright/Stagehand.",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/meilimei/Mosaiq/tree/main/packages/sdk#readme",
+  "bugs": { "url": "https://github.com/meilimei/Mosaiq/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meilimei/Mosaiq.git",
+    "directory": "packages/sdk"
+  },
+  "keywords": [
+    "mosaiq",
+    "antidetect",
+    "anti-detect",
+    "fingerprint",
+    "browser-fingerprint",
+    "persona",
+    "playwright",
+    "playwright-core",
+    "playwright-extra",
+    "stagehand",
+    "puppeteer-extra",
+    "stealth",
+    "rebrowser-patches",
+    "automation",
+    "anti-bot",
+    "cdp",
+    "detection-lab"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,7 +49,7 @@
       "import": "./dist/injection/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE.md"],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",

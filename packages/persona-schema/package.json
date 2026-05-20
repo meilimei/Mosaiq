@@ -3,6 +3,34 @@
   "version": "0.9.0",
   "description": "Persona schema definitions for Mosaiq — the canonical source of truth for browser fingerprints",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/meilimei/Mosaiq/tree/main/packages/persona-schema#readme",
+  "bugs": { "url": "https://github.com/meilimei/Mosaiq/issues" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meilimei/Mosaiq.git",
+    "directory": "packages/persona-schema"
+  },
+  "keywords": [
+    "mosaiq",
+    "antidetect",
+    "anti-detect",
+    "fingerprint",
+    "browser-fingerprint",
+    "persona",
+    "playwright",
+    "automation",
+    "anti-bot",
+    "stealth",
+    "zod",
+    "json-schema"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,7 +44,7 @@
       "import": "./dist/templates/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE.md"],
+  "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
