@@ -7,7 +7,236 @@ in 0.x (minor bumps may include breaking changes).
 
 ## [Unreleased]
 
-_No changes yet — next phase starts here._
+_No changes yet — next phase (Track B of v0.10, the Detection Lab CI gate)
+starts here._
+
+## [0.10.0] — 2026-05-21
+
+The **"v0.10 npm distribution + publish-readiness"** release. Takes the
+v0.9 CLI parity work (which until now only existed inside the Mosaiq
+monorepo) and ships it to npm: `@mosaiq/persona-schema`, `@mosaiq/sdk`,
+and `@mosaiq/cli` are now publicly installable as
+`npm i @mosaiq/<pkg>@0.10.0`. The 302-line `rebrowser-patches`
+playwright-core patch — previously only applied during workspace
+`pnpm install` via `pnpm.patchedDependencies` — is now shipped inside the
+`@mosaiq/sdk` tarball and applied to external consumers' `playwright-core`
+via a `patch-package` `postinstall` hook. Version management switches from
+hand-edited `chore(release):` commits to [changesets](https://github.com/changesets/changesets)
+with a `fixed` lock-step group across the three publishable packages
+(matching the v0.9 lock-step pattern, just automated).
+
+All 4 packages bumped 0.9 → 0.10 in lock-step:
+
+  - `@mosaiq/persona-schema` 0.9.0 → 0.10.0 (no schema changes; release
+    sync + npm metadata baseline)
+  - `@mosaiq/sdk` 0.9.0 → 0.10.0 (no API changes; npm metadata + the
+    `patches/`+`postinstall.cjs` shipping mechanism; `SDK_VERSION`
+    constant bumped to keep `DetectionRun.meta.sdkVersion` aligned)
+  - `@mosaiq/cli` 0.9.0 → 0.10.0 (no CLI surface changes; `private: true`
+    removed so the package can publish)
+  - `@mosaiq/desktop` 0.9.0 → 0.10.0 (no behavior change; release sync
+    only; desktop remains `private` and never publishes to npm)
+
+This release **does not** ship the Detection Lab CI gate (Track B of the
+v0.10 plan, phases 10.6-10.9). That track is now scheduled for v0.11 — the
+plan document is in `docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md` and the
+phases stay numbered 10.6-10.9 for historical clarity. See
+[`docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md`](./docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md)
+§10-12 for what's pending.
+
+CI tightened in `5a81738` and `1e989eb`: two new drift gates run on every
+PR + push to main —
+[`scripts/check-sdk-patch-drift.mjs`](./scripts/check-sdk-patch-drift.mjs)
+(byte-compare workspace-root `patches/` vs `packages/sdk/patches/`) and
+[`scripts/audit-tarballs.mjs`](./scripts/audit-tarballs.mjs) (verify the
+three publishable npm tarballs' file lists against per-package
+REQUIRED/FORBIDDEN allow-lists).
+
+### Added
+
+- **Phase 10.1 — package metadata baseline + LICENSE + sdk README**
+  (`commit dc4cac3`).
+  - Three publishable packages (`@mosaiq/persona-schema` / `@mosaiq/sdk`
+    / `@mosaiq/cli`) gained the metadata fields npm registry expects:
+    `repository{type,url,directory}` (per-package monorepo path), `bugs`,
+    `homepage` (GitHub README anchor), `keywords` (mosaiq / antidetect /
+    fingerprint / playwright / automation / ...), `publishConfig {access:
+    public, provenance: true}` (npm OIDC attestation badge), and
+    `engines.node >=20.10.0` (aligned with workspace root).
+  - `packages/<pkg>/LICENSE`: full Apache-2.0 license text (201 lines per
+    package, "Copyright 2026 Mosaiq contributors"). Previously the
+    package.json `files` field listed `LICENSE.md` but no such file
+    physically existed inside any package directory; the npm tarball
+    silently shipped without a license. Fixed.
+  - `packages/sdk/README.md`: first-time creation (~270 lines). Covers
+    5-min Quickstart, Detection Lab `runDetection` usage,
+    `formatDetectionRunMarkdown` report shape, public API surface
+    organized by area (browser launch / persona storage / portability /
+    Detection Lab / Humanize / proxy / paths / persona-schema
+    re-exports), Playwright + Stagehand integration recipe, and the
+    explicit "known limitations" section that's been previously buried
+    in `bench/PHASE-*-PLAN.md` (creepjs WebGL bold-fail math, TLS
+    fingerprint gap, chromium-fork cold-storage status).
+  - `packages/cli/package.json`: removed `"private": true` so npm
+    publish can proceed; the v0.9 `private` flag was a placeholder while
+    the CLI matured.
+  - Root `package.json`: added `repository` field (parity with
+    sub-packages) and confirmed `"private": true` is set (defensive
+    guard against an accidental `pnpm publish` from the workspace root,
+    which would otherwise publish a stub `mosaiq@0.1.0` placeholder).
+  - **Pack dry-run sizes** (verified post-build): `@mosaiq/persona-schema`
+    40.0 kB packed / 184.6 kB unpacked / 63 files; `@mosaiq/sdk` 187.5
+    kB / 699.7 kB / 125 files; `@mosaiq/cli` 67.9 kB / 309.3 kB / 50
+    files. `npm publish --dry-run` against `@mosaiq/sdk` produces 0
+    warnings (other than the expected "login required" notice).
+
+- **Phase 10.2 — `patch-package` postinstall ships rebrowser-patches to
+  npm consumers** (`commit 1e989eb`).
+  - Solves the structural gap noted in the v0.10 plan §2.2: in v0.9, the
+    302-line `rebrowser-patches` `playwright-core@1.59.1.patch` is
+    applied only by `pnpm.patchedDependencies` during workspace install.
+    External `npm i @mosaiq/sdk` consumers receive an unpatched
+    `playwright-core` — sannysoft / creepjs gain back the `webdriver`
+    surface hit. v0.10 closes this.
+  - `packages/sdk/patches/playwright-core@1.59.1.patch`: byte-identical
+    copy of the workspace-root `patches/`. Two copies are necessary —
+    workspace install (`pnpm.patchedDependencies`) reads the root copy,
+    npm consumer install (sdk's `postinstall`) reads the sdk copy. A
+    drift check (see below) locks them in sync.
+  - `packages/sdk/scripts/postinstall.cjs` (~150 LOC): the patch
+    applicator. Detects whether the SDK is installed inside the Mosaiq
+    monorepo (no `node_modules` in our resolved path → exit 0,
+    `pnpm.patchedDependencies` already handles patching) or inside an
+    external consumer's `node_modules/@mosaiq/sdk/`. In the latter case
+    it walks up to find the consumer project root (closest ancestor
+    `node_modules`'s parent), verifies `playwright-core` exists and is
+    exactly version `1.59.1` (refuses to patch other versions —
+    fail-loud rather than corrupt a different release), resolves
+    `patch-package`'s bin via `require.resolve('patch-package/
+    package.json')`, then `spawnSync` invokes it with `--patch-dir`
+    pointing back to our shipped `patches/`. **Never exits non-zero** —
+    a failed patch warns on stderr but does not break the consumer's
+    `npm install`. Escape hatches: `MOSAIQ_SDK_SKIP_POSTINSTALL=1` env
+    var, or `npm install --ignore-scripts` (npm's own escape).
+  - `packages/sdk/package.json`: `patch-package` added as a regular
+    `dependency` (must be at install time, not devDep); `postinstall`
+    script entry added; `files` field extended to ship
+    `patches/`+`scripts/` in the tarball.
+  - `scripts/check-sdk-patch-drift.mjs` (~70 LOC): byte-level drift gate
+    between the workspace-root `patches/` and `packages/sdk/patches/`.
+    LF-normalized so Windows checkouts (CRLF) don't false-positive.
+    Fails CI with explicit `cp <source> <dest>` instructions if drift
+    is detected. Wired into the existing `ci.yml` next to the Phase 7.0
+    captured-WebGL-profiles drift check (same place reviewers already
+    look for these guards).
+  - **Trade-off accepted**: `patch-package@^8.0.0` pulls ~18 transitive
+    dependencies (chalk / fs-extra / cross-spawn / semver / ...) adding
+    ~5 MB to SDK installed size. Acceptable next to the ~30 MB
+    playwright-core install the SDK already requires. Alternative
+    "vendored fork `@mosaiq/playwright-core`" approach evaluated and
+    deferred (see v0.10 plan §5.1 decision matrix; maintenance cost on
+    every Playwright release outweighs the install-size win).
+
+- **Phase 10.3 — `prepublishOnly` hooks + tarball audit gate**
+  (`commit 5a81738`).
+  - Three publishable packages gained `prepublishOnly` scripts:
+    `pnpm run clean && pnpm run build && pnpm run typecheck`. Belt-and-
+    suspenders against a stale `dist/` shipping to npm even if someone
+    bypasses `release.yml` and runs `pnpm publish` from a local shell.
+  - `scripts/audit-tarballs.mjs` (~165 LOC): publish gate. For each of
+    the three publishable packages, spawns `npm pack --dry-run --json`,
+    parses the file list, and asserts (a) all REQUIRED files are
+    present (package.json / README.md / LICENSE / `dist/index.{js,d.ts}`
+    / sdk's `patches/`+`scripts/postinstall.cjs` / cli's `bin/mosaiq.js`)
+    and (b) no FORBIDDEN substring appears in any file path (`bench/`
+    / `src/` / `*.test.*` / `chromium-fork` / `captured-profiles` /
+    `node_modules` / `tsconfig.json` / `vitest.config`). Fails CI with
+    a per-violation list and exit 1 if any assertion breaks. Adding
+    "bench" to the SDK `files` field in a failure-mode test reproduced
+    18 violations (13 bench result PNGs / HTMLs / JSON + 1 test file
+    + 4 bench scripts), confirming the audit catches the regressions
+    it's designed to catch.
+  - Wired into the existing `ci.yml` next to the drift checks; also
+    duplicated into `release.yml` so the release path doesn't depend
+    on a successful PR CI pass.
+
+- **Phase 10.4 — changesets lock-step + `release.yml`**
+  (`commit e5e1a28`).
+  - `@changesets/cli@^2.31.0` added to root devDependencies. Version
+    management switches from hand-edited `chore(release):` commits to
+    automated changesets PRs.
+  - `.changeset/config.json`: `"fixed":
+    [["@mosaiq/persona-schema","@mosaiq/sdk","@mosaiq/cli"]]` — the
+    three publishable packages bump in lock-step. Touching any one
+    via `pnpm changeset` triggers all three to bump together (matches
+    the v0.9 manual `chore(release): v0.9.0` pattern in commit
+    `dd2b3e8`). `"ignore": ["@mosaiq/desktop"]` — Electron app, never
+    on npm. `"changelog": false` — disable changesets'
+    auto-CHANGELOG.md generation; we keep `CHANGELOG.md` hand-written
+    in Chinese per the v0.1-v0.9 style (auto-generated English
+    PR-link format would clash). `"access": "public"` /
+    `"updateInternalDependencies": "patch"` /
+    `"baseBranch": "main"` for the remaining baseline.
+  - `.changeset/README.md` (~110 lines): contributor docs covering the
+    `pnpm changeset` ↔ release PR ↔ npm publish loop, the
+    hand-written-CHANGELOG rule, and the "v0.10.0 first publish is
+    manual" caveat (no changesets accumulated when v0.10 ships, so
+    the first publish bypasses the auto-PR path).
+  - `.github/workflows/release.yml` (~80 lines): the release CI job.
+    On push to `main`, runs the same drift + audit gates as `ci.yml`,
+    then `changesets/action@v1` — either opens a `chore(release):
+    version packages` PR or, if pending changesets are absent (the
+    PR just merged), runs `pnpm changeset publish` to push to npm.
+    Permissions include `id-token: write` for npm OIDC provenance
+    attestation; `NPM_CONFIG_PROVENANCE=true` makes the published
+    packages show "verified provenance" on their npmjs.com page.
+    Concurrency-locked to prevent parallel publishes that could clash
+    on version numbers.
+  - **Lock-step verified**: dry-run added a `.changeset/*.md` for
+    `@mosaiq/sdk: minor`; `pnpm changeset status` reported all three
+    publishable packages (sdk + cli + persona-schema) scheduled to
+    bump together. `pnpm changeset version --snapshot test` confirmed
+    desktop did **not** bump (the `ignore` config works). Test
+    changeset and snapshot version edits then reverted.
+
+- **Phase 10.5 — release readiness** (this entry).
+  - All 4 package.json versions bumped 0.9.0 → 0.10.0 in lock-step.
+  - `packages/sdk/src/version.ts`: `SDK_VERSION` bumped to `'0.10.0'`
+    to keep `DetectionRun.meta.sdkVersion` aligned with the actual SDK
+    version (verified by the existing `version.test.ts` package-json-
+    sync test from v0.8 phase 8.5).
+  - `README.md` + `QUICKSTART.md`: updated "current milestone" banners
+    + status table to reflect 0.10.0 lock-step; added a new "npm
+    install path" section as the first 5-minute path for end users
+    (alongside the existing monorepo `pnpm install` path for
+    contributors). The "下一步行动" / "v0.10 候选" lists from v0.9 are
+    rewritten to reflect what's now shipped vs. what's deferred to
+    v0.11 (Track B Detection Lab CI gate; real-hardware capture v2;
+    public leaderboard).
+
+### Changed
+
+- `pnpm-lock.yaml`: +537 lines for `@changesets/cli` transitive deps
+  in phase 10.4, +18 deps for `patch-package` in phase 10.2.
+- `.github/workflows/ci.yml`: two new steps — `check-sdk-patch-drift`
+  (10.2) and `audit-tarballs` (10.3) — gating every PR + push to main.
+
+### Notes
+
+- **NPM org reservation is a manual step**. Before publishing 0.10.0,
+  the maintainer must create the `@mosaiq` organization at
+  <https://www.npmjs.com/org/create> and add a granular automation token
+  with publish scope to the GitHub repo's `NPM_TOKEN` secret. Both are
+  one-time prerequisites — `release.yml` then handles all subsequent
+  releases automatically. The 0.10.0 first publish itself is currently
+  scheduled to happen manually from a maintainer's shell with
+  `NPM_TOKEN` set; see `.changeset/README.md` "v0.10.0 first publish".
+- **Once 0.10.0 is on npm, the smoke test** (per the v0.10 plan §16
+  release gate definition) is: `mkdir /tmp/smoke && cd /tmp/smoke &&
+  npm init -y && npm i -g @mosaiq/cli@0.10.0 && npx playwright install
+  chromium && mosaiq personas templates list` — must complete with the
+  4-template table printed. If this fails on any of macOS / Linux /
+  Windows on Node 20+, the failure becomes a 0.10.1 patch.
 
 ## [0.9.0] — 2026-05-20
 

@@ -1,6 +1,6 @@
 {
   "name": "@mosaiq/sdk",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Mosaiq SDK — launch Chromium with persona-driven anti-detection. Drop-in for Playwright/Stagehand.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/meilimei/Mosaiq/tree/main/packages/sdk#readme",

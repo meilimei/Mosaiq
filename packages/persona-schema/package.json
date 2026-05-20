@@ -1,6 +1,6 @@
 {
   "name": "@mosaiq/persona-schema",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Persona schema definitions for Mosaiq — the canonical source of truth for browser fingerprints",
   "license": "Apache-2.0",
   "homepage": "https://github.com/meilimei/Mosaiq/tree/main/packages/persona-schema#readme",

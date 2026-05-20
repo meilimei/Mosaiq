@@ -1,8 +1,8 @@
-# Mosaiq v0.9 — Quickstart
+# Mosaiq v0.10 — Quickstart
 
-> **当前里程碑**：v0.9.0 已发布（2026-05-20）。架构是 **Playwright + CDP 注入**，不是 Chromium fork（fork 路径冷藏中，详见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）。
-> 4-package monorepo：`@mosaiq/persona-schema` / `@mosaiq/sdk` / `@mosaiq/cli` / `@mosaiq/desktop`，全部 0.9.0 lock-step 发布。
-> 这是务实起步：1 周跑通自检 + 历史趋势，桌面与 CLI 双入口。Chromium fork 解冻触发器明确写在 STATUS.md 里。
+> **当前里程碑**：v0.10.0 已发布（2026-05-21）。架构是 **Playwright + CDP 注入**，不是 Chromium fork（fork 路径冷藏中，详见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）。
+> 4-package monorepo，三个发包包 0.10.0 lock-step 公开在 npm：`@mosaiq/persona-schema` / `@mosaiq/sdk` / `@mosaiq/cli`；`@mosaiq/desktop` 永久 private（Electron app）。
+> **v0.10 的关键新事**：从 git clone-only 走到 `npm i @mosaiq/cli` 直装；SDK 通过 `patch-package` postinstall 自动应用 rebrowser-patches 给 `playwright-core@1.59.1`；changesets 接管版本。
 
 ---
 
@@ -73,6 +73,55 @@
 
 ## 5 分钟跑起来
 
+两条路径任选一条。路径 A 适合**只想用 CLI / SDK 跑反检测的最终用户**；路径 B 适合**想看桌面 UI 或参与开发的贡献者**。
+
+### 路径 A：npm（v0.10+，end user，无需 git clone）
+
+```bash
+# 1. 全局装 mosaiq CLI （会自动装 @mosaiq/sdk + @mosaiq/persona-schema）
+#    安装时 SDK 的 postinstall 会自动应用 rebrowser-patches 给 playwright-core
+npm i -g @mosaiq/cli
+
+# 2. 装 Playwright Chromium（约 140 MB，跨项目共用）
+npx playwright install chromium
+
+# 3. 看 4 个 OS 模板
+mosaiq personas templates list
+
+# 4. 创建一个 persona（这里用 Win11 Chrome US 模板）
+mosaiq personas create alice --template win11-chrome-us --display-name "Alice"
+
+# 5. 跑 12 站反检测自检
+mosaiq detection-lab run alice
+```
+
+如果你想脚本化集成而不是命令行：
+
+```typescript
+// any-node-project/index.ts
+import { loadPersona, launchPersona, runDetection } from '@mosaiq/sdk';
+
+const alice = loadPersona('alice');           // 读 ~/.mosaiq/personas/alice.json
+const session = await launchPersona(alice);   // 启动 Chromium，已注入指纹
+const page = await session.open('https://creepjs.com');
+// ... 跟 Playwright API 一样
+await session.close();
+
+// 或者一键自检
+const { score } = await runDetection(alice);
+console.log(`Weighted hits: ${score.weightedHits}`);
+```
+
+Persona 数据 + Cookie + 缓存默认存在 `~/.mosaiq/`。CLI 跟桌面 app 共用同一个目录，
+所以在 CLI 创建的 persona 在桌面里能直接看到（**前提是你也装了桌面 app，走路径 B**）。
+
+⚠️ **`patch-package` postinstall 注意**：如果你的 CI 用 `npm ci --ignore-scripts`
+安装，SDK 的 postinstall 不会跑，`playwright-core` 不会被 patch，sannysoft
+会多出 1 个 `webdriver` high hit。绕开方法：CI 里手工 `npx patch-package
+--patch-dir node_modules/@mosaiq/sdk/patches` 显式 apply，或者放开 postinstall。
+
+### 路径 B：monorepo（贡献者 / 想跑桌面 UI / dev 模式）
+
 ```powershell
 # 1. 克隆 / 拉到本地，进入目录
 cd d:\projects\Mosaiq
@@ -132,7 +181,7 @@ pnpm dev:desktop
 
 ---
 
-## 仓库布局（v0.9 实际状态）
+## 仓库布局（v0.10 实际状态）
 
 ```
 Mosaiq/
@@ -344,9 +393,17 @@ CLI 没有自己的反检测/注入逻辑 — 它是 `@mosaiq/sdk` 公共 API（
 
 ---
 
-## v0.9 的诚实边界
+## v0.10 的诚实边界
 
-✅ **v0.9 比 v0.2 多解决的事**（避免重复 v0.2 时期的同类讨论）：
+✅ **v0.10 比 v0.9 多解决的事**：
+
+- ✅ **三发包包公开在 npm** — `@mosaiq/persona-schema` / `@mosaiq/sdk` / `@mosaiq/cli` 都是 0.10.0 lock-step 公开，外部 `npm i` 直装；之前必须 git clone monorepo
+- ✅ **playwright-core 补丁随 SDK 分发** — `rebrowser-patches` 302 行 patch 通过 `patch-package` postinstall 自动作用到消费者的 `playwright-core@1.59.1`；之前只在 monorepo 内 pnpm 装时生效
+- ✅ **版本管理自动化** — changesets 接管, 三发包包 `fixed` group 同进同退; 之前手工编辑 4 个 package.json + commit
+- ✅ **发布前 tarball 审计** — `scripts/audit-tarballs.mjs` 在 CI + release.yml 都过, 防 `bench/` / `chromium-fork` / `*.test.*` 等意外漏进 npm
+- ✅ **patch 漂移 gate** — `scripts/check-sdk-patch-drift.mjs` 锁住 workspace 根 `patches/` 与 `packages/sdk/patches/` 字节一致
+
+✅ **从 v0.8/0.9 继承的关键能力**：
 
 - ✅ **自检不再是手动入口** — Detection Lab 已 12 站 + 雷达图 + history trend + 池对比 + Compare Runs + Markdown 导出 + CLI run/run-all + 回归 gate；既有桌面 UI 又有脚本入口
 - ✅ **WebGL 真机指纹收集流程已有** — Phase 7 captured-profiles 工作流（`bench:integrate-profiles`），用户能贡献自己的 GPU profile
@@ -357,15 +414,17 @@ CLI 没有自己的反检测/注入逻辑 — 它是 `@mosaiq/sdk` 公共 API（
 - **没有真 TLS 指纹层**（JA3/JA4 在 Playwright 模式下还是 Chrome 默认）。Cloudflare BotScore 严格站点能识别为「自动化 Chrome」。
   → 解决需要 Chromium fork + BoringSSL 层 patch（cold storage 中，触发器见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）。Detection Lab 站集里有 `browserscan` / `iphey` 能侧面映射 TLS 失败，但不是直接 JA3 比对
 - **humanize 仅覆盖鼠标 + 键盘**，滚动惯性 / 页面停留时长 / 阅读 dwell 仍未建模
-  → v0.10+ 计划：thinking pause（Pareto 500-3000ms）+ scroll inertia
+  → v0.11+ 计划：thinking pause（Pareto 500-3000ms）+ scroll inertia
 - **没有 detection lab public leaderboard**（与 PRD 提到的 "公开 leaderboard 含 Browserbase / Multilogin / AdsPower 对比" 还有差距）
-  → 需要持续 e2e 跑收集 + 静态站点托管，是 v0.10+ 候选
+  → 需要持续 e2e 跑收集 + 静态站点托管，是 v0.11 候选
 - **没有 Cloud Runtime**（与 PRD/WHITEPAPER 双引擎愿景的另一半还没开始）
   → K8s + gVisor + CDP-over-WebSocket gateway 是大工程，看市场反馈决定时机
-- **CLI 还没 npm publish**（目前只能在 monorepo 内 `pnpm mosaiq`，外部用户无法 `npx mosaiq`）
-  → v0.10 候选方向之一
-- **CI 还没用自己的 Detection Lab 当反检测回归 gate**（v0.9 ship 了 `run-all --fail-on-regression`，但还没接到 `.github/workflows/`）
-  → v0.10 候选方向之一
+- **CI 还没用自己的 Detection Lab 当反检测回归 gate**（v0.9 ship 了 `run-all --fail-on-regression`，v0.10 双轨规划里的 Track B 是接到 `.github/workflows/detection-lab.yml`，但 v0.10 只 ship 了 Track A npm 发行）
+  → **v0.11 Track A 主线**；完整规划见 [V0.10 plan](./docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md) §10-12
+- **没有 real-hardware capture v2**（Phase 7.0 WebGL capture 还没扩展到 audio / canvas / font 多 surface）
+  → v0.11 候选；v0.10 npm 公开发行后才会有外部 contributor 池支持这件事
+- **patch-package postinstall 与 `--ignore-scripts` 不兼容**（CI 用 `npm ci --ignore-scripts` 时反检测降级）
+  → 文档明确写了绕开方法（手工 `npx patch-package --patch-dir node_modules/@mosaiq/sdk/patches`）。runtime warn 检查推到 v0.11 评估
 
 ---
 

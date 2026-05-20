@@ -3,15 +3,40 @@
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
 
-> **Status:** v0.9 phase 9.10 — full persona CRUD: `personas list` /
-> `show` / `create` / `update` / `clone` / `delete` / `export` / `import` /
-> `templates list`, plus `detection-lab run` / `run-all` / `list-runs` /
-> `show-run` / `delete-run` / `compare` / `export-run`.
+> **Status:** v0.10.0 — first public npm release. Full persona CRUD:
+> `personas list` / `show` / `create` / `update` / `clone` / `delete` /
+> `export` / `import` / `templates list`, plus `detection-lab run` /
+> `run-all` / `list-runs` / `show-run` / `delete-run` / `compare` /
+> `export-run`.
 
 ## Install
 
-`@mosaiq/cli` is a workspace package and gets linked automatically by `pnpm install`
-at the repo root. There is no published npm release yet.
+### From npm (v0.10+)
+
+```bash
+npm i -g @mosaiq/cli
+# or scoped to a project
+npm i @mosaiq/cli --save-dev
+```
+
+Then:
+
+```bash
+npx playwright install chromium    # one-time Chromium binary install
+mosaiq personas templates list     # smoke test
+```
+
+> Installing `@mosaiq/cli` also installs `@mosaiq/sdk` + `@mosaiq/persona-schema`
+> as transitive deps. The SDK's `postinstall` script automatically applies
+> the `rebrowser-patches` patch to your `node_modules/playwright-core`
+> (302-line patch closing the `Runtime.enable` detection vector). If you use
+> `npm ci --ignore-scripts`, the patch won't apply; see the project root
+> [`QUICKSTART.md`](../../QUICKSTART.md) for the manual workaround.
+
+### From the Mosaiq monorepo (contributors)
+
+`@mosaiq/cli` is a workspace package and gets linked automatically by
+`pnpm install` at the repo root.
 
 For local development the easiest invocation goes through the root script
 (uses `tsx`, no build step needed):
