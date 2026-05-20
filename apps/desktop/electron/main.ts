@@ -26,6 +26,7 @@ import {
   SDK_VERSION,
   deleteDetectionRun,
   exportPersonaJson,
+  formatDetectionRunMarkdown,
   getDetectionRunArtifactDir,
   getInstalledChromeVersion,
   importPersonaJson,
@@ -53,6 +54,8 @@ import {
   type DetectionRunStartResult,
   type ExportPersonaOptions,
   type ExportPersonaResult,
+  type ExportRunMarkdownOptions,
+  type ExportRunMarkdownResult,
   IPC_CHANNELS,
   IPC_EVENTS,
   type ImportPersonaResult,
@@ -635,6 +638,54 @@ function registerIpcHandlers() {
         throw new Error(`Cannot delete in-flight run ${runId}; cancel it first then retry.`);
       }
       return deleteDetectionRun(personaId, runId);
+    },
+  );
+
+  /**
+   * v0.9 phase 9.7: 导出 detection run 为 markdown 报告。
+   *
+   * 流程（与 exportPersona 同设计）：
+   *   1. 先 load + format（验证 run 文件存在 + 渲染成功），有问题立即返回 error；
+   *      这样如果 run 已损坏，用户不会先看到 dialog 然后才报错。
+   *   2. 弹 save dialog，默认文件名 `<personaId>-<runId>.md`，filter 限 .md。
+   *   3. 用户取消 → canceled:true；选定 → 写盘 → ok:true。
+   *   4. 任何 throw → error:string。
+   *
+   * 不复用 CLI 的 exit-2-on-failed-write 行为；桌面统一走 toast，不抛 throw 让
+   * preload bridge 屏蔽出 IPC（renderer 看到 reject 反而难处理）。
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.detectionLabExportRunMarkdown,
+    async (
+      _evt,
+      personaId: PersonaId,
+      runId: string,
+      opts: ExportRunMarkdownOptions,
+    ): Promise<ExportRunMarkdownResult> => {
+      try {
+        const run = loadDetectionRun(personaId, runId);
+        // SDK formatter 默认全部包含；只在 opts 显式给 false 时收窄
+        const markdown = `${formatDetectionRunMarkdown(run, {
+          includeSiteDetails: opts.includeSiteDetails,
+          includeHits: opts.includeHits,
+          includeMeta: opts.includeMeta,
+        })}\n`;
+        if (!mainWindow) {
+          return { ok: false, error: 'Main window not available' };
+        }
+        const result = await dialog.showSaveDialog(mainWindow, {
+          title: '导出 Detection Run（Markdown）',
+          defaultPath: `${personaId}-${runId}.md`,
+          filters: [{ name: 'Markdown', extensions: ['md'] }],
+        });
+        if (result.canceled || !result.filePath) {
+          return { ok: false, canceled: true };
+        }
+        writeFileSync(result.filePath, markdown, 'utf-8');
+        return { ok: true, savedTo: result.filePath };
+      } catch (err) {
+        return { ok: false, error: (err as Error).message };
+      }
     },
   );
 }

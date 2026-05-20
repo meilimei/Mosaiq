@@ -286,6 +286,61 @@ features compose existing SDK primitives).
     missing positionals / unknown run / unknown `--format html` /
     failing `--out` to a non-existent directory — all 8 paths
     behave as documented.
+- **Phase 9.7 — Desktop "Export Markdown" button on run-detail page**
+  (this entry).
+  - Adds a `导出 .md` button next to `刷新` / `删除` in the header of
+    `DetectionRunDetailPage` (`apps/desktop/src/pages/
+    DetectionRunDetailPage.tsx`). One click opens a native save
+    dialog (default filename `<personaId>-<runId>.md`), then writes
+    the same GitHub Flavored Markdown report 9.6's CLI
+    `detection-lab export-run` produces. Closes the CLI/desktop
+    parity loop the 9.6 CHANGELOG hinted at.
+  - New IPC channel `mosaiq:detectionLab:exportRunMarkdown`
+    (`MosaiqApi.detectionLabExportRunMarkdown(personaId, runId,
+    opts?)`). Three-state result mirroring `exportPersona` 1:1:
+    `{ok:true, savedTo}` / `{ok:false, canceled:true}` /
+    `{ok:false, error}`. `opts: ExportRunMarkdownOptions` exposes
+    the same `includeSiteDetails` / `includeHits` / `includeMeta`
+    knobs as the CLI's `--no-*` flags — the v0.9 desktop UI ships
+    one-click-with-defaults but the channel contract has the
+    toggles reserved so a future "Export options…" sub-menu won't
+    break the protocol.
+  - **Architecture decision:** the formatter call lives in the
+    **main process**, not the renderer. Reason: the renderer
+    cannot do a runtime `import { ... } from '@mosaiq/sdk'` (Vite
+    dep-optimization follows the SDK barrel into
+    `playwright-core/bidi/...` → unresolvable in a browser bundle;
+    documented as a "gotcha" in the 9.4 entry below). Main is a
+    Node context, already imports SDK, so the chain
+    `loadDetectionRun → formatDetectionRunMarkdown → writeFileSync`
+    runs there and just hands the result back over IPC. Renderer
+    holds only type-only imports (`ExportRunMarkdownOptions`,
+    `ExportRunMarkdownResult`), which tsc erases.
+  - Renderer wires up: a single `Download` lucide icon button with
+    a `Loader2` spinner during the IPC round-trip, `disabled`
+    while loading / deleting / already-exporting, toast feedback
+    on completion (`已导出 → <path>` on ok, `导出失败：<msg>` on
+    error, silent on user-canceled). Failure of the underlying
+    `loadDetectionRun` (e.g. the run JSON was deleted between
+    page-load and click) surfaces as a toast error rather than an
+    unhandled rejection.
+  - **Validation:** workspace typecheck clean (4 packages); desktop
+    vitest 45/45 unchanged (this change is integration plumbing
+    composing the 9.6 SDK formatter — no new pure logic that
+    warrants its own test file; the formatter is already covered
+    by `run-format.test.ts`); biome lint clean on the 4 changed
+    files (the 2 pre-existing diagnostics in
+    `DetectionRunDetailPage.tsx` predate this commit on `main`).
+    Desktop production build (`pnpm --filter @mosaiq/desktop
+    build`) succeeds — proving the new code didn't accidentally
+    pull SDK runtime into the renderer bundle (Vite would have
+    crashed in dep-optimization). End-to-end smoke: a tsx harness
+    that replicates the IPC handler's `loadDetectionRun →
+    formatDetectionRunMarkdown → writeFileSync` chain produces
+    byte-identical output to `mosaiq detection-lab export-run
+    --out <file>` against the same `(personaId, runId)` pair
+    (validated with `diff` against `baseline-bench-mp6uss3k /
+    2026-05-18T13-49-09-107Z`, exit 0).
 
 ### Documented gotchas
 

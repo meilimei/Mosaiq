@@ -12,6 +12,7 @@ import {
   type CreatePersonaInput,
   type DetectionLabProgressMessage,
   type ExportPersonaOptions,
+  type ExportRunMarkdownOptions,
   IPC_CHANNELS,
   IPC_EVENTS,
   type MosaiqApi,
@@ -49,6 +50,11 @@ const api: MosaiqApi = {
     ipcRenderer.invoke(IPC_CHANNELS.detectionLabGetRun, personaId, runId),
   detectionLabDeleteRun: (personaId: PersonaId, runId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.detectionLabDeleteRun, personaId, runId),
+  detectionLabExportRunMarkdown: (
+    personaId: PersonaId,
+    runId: string,
+    opts?: ExportRunMarkdownOptions,
+  ) => ipcRenderer.invoke(IPC_CHANNELS.detectionLabExportRunMarkdown, personaId, runId, opts ?? {}),
 };
 
 const events: MosaiqEvents = {

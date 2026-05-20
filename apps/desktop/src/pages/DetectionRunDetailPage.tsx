@@ -13,7 +13,7 @@
  *   - 删除：二次确认（与 PersonaListPage 一致风格），成功后回 lab page
  */
 
-import { AlertCircle, ArrowLeft, Check, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Download, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useToast } from '@/components/Toast.js';
@@ -56,6 +56,7 @@ export function DetectionRunDetailPage({
   const [loading, setLoading] = useState(true);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -102,6 +103,28 @@ export function DetectionRunDetailPage({
     }
     return out;
   }, [run]);
+
+  /**
+   * v0.9 phase 9.7: 导出为 Markdown 报告（用 SDK pure formatter via main IPC）。
+   * 三态结果：ok → toast success；canceled → 静默；error → toast error。
+   * 与 PersonaListPage.handleExport 行为对齐。
+   */
+  const handleExportMarkdown = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await window.mosaiq.detectionLabExportRunMarkdown(personaId, runId);
+      if (res.ok) {
+        toast.success(`已导出 → ${res.savedTo}`);
+      } else if ('canceled' in res && res.canceled) {
+        // 静默：用户取消不是错误
+      } else if ('error' in res) {
+        toast.error(`导出失败：${res.error}`);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirmingDelete) {
@@ -178,6 +201,20 @@ export function DetectionRunDetailPage({
             title="重新加载"
           >
             <RefreshCw className="mr-1 h-4 w-4" /> 刷新
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportMarkdown}
+            disabled={loading || deleting || exporting}
+            title="导出为 Markdown 报告（粘贴到 PR / Issue / Slack）"
+          >
+            {exporting ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-1 h-4 w-4" />
+            )}
+            导出 .md
           </Button>
           {confirmingDelete ? (
             <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>

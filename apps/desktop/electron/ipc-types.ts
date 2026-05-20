@@ -121,6 +121,35 @@ export interface ExportPersonaOptions {
 }
 
 /**
+ * 导出 detection run 为 markdown 报告的入参选项。所有字段 optional；
+ * 默认全部包含（与 SDK `formatDetectionRunMarkdown` 默认一致）。
+ *
+ * 与 CLI `detection-lab export-run` 的三个 `--no-*` flag 一一对应：
+ *   - includeSiteDetails: false ↔ `--no-site-details`
+ *   - includeHits:        false ↔ `--no-hits`
+ *   - includeMeta:        false ↔ `--no-meta`
+ *
+ * 桌面端 v0.9 phase 9.7 暂不暴露这些 toggle（一键导出，默认全包含）；预留
+ * 在 IPC 协议里是为了将来加 UI 选项时不破坏 channel contract。
+ */
+export interface ExportRunMarkdownOptions {
+  includeSiteDetails?: boolean;
+  includeHits?: boolean;
+  includeMeta?: boolean;
+}
+
+/**
+ * 导出 detection run markdown 结果三态（与 ExportPersonaResult 同结构）：
+ *   - ok:true → 文件已写入，savedTo 是绝对路径
+ *   - canceled:true → 用户取消了 save dialog
+ *   - error → run 文件不存在 / 格式化失败 / 写盘失败
+ */
+export type ExportRunMarkdownResult =
+  | { ok: true; savedTo: string }
+  | { ok: false; canceled: true }
+  | { ok: false; error: string };
+
+/**
  * Detection Lab run 启动结果。
  *   - ok:true → run 已成功 kicked off（fire-and-forget），runId 是新生成的标识，
  *     调用方接下来订阅 `onDetectionLabProgress` 接收进度
@@ -168,6 +197,17 @@ export interface MosaiqApi {
   detectionLabGetRun(personaId: PersonaId, runId: string): Promise<DetectionRun>;
   /** 删除单次 run（含 artifacts 子目录）；false = 文件本来就不存在。 */
   detectionLabDeleteRun(personaId: PersonaId, runId: string): Promise<boolean>;
+  /**
+   * v0.9 phase 9.7: 把单次 run 渲染成 markdown 报告并保存到用户选的路径。
+   * 主进程负责 load + format + save-dialog + 写盘（renderer 无法直接调
+   * `formatDetectionRunMarkdown`，因为 `@mosaiq/sdk` 的运行时入口被 Vite
+   * dep-optimization 拒收——见 9.4 CHANGELOG 的 Documented gotcha）。
+   */
+  detectionLabExportRunMarkdown(
+    personaId: PersonaId,
+    runId: string,
+    opts?: ExportRunMarkdownOptions,
+  ): Promise<ExportRunMarkdownResult>;
 }
 
 /**
@@ -208,6 +248,7 @@ export const IPC_CHANNELS = {
   detectionLabListRuns: 'mosaiq:detectionLab:listRuns',
   detectionLabGetRun: 'mosaiq:detectionLab:getRun',
   detectionLabDeleteRun: 'mosaiq:detectionLab:deleteRun',
+  detectionLabExportRunMarkdown: 'mosaiq:detectionLab:exportRunMarkdown',
 } as const;
 
 /**
