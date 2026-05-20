@@ -24,8 +24,10 @@
  * ordering, no time-dependent fields, no env-dependent paths).
  */
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -53,6 +55,45 @@ const HERE = (() => {
 
 export const CAPTURED_PROFILES_DIR = resolve(HERE, 'captured-profiles');
 export const GENERATED_TS_PATH = resolve(HERE, '../src/injection/webgl-profiles-captured.ts');
+
+// Resolve the bundled biome bin via Node module resolution so the formatter
+// works regardless of PATH / pnpm / npx context (CI, direct tsx, vitest).
+// The bin is itself a Node script (`#!/usr/bin/env node`), so we invoke
+// `process.execPath <biome-bin>` instead of spawning the shim directly —
+// fully cross-platform (no `.CMD` shim handling on Windows).
+const BIOME_BIN = (() => {
+  const req = createRequire(import.meta.url);
+  const pkgJson = req.resolve('@biomejs/biome/package.json');
+  return resolve(dirname(pkgJson), 'bin/biome');
+})();
+
+/**
+ * Canonicalize TypeScript source through `biome format --stdin-file-path`
+ * so the generator's output matches the project's committed style (single
+ * quotes, 100-char line wrap, single-element array inlining per
+ * `biome.json`). Without this normalization, the round-trip `--check`
+ * would always report drift against any biome-formatted committed state
+ * — see `c147296 style: workspace-wide biome format pass` for the source
+ * of the original divergence between raw generator output and on-disk
+ * format. Throws on biome failure (no silent fallback — a malformed
+ * output would surface as drift downstream, masking the real cause).
+ */
+export function formatWithBiome(source: string, filePath: string): string {
+  const result = spawnSync(
+    process.execPath,
+    [BIOME_BIN, 'format', `--stdin-file-path=${filePath}`],
+    { input: source, encoding: 'utf-8', maxBuffer: 8 * 1024 * 1024 },
+  );
+  if (result.error) {
+    throw new Error(`[integrate-profiles] biome spawn failed: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `[integrate-profiles] biome format exited ${result.status}:\n${result.stderr || result.stdout}`,
+    );
+  }
+  return result.stdout;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pipeline core (testable, no I/O)
@@ -206,7 +247,11 @@ export function runIntegrate(opts: RunOptions = {}): IntegrateRunResult {
   const dir = opts.dir ?? CAPTURED_PROFILES_DIR;
   const outPath = opts.outPath ?? GENERATED_TS_PATH;
   const profiles = loadCapturedProfiles(dir);
-  const generatedSource = renderGeneratedSource(profiles);
+  // Pipe through biome so the on-disk file matches the project's canonical
+  // style (single quotes, 100-char wrap). Keeps `renderGeneratedSource`
+  // pure for unit tests while making the I/O layer round-trip-stable
+  // against any committed file that's already been `biome format`-ed.
+  const generatedSource = formatWithBiome(renderGeneratedSource(profiles), outPath);
 
   let onDisk = '';
   try {
