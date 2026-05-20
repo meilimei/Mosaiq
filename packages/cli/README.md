@@ -3,10 +3,10 @@
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
 
-> **Status:** v0.9 phase 9.6 — full persona CRUD: `personas list` /
+> **Status:** v0.9 phase 9.10 — full persona CRUD: `personas list` /
 > `show` / `create` / `update` / `clone` / `delete` / `export` / `import` /
-> `templates list`, plus `detection-lab run` / `list-runs` / `show-run` /
-> `delete-run` / `compare` / `export-run`.
+> `templates list`, plus `detection-lab run` / `run-all` / `list-runs` /
+> `show-run` / `delete-run` / `compare` / `export-run`.
 
 ## Install
 
@@ -474,6 +474,99 @@ always the on-disk shape).
 
 Exits `2` if `<persona-id>` / `<run-id>` is missing, the run is not
 found, `--format` is unrecognized, or `--out` fails to write.
+
+### `mosaiq detection-lab run-all`
+
+Runs the Detection Lab against every persona (or a filtered subset) in
+sequence and emits an aggregated summary. This is the multi-persona
+counterpart to `detection-lab run`, designed as a one-line **CI gate**
+for nightly cron / scheduled drift checks across an entire persona pool.
+
+```bash
+# Default: every persona, headless, 12 sites each, no-fail policy
+pnpm mosaiq detection-lab run-all
+
+# CI gate — exit 1 if ANY persona regressed vs its previous saved run
+pnpm mosaiq detection-lab run-all --fail-on-regression
+
+# Filter the pool + tighten the hit policy
+pnpm mosaiq detection-lab run-all \
+  --only reddit-alice,reddit-bob,reddit-carol \
+  --fail-on-hits medium
+
+# Per-run site filter (passed through to each persona's run)
+pnpm mosaiq detection-lab run-all --only-sites creepjs,sannysoft --quiet
+
+# Machine-readable BatchRunResult JSON (for jq / dashboards)
+pnpm mosaiq detection-lab run-all --json > batch.json
+jq '.aggregate.weightedHits' batch.json
+jq '.personas[] | select(.regression != null) | .personaId' batch.json
+```
+
+#### Persona selection (`--only` / `--skip`)
+
+| flag         | semantics                                                                |
+|--------------|--------------------------------------------------------------------------|
+| _(neither)_  | All personas, in `personas list` order (kebab-case ascending)            |
+| `--only`     | Only the listed ids, in user-specified order (so you control row order)  |
+| `--skip`     | Everything except the listed ids                                         |
+| both         | Apply `--only` first, then `--skip` (skip wins on overlap)               |
+
+Unknown ids in either flag are reported as a yellow warning to stderr but
+do not abort — pass-through to the actual run loop is the safer default
+for cron jobs that may have pruned a persona between scheduling and
+execution.
+
+#### Per-run flags (passed through to each persona's `runDetection`)
+
+| flag                  | applies to every persona's run                                       |
+|-----------------------|----------------------------------------------------------------------|
+| `--headed`            | Visible Chromium window                                              |
+| `--only-sites <ids>`  | Site allowlist; passed through as `runDetection({ only })`           |
+| `--skip-sites <ids>`  | Site denylist; passed through as `runDetection({ skip })`            |
+| `--retries <n>`       | Per-site retry budget (default: 2)                                   |
+| `--timeout <ms>`      | Per-site timeout (default: 60000ms)                                  |
+| `--template <name>`   | Override `raw.persona.template` for every run (rarely useful)        |
+
+#### Exit-code policy
+
+| code | condition                                                                                |
+|------|------------------------------------------------------------------------------------------|
+| 0    | All personas completed; `--fail-on-*` thresholds **not** triggered                       |
+| 1    | (any of) ≥1 persona had a runtime failure; OR `--fail-on-hits` threshold reached at the **aggregate** level; OR `--fail-on-regression` set and ≥1 persona regressed |
+| 2    | Argument error / no personas under `~/.mosaiq/personas/` / `--only`/`--skip` filters out everything |
+| 130  | SIGINT (Ctrl-C) — first press finishes the in-flight persona then aborts; second press force-quits |
+
+A runtime failure (browser crash, persona not found, network timeout)
+**always** flips exit to 1 even with `--fail-on-hits=none`. Masking
+runtime errors would let CI go green on real regressions, which is the
+opposite of what a gate should do. If you want a survey-only run that
+never fails, run with `--json` and inspect `aggregate.personasFailed`
+yourself.
+
+#### Regression detection
+
+With `--fail-on-regression`, each persona's current run is diffed against
+its **most recent saved completed predecessor** (under
+`~/.mosaiq/detection-runs/<persona-id>/`) using the same pure SDK
+`diffRuns` function as `detection-lab compare` (v0.9 phase 9.8). A
+persona is marked regressed when the diff has any of:
+
+- new hits added (`(surface, site, detector)` tuples not present before)
+- `Δ weightedHits > 0`
+- sites flipped `ok → fail`
+
+Personas with no prior run (first-time runs, or whose only history is
+`failed` / `canceled`) are silently skipped for regression detection —
+there's no baseline to compare against.
+
+#### `--concurrency`
+
+Currently fixed at `1` (sequential). Hardware-fingerprint stability
+(GPU frame timings, audio context jitter) degrades under concurrent
+load, which is exactly the surface the detection sites observe. The
+flag is reserved so a future multi-process backend doesn't break
+existing scripts; passing anything other than `1` is rejected today.
 
 ## Notes
 

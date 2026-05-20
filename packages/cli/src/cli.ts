@@ -21,6 +21,7 @@ import { runDetectionLabCompare } from './commands/detection-lab/compare.js';
 import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js';
 import { runDetectionLabExportRun } from './commands/detection-lab/export-run.js';
 import { runDetectionLabListRuns } from './commands/detection-lab/list-runs.js';
+import { runDetectionLabRunAll } from './commands/detection-lab/run-all.js';
 import { runDetectionLabCommand } from './commands/detection-lab/run.js';
 import { runDetectionLabShowRun } from './commands/detection-lab/show-run.js';
 import { runPersonasClone } from './commands/personas/clone.js';
@@ -43,6 +44,7 @@ Usage:
 
 Commands:
   detection-lab run         <persona-id>                     Run a Detection Lab pass
+  detection-lab run-all                                      Run a pass for every persona (CI gate)
   detection-lab list-runs   <persona-id>                     List historical runs
   detection-lab show-run    <persona-id> <run-id>            Print a saved run
   detection-lab delete-run  <persona-id> <run-id>            Delete a saved run
@@ -75,6 +77,7 @@ Examples:
   mosaiq detection-lab compare baseline-bench-mp9itrpe 2026-05-18T... 2026-05-19T... --fail-on-regression
   mosaiq detection-lab run my-persona --only creepjs,sannysoft --headed
   mosaiq detection-lab run my-persona --json > run.json
+  mosaiq detection-lab run-all --fail-on-regression --json > batch.json
 `;
 
 async function main(): Promise<number> {
@@ -96,6 +99,9 @@ async function main(): Promise<number> {
 
   if (top === 'detection-lab' && sub === 'run') {
     return runDetectionLabCommand(rest);
+  }
+  if (top === 'detection-lab' && sub === 'run-all') {
+    return runDetectionLabRunAll(rest);
   }
   if (top === 'detection-lab' && sub === 'list-runs') {
     return runDetectionLabListRuns(rest);

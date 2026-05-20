@@ -464,6 +464,115 @@ features compose existing SDK primitives).
     2026-05-18T13-44-26-599Z, 2026-05-18T13-49-09-107Z)` pair
     9.8 used returns exit 0 + 37-line JSON, confirming the
     fixtures and chain resolve.
+- **Phase 9.10 — `detection-lab run-all` (multi-persona batch CI gate)**
+  (this entry).
+  - New CLI command `mosaiq detection-lab run-all [options]`. Runs the
+    Detection Lab in **sequence** for every persona (or a `--only` /
+    `--skip` subset), saves each `DetectionRun` to the same
+    `~/.mosaiq/detection-runs/<id>/<runId>.json` layout the desktop and
+    `detection-lab run` use, and emits an aggregated summary table +
+    verdict line. Designed as a one-line **CI gate** for nightly cron /
+    pre-merge drift checks across an entire persona pool — the
+    multi-persona counterpart to 9.2b's single-persona
+    `compare --fail-on-regression`.
+  - Flag surface (most flags pass through to each persona's underlying
+    `runDetection` call):
+    `--only <persona-ids>` / `--skip <persona-ids>` (persona selection;
+    `--only` keeps user-specified order; both treated as comma-separated
+    CSV pre-split by argv parser; unknown ids reported as a yellow stderr
+    warning and pass-through to the loop, which fails-soft for cron jobs
+    where personas may be pruned between scheduling and execution),
+    `--headed` / `--only-sites <ids>` / `--skip-sites <ids>` /
+    `--retries <n>` / `--timeout <ms>` / `--template <name>`
+    (per-persona pass-through), `--fail-on-hits none|any|medium|high`
+    (aggregate-level threshold), `--fail-on-regression` (per-persona
+    diff against most-recent saved completed predecessor; on regression
+    in any persona → exit 1), `--concurrency <n>` (reserved; only `1`
+    accepted in v0.9 — chrome's hardware-fingerprint surface degrades
+    under concurrent load and that's exactly what the detection sites
+    observe), `--json` (full `BatchRunResult` POJO to stdout), `--quiet`
+    (suppress per-persona / per-site progress; final summary still
+    prints).
+  - Exit-code policy (CI-friendly, intentionally distinct from
+    9.1's single-persona `run`):
+    `0` = all personas completed and `--fail-on-*` thresholds clean.
+    `1` = (any of) ≥1 persona had a runtime failure, OR aggregate
+    `--fail-on-hits` threshold reached, OR `--fail-on-regression` set
+    and ≥1 persona regressed. **Runtime failures (browser launch crash
+    / persona-not-found / network timeout) always flip exit to 1 even
+    under `--fail-on-hits=none`** — masking those would let CI go green
+    on a real outage, defeating the gate. `2` = arg error / no
+    personas under `~/.mosaiq/personas/` / `--only`/`--skip` filters
+    out everything. `130` = SIGINT (first Ctrl-C finishes the in-flight
+    persona then aborts; second force-quits). One-vs-two split between
+    `1` and `2` mirrors the 9.1 convention: `2` is "the program never
+    really started running"; `1` is "it ran and found something".
+  - **Architecture** (mirrors 9.6 / 9.8 split):
+    - Pure helpers in
+      `packages/cli/src/commands/detection-lab/run-all-helpers.ts`
+      (~300 LOC): `selectPersonas` (only/skip resolution + unknown-id
+      collection), `aggregateBatch` (sums per-persona numbers,
+      rounds `weightedHits` to 2 decimals to avoid floating-point
+      cruft in `--json`, computes `worstPersona` with weighted-then-
+      total-then-id-asc tiebreaker), `decideBatchExitCode` (the
+      policy-table function — runtime-failures-trump-everything is
+      encoded here, easy to audit), `findRegressionBaseline` (picks
+      most-recent completed predecessor strictly before current run's
+      `startedAt`; skips failed/canceled predecessors and entries
+      with malformed timestamps, returns null on no-baseline).
+      Zero IO, zero argv, zero console — fully unit-testable.
+    - Shared `run-helpers.ts` extracted from 9.1's `run.ts`
+      (`buildCompletedRun` / `buildFailedRun` / `safeChromiumVersion`
+      / `extractTemplateTag` — pre-existing logic, ~115 LOC). 9.10
+      `run-all.ts` and the original 9.1 `run.ts` both consume it; no
+      behavior change for `run`.
+    - Driver loop in `run-all.ts` (~670 LOC, incl. argv parsing + TTY
+      progress + summary printer): listPersonas + selectPersonas
+      → SIGINT → AbortController bound to the whole batch → preflight
+      print → sequential loop (per-persona: resolve runId / mkdir
+      artifactDir / `runDetection` / wrap to `DetectionRun` /
+      `saveDetectionRun` / optional regression compute) → aggregate +
+      decide → render or `--json`. Regression compute reuses 9.8's
+      pure SDK `diffRuns` 1:1 — same `hasRegression` policy as
+      `compare --fail-on-regression` (added hits OR Δweighted > 0
+      OR sites flipped ok→fail).
+  - Output: per-persona table (PERSONA / STATUS / SITES OK·FAIL /
+    HITS / WEIGHTED / REGRESSION / DURATION) + aggregate "Summary"
+    block (personas attempted/completed/failed/canceled, sites total,
+    hits total with high/medium/low breakdown, regressions list with
+    persona ids, worst persona id) + colored Verdict line with reason
+    list (e.g. `1 runtime failure(s), 2 regression(s)`). `--json`
+    suppresses everything pretty and emits a single
+    `BatchRunResult { schemaVersion: 1, startedAt, finishedAt,
+    durationMs, policy, personas: PersonaBatchResult[], aggregate:
+    BatchAggregate, exitCode }` POJO — designed for `jq` /
+    dashboards / future Grafana panels.
+  - **Tests:** 35 new vitest cases in `run-all-helpers.test.ts`:
+    `selectPersonas` (8: no filter / only ordering / unknown-id
+    collection / skip / only+skip composition / empty selection /
+    only-with-only-unknowns), `aggregateBatch` (8: empty input /
+    status counting / sums / floating-point round-off / regression
+    list / worst null / worst ranking + tiebreaker / skipped not
+    counted), `decideBatchExitCode` (10: clean batch / runtime
+    failure dominates / fail-on-hits all 4 levels / fail-on-regression
+    on/off / failure dominates regression+hits), `findRegressionBaseline`
+    (9: empty / single-self / most-recent-completed / skip
+    failed/canceled / clock-skew defense / invalid timestamps).
+    CLI vitest: 29 → **64** (+35); SDK vitest 593 unchanged; desktop
+    vitest 45 unchanged. Workspace typecheck clean (4 packages);
+    biome lint clean on 6 changed files; biome auto-fixed CRLF→LF
+    (same as 9.6 / 9.8). All pre-existing tests still pass.
+  - **Manual smoke matrix:** `--help` (clean output), `--concurrency 4`
+    rejected with exit 2, `--fail-on-hits=invalid` rejected with
+    exit 2, `--only <unknown-ids-only>` → "No personas selected"
+    + exit 2, real run with `--only baseline-bench-mp93gu3n
+    --only-sites sannysoft` → 1 persona / 1 site / 0 hits /
+    exit 0, real run with no `--only` (2 personas) `--only-sites
+    sannysoft --json` → BatchRunResult JSON with both personas
+    completed + aggregate.personasCompleted=2 + exit 0, real run
+    with `--fail-on-regression` → finds baseline from previous
+    smoke run, computes diff, no regression detected (sannysoft
+    is deterministic), exit 0.
 
 ### Documented gotchas
 

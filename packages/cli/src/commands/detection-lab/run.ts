@@ -27,14 +27,10 @@ import { parseArgs } from 'node:util';
 
 import {
   type DetectionRun,
-  type DetectionRunRaw,
-  type DetectionScore,
   type Persona,
   type RunDetectionOptions,
   type RunProgressEvent,
-  SDK_VERSION,
   getDetectionRunArtifactDir,
-  getInstalledChromeVersion,
   loadPersona,
   runDetection,
   saveDetectionRun,
@@ -42,6 +38,7 @@ import {
 
 import { fmt, formatMs } from '../../output.js';
 import { printRunSummary } from './format.js';
+import { buildCompletedRun, buildFailedRun, extractTemplateTag } from './run-helpers.js';
 
 const HELP = `Usage: mosaiq detection-lab run <persona-id> [options]
 
@@ -316,14 +313,6 @@ function splitCsvOrUndefined(s: string | undefined): string[] | undefined {
   return ids.length > 0 ? ids : undefined;
 }
 
-function extractTemplateTag(p: { metadata: { tags?: readonly string[] } }): string | undefined {
-  const tags = p.metadata.tags ?? [];
-  for (const tag of tags) {
-    if (tag.startsWith('template:')) return tag.slice('template:'.length);
-  }
-  return undefined;
-}
-
 function printPreflight(info: {
   personaId: string;
   personaName?: string;
@@ -393,64 +382,5 @@ function shouldFail(hits: readonly { severity: string }[], level: RunOpts['failO
       return hits.some((h) => h.severity === 'medium' || h.severity === 'high');
     case 'high':
       return hits.some((h) => h.severity === 'high');
-  }
-}
-
-function buildCompletedRun(args: {
-  runId: string;
-  personaId: string;
-  startedAtIso: string;
-  startedAtMs: number;
-  status: 'completed' | 'canceled';
-  raw: DetectionRunRaw;
-  score: DetectionScore;
-}): DetectionRun {
-  return {
-    id: args.runId,
-    personaId: args.personaId,
-    startedAt: args.startedAtIso,
-    finishedAt: new Date().toISOString(),
-    status: args.status,
-    sitesAttempted: args.raw.results.map((r) => r.id),
-    durationMs: Date.now() - args.startedAtMs,
-    score: args.score,
-    raw: args.raw,
-    error: null,
-    meta: {
-      sdkVersion: SDK_VERSION,
-      chromiumVersion: safeChromiumVersion(),
-    },
-  };
-}
-
-function buildFailedRun(args: {
-  runId: string;
-  personaId: string;
-  startedAtIso: string;
-  startedAtMs: number;
-  error: string;
-}): DetectionRun {
-  return {
-    id: args.runId,
-    personaId: args.personaId,
-    startedAt: args.startedAtIso,
-    finishedAt: new Date().toISOString(),
-    status: 'failed',
-    sitesAttempted: [],
-    durationMs: Date.now() - args.startedAtMs,
-    score: null,
-    error: args.error,
-    meta: {
-      sdkVersion: SDK_VERSION,
-      chromiumVersion: safeChromiumVersion(),
-    },
-  };
-}
-
-function safeChromiumVersion(): string {
-  try {
-    return getInstalledChromeVersion();
-  } catch {
-    return 'unknown';
   }
 }
