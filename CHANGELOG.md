@@ -7,14 +7,31 @@ in 0.x (minor bumps may include breaking changes).
 
 ## [Unreleased]
 
-The **v0.9 work-in-progress series** — pre-release dev cycle that pairs the
-existing desktop Detection Lab with a new headless `@mosaiq/cli` workflow,
-adds CI-friendly run comparison gates, and enriches the desktop UI with
-screenshot thumbnails / pool comparison.
+_No changes yet — next phase starts here._
 
-`apps/desktop` and `packages/cli` track `0.9.0-dev.0`; `@mosaiq/sdk` is
-unchanged from `0.8.0` (no API additions or behavior changes — the v0.9
-features compose existing SDK primitives).
+## [0.9.0] — 2026-05-20
+
+The **"v0.9 CLI + Detection Lab polish"** release. Pairs the existing
+desktop Detection Lab (v0.8.0) with a new headless `@mosaiq/cli` workflow,
+adds CI-friendly run comparison gates (single-persona `compare` +
+multi-persona `run-all`), ships full persona CRUD from the terminal, and
+enriches the desktop UI with screenshot thumbnails, lightbox, persona pool
+comparison, in-app markdown export, and a side-by-side Compare Runs page.
+
+All 4 packages bumped 0.8 → 0.9 in lock-step:
+
+  - `@mosaiq/persona-schema` 0.8.0 → 0.9.0 (no schema changes; release sync)
+  - `@mosaiq/sdk` 0.8.0 → 0.9.0 (additive API: `formatDetectionRunMarkdown`
+    / `FormatMarkdownOptions` from phase 9.6; `diffRuns` / `RunDiff` /
+    `RunSnapshot` / `ChangedHit` hoisted from CLI in phase 9.8 — both are
+    pure data projections, zero behavior change for existing exports)
+  - `@mosaiq/desktop` 0.9.0-dev.0 → 0.9.0
+  - `@mosaiq/cli` 0.9.0-dev.0 → 0.9.0 (first stable release of the package
+    introduced in phase 9.1)
+
+CI tightened in `e1f8bd0`: CLI vitest (64 cases) and desktop vitest
+(45 cases) now run on every PR + push to main alongside the existing
+sdk + persona-schema test surface.
 
 ### Added
 
@@ -573,6 +590,27 @@ features compose existing SDK primitives).
     with `--fail-on-regression` → finds baseline from previous
     smoke run, computes diff, no regression detected (sannysoft
     is deterministic), exit 0.
+
+### Fixed
+
+- **`bench:integrate-profiles --check` round-trip vs biome-formatted
+  output** (release-prep fix; bench-only, no user-facing impact). The
+  Phase 7.0 captured-WebGL-profiles drift check was a CI false-negative:
+  the generator emitted raw double-quoted, unwrapped TypeScript while
+  `c147296 style: workspace-wide biome format pass` had re-formatted the
+  committed `src/injection/webgl-profiles-captured.ts` to single quotes +
+  100-char line wrap + single-element-array inlining. The mismatch never
+  fired during 7.0-8.0 because CI hadn't enforced the check on a
+  biome-formatted state yet — `e1f8bd0`'s CI tightening would have
+  surfaced it on first push. Fix: the I/O layer of `runIntegrate` now
+  pipes `renderGeneratedSource`'s output through
+  `biome format --stdin-file-path=<out>` before write/diff, so the
+  on-disk file matches project style regardless of generator-emitted
+  formatting. Biome bin resolved via `createRequire` +
+  `@biomejs/biome/package.json` so the script works without PATH
+  dependence (pnpm script context, `npx tsx`, CI). `renderGeneratedSource`
+  itself stays a pure function — its 16 unit tests (which assert
+  pre-format structure) keep passing unchanged.
 
 ### Documented gotchas
 
