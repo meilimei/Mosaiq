@@ -1,0 +1,103 @@
+# Release — auto-version + publish via changesets
+#
+# Trigger: every push to main.
+#
+# Behavior:
+#   - If `.changeset/*.md` files are present on main, opens a
+#     `chore(release): version packages` PR that bumps versions in the
+#     lock-step `fixed` group (@mosaiq/persona-schema + @mosaiq/sdk +
+#     @mosaiq/cli) and removes the consumed changeset files.
+#   - When the release PR merges (and there are no more pending changesets),
+#     runs `pnpm changeset publish` — publishes the three packages to npm
+#     with provenance attestation.
+#
+# Prerequisites:
+#   - `NPM_TOKEN` secret in the repo settings (`automation` granular token
+#     scoped to the @mosaiq org)
+#   - `id-token: write` permission for npm OIDC provenance
+#
+# v0.10.0 first publish:
+#   This workflow is wired up but DOES NOT run for the very first 0.10.0
+#   publish. That's done manually from a maintainer's shell with NPM_TOKEN
+#   set (see docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md §8). After 0.10.0
+#   is live on npm, all subsequent publishes go through this workflow.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Don't run two release jobs in parallel — npm publish ordering must be
+# sequential to avoid version conflicts.
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    name: changesets / publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write # required for npm provenance attestation
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # changesets needs full history to detect already-published versions
+          # and to write the release PR commit.
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build the three publishable packages BEFORE running changesets publish.
+      # prepublishOnly in each package will also clean+build+typecheck, but
+      # building up-front gives us a faster feedback loop and lets the
+      # tarball-audit step below see consistent dist/.
+      - name: Build publishable packages
+        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" --filter "@mosaiq/cli" build
+
+      # Defense-in-depth: even the release path must pass the same audit
+      # gates as CI. This catches "version PR somehow shipped a broken
+      # tarball" regressions before npm sees them.
+      - name: Drift check — @mosaiq/sdk playwright-core patch
+        run: pnpm run check-sdk-patch-drift
+
+      - name: Audit publishable tarballs
+        run: pnpm run audit-tarballs
+
+      # changesets/action does two things:
+      #   - If pending `.changeset/*.md` files exist on main, opens / updates
+      #     the release PR (no publish happens).
+      #   - If no pending changesets exist (i.e., the release PR has just
+      #     merged), runs `publish` to push to npm.
+      - name: Create release PR or publish to npm
+        uses: changesets/action@v1
+        with:
+          publish: pnpm changeset publish
+          version: pnpm changeset version
+          commit: 'chore(release): version packages'
+          title: 'chore(release): version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Tell npm to attach an OIDC provenance attestation. Shows up as a
+          # "verified provenance" badge on the package's npmjs.com page.
+          NPM_CONFIG_PROVENANCE: 'true'
