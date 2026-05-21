@@ -102,6 +102,20 @@ jobs:
       - name: Drift check — @mosaiq/sdk playwright-core patch
         run: pnpm run check-sdk-patch-drift
 
+      # v0.10 phase 10.6 drift detection: the Detection Lab CI gate
+      # (.github/workflows/detection-lab.yml, phase 10.7) seeds
+      # tests/fixtures/personas/*.json into ~/.mosaiq/personas/ before running
+      # `mosaiq detection-lab run-all`. Those JSON files are generated
+      # deterministically from persona-schema template factories by
+      # `scripts/build-fixture-personas.ts`. If the script or the template
+      # factories evolve and the on-disk fixture is not regenerated, the
+      # baseline-runs / candidate-runs comparison would drift for reasons
+      # unrelated to anti-detection behavior. This step fails if the committed
+      # JSON diverges from what the current generator would emit; re-run
+      # `pnpm build-fixture-personas` locally and commit the regenerated JSON.
+      - name: Drift check — Detection Lab fixture personas
+        run: pnpm build-fixture-personas --check
+
       # v0.10 phase 10.3 publish gate: assert each publishable package's npm
       # tarball contains exactly the expected files (REQUIRED present, no
       # FORBIDDEN leaks like bench/ / src/ / chromium-fork / captured-profiles).
