@@ -81,6 +81,13 @@ export {
 } from './run-compare.js';
 
 export {
+  stripRunForBaseline,
+  BASELINE_RUN_ID,
+  BASELINE_TIMESTAMP,
+  BASELINE_CHROMIUM_VERSION,
+} from './baseline-strip.js';
+
+export {
   // 主入口
   computeScore,
   // helpers（bench / desktop renderer 复用）
