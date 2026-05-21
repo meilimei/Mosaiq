@@ -8,9 +8,8 @@ in 0.x (minor bumps may include breaking changes).
 ## [Unreleased]
 
 **Track B of v0.10 — the Detection Lab CI gate — is now landing in
-incremental commits on top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 have
-shipped; phases 10.8 + 10.9 (refresh-baseline auto-PR + per-PR comment bot)
-remain.
+incremental commits on top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 +
+10.8 have shipped; phase 10.9 (per-PR regression comment bot) remains.
 
 ### Added
 
@@ -142,6 +141,95 @@ remain.
     header), missing baseline (exit 0 by default + exit 1 with
     `--require-baseline`), `write-baseline` mode (round-trip
     verifies stripped fields).
+
+- **Phase 10.8 — baseline auto-refresh workflow + 3-run consensus**
+  (this entry).
+  - `scripts/refresh-baseline.mts` (~600 LOC) — the driver. Imports
+    `runDetection` / `stripRunForBaseline` / `diffRuns` from
+    `@mosaiq/sdk` source (via `.mts` extension so tsx uses ESM
+    resolution and matches `@mosaiq/persona-schema`'s `exports.import`
+    entry — the workspace root's `package.json` has no `"type"` field,
+    so a plain `.ts` script would fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`
+    on the persona-schema import). For each committed fixture persona,
+    it: (1) imports the fixture into `~/.mosaiq/personas/` with
+    `overwrite` conflict resolution, (2) runs `runDetection`
+    sequentially N times (default 3, configurable via `--runs 1..9`),
+    (3) strips each run via `stripRunForBaseline`, (4) computes a
+    consensus DetectionRun, (5) diffs against the committed baseline
+    via `diffRuns`, and (6) overwrites the committed baseline iff
+    drift was detected. Supports `--check` mode (don't write, exit 1
+    on drift), `--persona <id>` filter (repeatable), `--timeout`
+    `--retries` per-site knobs. Exit codes: `0` = success / `1` =
+    `--check` found drift / `2` = arg error or run failure or
+    consensus structural disagreement.
+  - **Multi-run consensus algorithm** (the riskiest piece, with full
+    test coverage):
+    - For each hit-identity (`surface` + `site` + `detector`):
+      include in consensus if it appears in ≥ `ceil(N/2)` runs.
+      Severity tie-broken toward higher (high > medium > low) —
+      under-reporting severity is worse than over-reporting.
+    - For each site result: `ok` = majority vote. Ties broken toward
+      `false` (don't hide failures from the baseline; worst case is
+      a transient failure baked in, caught next refresh cycle).
+    - Other fields (`personaId`, `status`, `sitesAttempted`,
+      `meta.sdkVersion`, `raw.persona`) must match across runs; if
+      they don't, the script bails with exit 2 (signal of unexpected
+      mid-run state corruption).
+    - `weightedHits` / `hitsBySurface` are recomputed from the
+      consensus hits (not summed across input runs — that'd be the
+      wrong "mean of weighted sums" instead of "weighted sum of
+      consensus").
+  - `scripts/refresh-baseline.test.mts` (~250 LOC) — 10 pure unit
+    tests covering consensus correctness without spawning Chromium.
+    Hand-rolled tiny test runner (uses `node:assert/strict` directly;
+    scripts/ isn't a workspace package so a root vitest config would
+    be over-engineering for a single test file). Cases: identity for
+    n=1, 3-of-3 agreement, 1-of-3 noise drop, 2-of-3 keep,
+    site-flip voting, severity tie-break (low+high → high),
+    weightedHits recompute correctness, structural disagreement
+    (exits 2), `pickWorstSeverity` ordering, `compareHitForSort`
+    diff-stable ordering. Refresh script exports the relevant
+    helpers + gates `main()` behind an `isDirectInvocation` check
+    (`import.meta.url === pathToFileURL(process.argv[1])`) so the
+    test file can import them safely without spawning the run loop.
+  - `.github/workflows/refresh-baseline.yml` (~210 LOC) — the cron
+    + dispatch workflow. Triggers: weekly `cron '0 4 * * 0'`
+    (Sundays 04:00 UTC — fires before Monday standup) +
+    `workflow_dispatch` with `persona` and `runs` inputs. Steps:
+    checkout (with `fetch-depth: 0` so `create-pull-request` can
+    diff cleanly against an existing chore branch) → pnpm/node
+    setup → install / build / playwright install (same as
+    detection-lab.yml) → `pnpm tsx scripts/refresh-baseline.mts
+    [args]` with output tee'd to `refresh-baseline.log` →
+    `peter-evans/create-pull-request@v6` with branch
+    `chore/refresh-baseline` (auto-update existing PR, delete-
+    branch on merge), labels `ci`/`baseline`/`automated`, scoped
+    `add-paths` to `tests/fixtures/baseline-runs/`. PR body
+    documents the two common drift causes (external detector
+    change vs internal regression that slipped past
+    detection-lab.yml's tolerance) and reviewer checklist. Always
+    uploads the run log + working-tree snapshot as artifact (30-
+    day retention). Step summary surfaces "PR #N opened" or "no
+    drift" status. Concurrency-locked. Permissions
+    `contents:write` + `pull-requests:write` for the bot user.
+    Timeout 60 min.
+  - `.github/workflows/ci.yml`: added a new
+    "Test — refresh-baseline consensus" step alongside the
+    existing drift checks. Runs `pnpm test:refresh-baseline`
+    (the 10 pure unit tests) on every PR so consensus regressions
+    are caught at code-review time rather than waiting for the
+    Sunday cron to silently write a bad baseline.
+  - Root `package.json` gained two aliases:
+    `refresh-baseline` (`tsx scripts/refresh-baseline.mts`) and
+    `test:refresh-baseline` (`tsx scripts/refresh-baseline.test.mts`).
+  - **Why a separate workflow from detection-lab.yml?** The two
+    are intentionally orthogonal: detection-lab.yml **gates** PRs
+    (must never auto-write the baseline, or every transient flake
+    would self-heal and hide real regressions). refresh-
+    baseline.yml **refreshes** the baseline behind a maintainer-
+    review PR (the human is the final gate). Sharing infrastructure
+    (build / playwright / fixture import) but not the failure
+    semantics.
 
 ## [0.10.0] — 2026-05-21
 

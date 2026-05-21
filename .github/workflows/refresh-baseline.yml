@@ -1,0 +1,228 @@
+# Detection Lab baseline auto-refresh — v0.10 phase 10.8.
+#
+# Counterpart to detection-lab.yml. Whereas detection-lab.yml *gates* PRs
+# (failing on regression against the committed baseline), this workflow
+# *refreshes* the committed baseline when external detection sites change
+# their detector logic enough to drift the expected values. Runs weekly
+# on a cron (or manual dispatch); opens a PR for maintainer review
+# whenever a drift is detected and the script writes a new baseline.json.
+#
+# Why a separate workflow:
+#   - detection-lab.yml runs on every PR + push. We can NOT let it auto-
+#     write the baseline (or every PR with a transient flake would self-
+#     heal and hide real regressions).
+#   - refresh-baseline.yml runs once a week and writes the baseline AS A
+#     PR — a human still sandboxes the change. The "auto-merge if green"
+#     decision is left to the maintainer.
+#
+# Trigger policy:
+#   - schedule:weekly:Sunday 04:00 UTC — fires before Monday-morning
+#     standup. Maintainer can review + merge first thing Monday.
+#   - workflow_dispatch: manual rerun handle. Useful when a detection
+#     site just shipped a change and we don't want to wait until Sunday.
+#
+# Concurrency / safety:
+#   - 60min timeout (3 runs × ~15min + buffer for git + PR-open + slow
+#     network)
+#   - concurrency-locked: a second cron firing while one is still running
+#     cancels the older run; for workflow_dispatch overlapping the cron,
+#     same lock applies.
+#   - peter-evans/create-pull-request@v6 idempotency: if a PR already
+#     exists on the same branch (chore/refresh-baseline), the action
+#     force-pushes new commits to the existing branch instead of opening
+#     a duplicate.
+#
+# Output:
+#   - If drift detected: opens / updates PR titled
+#     "chore(baseline): refresh detection-lab baselines (cron <date>)"
+#     containing the regenerated baseline.json file(s) under
+#     tests/fixtures/baseline-runs/<persona>/.
+#   - If no drift: no PR, workflow exits 0, "no changes to commit" log.
+#
+# See docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md §11 for design.
+
+name: Refresh Detection Lab Baseline
+
+on:
+  schedule:
+    # Sundays at 04:00 UTC — before Monday-morning standup. Cron fires on
+    # `main`; the workflow opens a PR back into `main`.
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+    inputs:
+      persona:
+        description: 'Persona id to refresh (matches a fixture under tests/fixtures/personas/). Omit to refresh all.'
+        required: false
+        default: ''
+      runs:
+        description: 'Runs per persona for consensus voting (1-9). Default: 3.'
+        required: false
+        default: '3'
+
+concurrency:
+  group: refresh-baseline
+  cancel-in-progress: true
+
+permissions:
+  contents: write       # push the new commit on the chore branch
+  pull-requests: write  # open / update the PR
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # Default checkout shallow-clones; create-pull-request needs
+        # full history to compute the diff cleanly when running against
+        # an existing branch.
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only the packages refresh-baseline.mts actually imports — saves
+      # ~30s vs `pnpm -r build`.
+      - name: Build workspace packages
+        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" --filter "@mosaiq/cli" build
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter "@mosaiq/sdk" exec playwright install --with-deps chromium
+
+      # Resolve dispatch inputs → script args.
+      - name: Build refresh args
+        id: args
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.persona }}" ]; then
+            ARGS="$ARGS --persona ${{ github.event.inputs.persona }}"
+          fi
+          if [ -n "${{ github.event.inputs.runs }}" ]; then
+            ARGS="$ARGS --runs ${{ github.event.inputs.runs }}"
+          fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "Resolved refresh args: $ARGS"
+
+      # The actual refresh. Spawns Chromium 3× per persona by default
+      # (configurable via --runs input), computes consensus, writes the
+      # new baseline.json on top of the committed one. Always exits 0
+      # unless something genuinely broke; the workflow uses `git diff`
+      # below to detect whether anything actually changed.
+      - name: Run refresh-baseline
+        id: refresh
+        run: |
+          set -o pipefail
+          pnpm tsx scripts/refresh-baseline.mts ${{ steps.args.outputs.args }} \
+            2>&1 | tee refresh-baseline.log
+
+      # If the script wrote new baseline.json file(s), there will be
+      # uncommitted changes here. peter-evans/create-pull-request@v6
+      # handles this natively (detects working-tree changes, commits,
+      # pushes, opens/updates PR). If there are no changes, the action
+      # is a no-op.
+      - name: Open / update auto-PR
+        id: pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: |
+            chore(baseline): refresh detection-lab baselines
+
+            Auto-generated by .github/workflows/refresh-baseline.yml
+            (run #${{ github.run_number }}, ${{ github.event_name }}).
+          title: 'chore(baseline): refresh detection-lab baselines (${{ github.event_name }} #${{ github.run_number }})'
+          body: |
+            ## Auto-baseline refresh
+
+            One or more committed `tests/fixtures/baseline-runs/<persona>/baseline.json`
+            files drifted relative to the latest consensus of 3 fresh Detection Lab runs
+            executed by `.github/workflows/refresh-baseline.yml`.
+
+            Two common causes:
+            1. **An external detection site shipped a new detector** (creepjs,
+               browserscan, sannysoft, ...). The new hit is real and the baseline
+               should be updated to reflect the new ground truth.
+            2. **A change merged to `main` regressed Mosaiq's anti-detection
+               behavior** but slipped past detection-lab.yml (e.g. weighted-hit
+               delta below the gate's tolerance, or a borderline ok/fail flip).
+               In that case **don't merge this PR** — instead investigate the
+               regression and revert / fix on `main`.
+
+            ### How to review
+
+            1. Open the file diff. Hits *added* under `score.hits` are new
+               detector signals; hits *removed* are detectors the sites stopped
+               flagging. Sites flipped from `ok: true` to `ok: false` (or vice
+               versa) under `raw.results` indicate persistent network-reachability
+               changes.
+            2. Cross-check against [docs/SITES.md](../docs/SITES.md) and the
+               site's changelog (if any) to confirm whether the drift is
+               external.
+            3. If external → approve + merge. If internal regression → close
+               this PR and open an issue with the diff as evidence.
+
+            ### Workflow details
+
+            - Trigger: `${{ github.event_name }}`
+            - Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - Refresh args: `${{ steps.args.outputs.args }}`
+            - Consensus: 3 runs (default), majority threshold ≥ 2/3
+            - Full log: see `refresh-baseline.log` artifact
+
+            ---
+
+            See `docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md` §11 for the design
+            and `tests/fixtures/baseline-runs/README.md` for the bootstrap /
+            refresh contract.
+          branch: chore/refresh-baseline
+          delete-branch: true
+          labels: |
+            ci
+            baseline
+            automated
+          base: main
+          add-paths: |
+            tests/fixtures/baseline-runs/
+
+      # Upload the refresh log + a snapshot of what was written, regardless
+      # of whether the PR step decided to open a PR. Useful for diagnosing
+      # "nothing happened but I expected drift" or "script crashed mid-run".
+      - name: Upload refresh log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refresh-baseline-${{ github.run_number }}
+          path: |
+            refresh-baseline.log
+            tests/fixtures/baseline-runs/
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Visible signal in the run summary.
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "## Detection Lab baseline refresh"
+            echo ""
+            if [ "${{ steps.pr.outputs.pull-request-number }}" != "" ]; then
+              echo "✅ PR opened/updated: #${{ steps.pr.outputs.pull-request-number }} (${{ steps.pr.outputs.pull-request-operation }})"
+              echo ""
+              echo "URL: ${{ steps.pr.outputs.pull-request-url }}"
+            else
+              echo "🟢 No drift detected. Committed baselines still valid."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

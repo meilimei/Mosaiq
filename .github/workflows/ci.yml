@@ -116,6 +116,19 @@ jobs:
       - name: Drift check — Detection Lab fixture personas
         run: pnpm build-fixture-personas --check
 
+      # v0.10 phase 10.8 unit tests: the refresh-baseline.mts script
+      # (.github/workflows/refresh-baseline.yml driver) does a multi-run
+      # consensus across 3 Detection Lab runs to suppress transient
+      # network / detector flakes from polluting the committed baseline.
+      # The consensus algorithm is pure logic — exercising it inside
+      # refresh-baseline.yml would require a 60-min Chromium run that
+      # only catches regressions retrospectively. Instead we run a
+      # synthetic-fixtures test suite here on every PR to catch
+      # consensus-vote / severity-tie-break / structural-mismatch
+      # regressions before they reach the cron.
+      - name: Test — refresh-baseline consensus
+        run: pnpm test:refresh-baseline
+
       # v0.10 phase 10.3 publish gate: assert each publishable package's npm
       # tarball contains exactly the expected files (REQUIRED present, no
       # FORBIDDEN leaks like bench/ / src/ / chromium-fork / captured-profiles).

@@ -27,6 +27,8 @@
     "audit-tarballs": "node scripts/audit-tarballs.mjs",
     "build-fixture-personas": "tsx scripts/build-fixture-personas.ts",
     "ci-compare-baseline": "node scripts/ci-compare-baseline.mjs",
+    "refresh-baseline": "tsx scripts/refresh-baseline.mts",
+    "test:refresh-baseline": "tsx scripts/refresh-baseline.test.mts",
     "clean": "pnpm -r run clean && rimraf node_modules"
   },
   "devDependencies": {
