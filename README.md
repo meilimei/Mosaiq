@@ -17,9 +17,10 @@ npx playwright install chromium
 mosaiq personas templates list   # 看 4 个 OS 模板
 ```
 
-→ **[CHANGELOG.md](./CHANGELOG.md)** — v0.1.0 → v0.10.0 完整变更（最近：Phase 10.1-10.5 npm 公开发行 + patch-package + changesets）
+→ **[CHANGELOG.md](./CHANGELOG.md)** — v0.1.0 → v0.10.0 完整变更（最近：Phase 10.1-10.5 npm 公开发行 + patch-package + changesets；Phase 10.6-10.9 Detection Lab CI gate + sticky PR comment + 每周 baseline 自动 refresh）
 → **[QUICKSTART.md](./QUICKSTART.md)** — 5 分钟从 `npm i` 到第一次自检 + Detection Lab + CLI（含 monorepo 开发者路径）
-→ **[docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md](./docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md)** — v0.10 双轨规划（Track A npm 发行已 ship；Track B Detection Lab CI gate 推到 v0.11）
+→ **[docs/RELEASING.md](./docs/RELEASING.md)** — maintainer release runbook：手工首发 v0.10.0 / 后续 changesets 自动化 / Detection Lab baseline bootstrap / 回滚
+→ **[docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md](./docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md)** — v0.10 双轨规划（Track A npm 发行 + Track B Detection Lab CI gate 全部代码就绪；maintainer 侧仍需走 RELEASING.md 完成 npm publish + baseline bootstrap）
 → **[docs/V0.8-DETECTION-LAB.md](./docs/V0.8-DETECTION-LAB.md)** — Detection Lab 完整 product-level 设计稿（v0.8 落地、v0.9 polish）
 → **[docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)** — humanize 引擎设计稿（v0.2 起持续维护）
 
@@ -141,7 +142,7 @@ Mosaiq/
 - 2026-05-17 → v0.7.1：captured WebGL profiles contributor pipeline、CI、ESM cycle fix
 - 2026-05-18 → v0.8.0：Detection Lab 完整桌面集成
 - 2026-05-20 → v0.9.0：CLI 上线 + Detection Lab UX polish
-- 2026-05-21 → v0.10.0：三发包包 npm 公开发行 + patch-package 分发 rebrowser-patches + changesets 自动化
+- 2026-05-21 → v0.10.0：三发包包 npm 公开发行 + patch-package 分发 rebrowser-patches + changesets 自动化 + Detection Lab CI gate（fixture persona + 每周 baseline auto-refresh + sticky PR regression comment）
 
 下一步（v0.11 候选）：见下方 [下一步行动](#下一步行动)。
 
@@ -154,11 +155,11 @@ Mosaiq/
 
 ## 下一步行动
 
-v0.11 候选方向（**未定**，待选；v0.10 Track B 直接转 v0.11 Track A）：
+v0.11 候选方向（**未定**，待选）：
 
-1. **Detection Lab CI gate**（v0.10 Track B 顺延）— 在 `.github/workflows/detection-lab.yml` 用 `mosaiq detection-lab run-all --fail-on-regression` 对 committed fixture persona 跑回归，nightly cron 刷新 baseline 自动开 PR。完整 4-phase 规划见 [V0.10 plan](./docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md) §10-12
-2. **Real-hardware capture v2** — 仿 Phase 7.0 WebGL capture pipeline，扩展到 audio / canvas / font 多 surface 的真机指纹收集，由 desktop UI 引导用户一键贡献。v0.10 npm 发行后才有意义（之前没有外部 contributor 池）
-3. **Public Detection Lab leaderboard** — 持续 e2e 跑收集 + 静态站托管 Mosaiq vs Browserbase / Multilogin / AdsPower 对比；PRD §2 已承诺
+1. **Real-hardware capture v2** — 仿 Phase 7.0 WebGL capture pipeline，扩展到 audio / canvas / font 多 surface 的真机指纹收集，由 desktop UI 引导用户一键贡献。v0.10 npm 发行后才有意义（之前没有外部 contributor 池）
+2. **Public Detection Lab leaderboard** — 持续 e2e 跑收集 + 静态站托管 Mosaiq vs Browserbase / Multilogin / AdsPower 对比；PRD §2 已承诺
+3. **Detection Lab matrix 扩容** — 目前 CI gate 只覆盖 `win11-chrome-us` 一个 fixture persona。扩到 win10 / macOS / Ubuntu × 多 GPU profile，验证跨平台一致性
 4. **Desktop UX polish** — 主题、history pagination、persona 批量操作、多窗口、截图 lightbox 增强
 
 实战反馈优先级最高。如果你打算用 Mosaiq 跑真账号：
@@ -167,7 +168,7 @@ v0.11 候选方向（**未定**，待选；v0.10 Track B 直接转 v0.11 Track A
 2. `mosaiq personas create alice --template win11-chrome-us --display-name "Alice"`
 3. `mosaiq detection-lab run alice` 体感反检测 score
 4. 找几个 sensitive 站点（Reddit / X / Cloudflare 严格站）实战跑一周
-5. 用 `mosaiq detection-lab run-all --fail-on-regression` 把它接到你自己的 cron / CI（外部 CI gate 路径，本仓库内置的 CI gate 是 v0.11 主线）
+5. 用 `mosaiq detection-lab run-all --fail-on-regression` 把它接到你自己的 cron / CI（外部 CI gate 路径；本仓库内置的 detection-lab.yml + 每周 baseline refresh 见 [docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md](./docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md) §10-12）
 6. 把被检测的指标反馈成 Issue，会优先 v0.11 处理
 
 ## 许可证
