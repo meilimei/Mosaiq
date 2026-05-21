@@ -7,8 +7,141 @@ in 0.x (minor bumps may include breaking changes).
 
 ## [Unreleased]
 
-_No changes yet — next phase (Track B of v0.10, the Detection Lab CI gate)
-starts here._
+**Track B of v0.10 — the Detection Lab CI gate — is now landing in
+incremental commits on top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 have
+shipped; phases 10.8 + 10.9 (refresh-baseline auto-PR + per-PR comment bot)
+remain.
+
+### Added
+
+- **Phase 10.6a — `stripRunForBaseline` pure projection** (`commit 886a5bc`).
+  New SDK export `stripRunForBaseline(run: DetectionRun): DetectionRun`
+  (and three placeholder constants: `BASELINE_RUN_ID`,
+  `BASELINE_TIMESTAMP`, `BASELINE_CHROMIUM_VERSION`). Replaces — does not
+  delete — every field that's environment-dependent (runId / startedAt /
+  finishedAt / durationMs / meta.chromiumVersion / raw.timestamp /
+  raw.overallMs / per-site durationMs+screenshot+html+retries+bodyText+
+  title+error) with stable placeholders so the output is git-trackable:
+  the same persona-schema + SDK version producing the same anti-detection
+  behavior will yield a byte-identical stripped JSON across runs, runner
+  OSes, and chromium build numbers. Behavior-relevant fields
+  (personaId / status / score.\* / meta.sdkVersion / raw.persona /
+  per-site id+name+url+ok+extracted) are preserved verbatim. 30 vitest
+  cases cover field-stripping invariants, run shape preservation,
+  null-safe handling of `finishedAt: null` / `raw: undefined`,
+  identity-on-already-stripped-input, and the round-trip "stripped run
+  is still a valid `DetectionRun` parseable by downstream SDK
+  consumers". This is the foundation Phase 10.7's CI comparator stands
+  on — without it, every baseline diff would be permanently red.
+
+- **Phase 10.6b — deterministic fixture personas + CI drift gate**
+  (`commit 708b7e1`).
+  - `scripts/build-fixture-personas.ts` (~143 LOC) — deterministic
+    persona-fixture generator. Imports `createWin11ChromeUsPersona`
+    from `@mosaiq/persona-schema`, overrides the template's normally-
+    random `masterSeed` with the well-known constant
+    `'deadbeef'` and replaces `metadata.createdAt` / `updatedAt` (which
+    the template factory sets via `new Date()`) with the unix-epoch
+    timestamp `'1970-01-01T00:00:00.000Z'`. Output is a single
+    pretty-printed JSON file under `tests/fixtures/personas/<id>.json`
+    that's byte-stable across regenerations. Two modes:
+    `pnpm build-fixture-personas` writes the fixture(s);
+    `pnpm build-fixture-personas --check` exits 1 if any committed
+    fixture diverges from what the current generator would emit.
+  - `tests/fixtures/personas/win11-chrome-us.json` (~3.3 KB) — first
+    committed fixture, baseline persona for the Phase 10.7 CI
+    comparator. Tagged `template:win11-chrome-us`, `fixture`, `ci`
+    so the `extractTemplateTag` resolution path (cli + desktop) round-
+    trips correctly.
+  - `.github/workflows/ci.yml`: new "Drift check — Detection Lab
+    fixture personas" step (`pnpm build-fixture-personas --check`)
+    next to the captured-WebGL-profiles drift check + SDK patch drift
+    check. Fails the PR if a contributor modifies the generator
+    without committing the regenerated JSON (or hand-edits the JSON
+    out-of-sync with the generator).
+  - The `package.json` `scripts` field gained a top-level
+    `build-fixture-personas` alias (`tsx scripts/build-fixture-
+    personas.ts`) so CI + local invocations share one entry point.
+
+- **Phase 10.7 — Detection Lab CI gate workflow + file-vs-file
+  comparator** (this entry).
+  - `scripts/ci-compare-baseline.mjs` (~470 LOC) — the heart of the
+    gate. Pure Node ESM, imports `diffRuns` + `stripRunForBaseline`
+    from `@mosaiq/sdk` via a workspace-aware `file://` URL (the bare
+    `@mosaiq/sdk` specifier doesn't resolve from the workspace root
+    because pnpm only symlinks SDK into consumer packages'
+    `node_modules`; the file-URL import side-steps the resolver and
+    works from any cwd). Two modes:
+    - `compare <baseline.json> <candidate.json>
+      [--fail-on-regression] [--markdown-out <file>]
+      [--network-failure-tolerance <n>] [--require-baseline]`.
+      Loads both JSON files, strips the candidate via
+      `stripRunForBaseline` so the diff isolates behavior delta from
+      environmental noise (host chromium version, ISO timestamps),
+      then runs SDK `diffRuns`. Emits a GitHub-flavored markdown
+      report (always — to stdout + optionally to a file for the
+      workflow's `$GITHUB_STEP_SUMMARY`). Lenient policy: any added
+      hit OR rising weightedHits is a regression, but up to
+      `--network-failure-tolerance` (default 2) `ok → fail` site
+      flips are tolerated if no hits were added and weightedHits
+      didn't rise (transient network noise rather than a real
+      regression). Exit codes: `0` = pass / `1` = regression
+      (with `--fail-on-regression`) / `2` = arg or file error.
+      When the baseline file is missing, the script enters
+      **bootstrap mode**: emits a markdown report explaining how
+      to commit the candidate as the new baseline and exits 0
+      (unless `--require-baseline` is set, in which case exit 1).
+    - `write-baseline <candidate.json> <out-baseline.json>` — reads
+      a raw `DetectionRun` JSON and writes the `stripRunForBaseline`-
+      stripped projection to disk. Used to bootstrap a new baseline
+      from a CI-runner artifact.
+  - `.github/workflows/detection-lab.yml` (~165 LOC) — the workflow.
+    Triggers: pull_request (paths-filtered to SDK / persona-schema /
+    patches / fixtures / the script + workflow itself), push:main
+    (same paths), weekly `cron '0 6 * * 1'`, and `workflow_dispatch`
+    (with a `persona` input for ad-hoc re-runs). Steps: checkout →
+    pnpm/node setup (pinned to `9.12.0` / `.nvmrc`) → install
+    `--frozen-lockfile` → build all three publishable packages →
+    `playwright install --with-deps chromium` → import the matrix
+    persona fixture into the runner's `~/.mosaiq/personas/` (with
+    `--on-conflict overwrite` to ensure the run picks up the
+    committed fixture verbatim) → `pnpm mosaiq detection-lab run
+    <persona> --json --quiet --retries 3 --timeout 60000` →
+    `node scripts/ci-compare-baseline.mjs compare … --fail-on-
+    regression --network-failure-tolerance 2` → append markdown
+    report to `$GITHUB_STEP_SUMMARY` → always upload the
+    `candidate-<persona>.json` + `regression-<persona>.md` +
+    `~/.mosaiq/detection-runs/<persona>/` as artifact (retention 14
+    days). Matrix on `persona` (single `[win11-chrome-us]` MVP
+    entry; expand by adding more fixture files). Concurrency-locked
+    to cancel superseded commits' in-flight runs. Timeout 30 min.
+  - `tests/fixtures/baseline-runs/README.md` (~85 LOC) —
+    contributor docs covering the why ("stripped baseline" rationale,
+    list of replaced vs preserved fields), the bootstrap workflow
+    (download CI artifact → `write-baseline` → commit), the refresh
+    workflow (when a detection site updates its detector), and the
+    "do not hand-edit `baseline.json`" rule.
+  - Root `package.json` gained a top-level `ci-compare-baseline`
+    alias (`node scripts/ci-compare-baseline.mjs`) so local
+    invocations share the same entry point as CI.
+  - **First-run bootstrap is intentional**: the workflow ships
+    without a committed `tests/fixtures/baseline-runs/win11-chrome-
+    us/baseline.json`. On the first `main` push (or manual
+    `workflow_dispatch`) after this commit, the workflow runs to
+    completion, uploads the candidate artifact, and exits 0 with a
+    "baseline missing" markdown report. The maintainer downloads
+    the candidate, runs `write-baseline`, and commits the result —
+    a single short follow-up PR. From that PR onward, the gate is
+    active. This avoids committing a baseline produced on a
+    developer's local hardware (which would false-positive against
+    the `ubuntu-latest` runner's Chromium build).
+  - Smoke-tested locally against synthetic baseline + candidate
+    JSON fixtures: clean pass (exit 0), regression detected (exit
+    1, markdown report with added-hit detail), network-noise
+    tolerated (1 site flip → exit 0, "tolerated network noise"
+    header), missing baseline (exit 0 by default + exit 1 with
+    `--require-baseline`), `write-baseline` mode (round-trip
+    verifies stripped fields).
 
 ## [0.10.0] — 2026-05-21
 

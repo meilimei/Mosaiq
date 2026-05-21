@@ -1,0 +1,201 @@
+# Detection Lab — v0.10 phase 10.7 anti-detection regression gate.
+#
+# Runs `mosaiq detection-lab run` against the committed fixture persona(s)
+# under `tests/fixtures/personas/` and compares the result to the
+# committed baseline under `tests/fixtures/baseline-runs/<persona>/baseline.json`.
+# A regression (added hits / weightedHits up / non-trivial ok->fail flips)
+# fails the workflow and uploads the candidate run + artifact dir for
+# debugging.
+#
+# Why a separate workflow from ci.yml?
+#   - ci.yml is the "code layer" gate: pure functions, vitest, typecheck,
+#     drift checks. <2 min on every PR.
+#   - detection-lab.yml is the "behavior layer" gate: spawns real Chromium,
+#     hits 12 live detection sites, scores hits. ~15 min, network-bound,
+#     not appropriate for every PR.
+#
+# Trigger policy:
+#   - pull_request paths-filter: only SDK / persona-schema / fixture changes
+#     trigger the run. Doc-only / desktop-only / cli-only PRs skip the gate
+#     (those changes can't move the anti-detection needle).
+#   - push:main: always run after merge as the canonical reading.
+#   - schedule:weekly: nightly drift detection — if a detection site updates
+#     its detector, we want to know within a week (not when the next PR
+#     happens to land).
+#   - workflow_dispatch: manual re-run handle for bootstrapping baselines.
+#
+# Bootstrap mode:
+#   On the very first run (or whenever tests/fixtures/baseline-runs/<persona>/
+#   baseline.json is missing), the compare step exits 0 with a "baseline
+#   missing — commit the candidate" message. Maintainer downloads the
+#   candidate-<persona>.json artifact and runs:
+#     node scripts/ci-compare-baseline.mjs write-baseline \
+#       candidate-<persona>.json \
+#       tests/fixtures/baseline-runs/<persona>/baseline.json
+#   then commits the result. Subsequent PRs gate against this baseline.
+#
+# See docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md §10-12 for design rationale.
+
+name: Detection Lab
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/sdk/**'
+      - 'packages/persona-schema/**'
+      - 'patches/**'
+      - 'tests/fixtures/personas/**'
+      - 'tests/fixtures/baseline-runs/**'
+      - 'scripts/ci-compare-baseline.mjs'
+      - 'scripts/build-fixture-personas.ts'
+      - '.github/workflows/detection-lab.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/sdk/**'
+      - 'packages/persona-schema/**'
+      - 'patches/**'
+      - 'tests/fixtures/personas/**'
+      - 'tests/fixtures/baseline-runs/**'
+      - 'scripts/ci-compare-baseline.mjs'
+      - '.github/workflows/detection-lab.yml'
+  schedule:
+    # Mondays at 06:00 UTC — once a week is enough to catch external
+    # detector drift without burning Actions quota.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      persona:
+        description: 'Persona id to run (matches a fixture under tests/fixtures/personas/)'
+        required: false
+        default: 'win11-chrome-us'
+
+# Cancel any in-progress detection runs for the same PR/branch when a new
+# commit lands — saves ~15 min of Chromium time per superseded commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detection:
+    name: ${{ matrix.persona }} — ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      # Per-persona failures should not short-circuit the whole batch —
+      # we want to see all personas' results in one workflow view.
+      fail-fast: false
+      matrix:
+        # Single fixture for v0.10.7 MVP. Add more entries here as new
+        # fixtures are committed to tests/fixtures/personas/.
+        # Each entry must have a matching tests/fixtures/baseline-runs/<id>/
+        # directory (or the run will exit in bootstrap mode).
+        persona: [win11-chrome-us]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build only the packages this workflow actually invokes — desktop's
+      # Electron build is unnecessary here and would add ~30s.
+      - name: Build workspace packages
+        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" --filter "@mosaiq/cli" build
+
+      # `--with-deps` pulls the system libs (libnss3 etc) on ubuntu-latest.
+      # Cached between runs by setup-node's pnpm store cache via the
+      # transitive playwright-core dep entry.
+      - name: Install Playwright Chromium
+        run: pnpm --filter "@mosaiq/sdk" exec playwright install --with-deps chromium
+
+      # Override the persona id via workflow_dispatch input if provided;
+      # otherwise use the matrix value. This lets maintainers re-run a
+      # specific persona manually (e.g. after editing its fixture) without
+      # editing the matrix.
+      - name: Resolve persona id
+        id: persona
+        run: |
+          ID="${{ github.event.inputs.persona || matrix.persona }}"
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "Persona id: $ID"
+
+      # Seed the fixture persona into ~/.mosaiq/personas/ so the CLI's
+      # `detection-lab run` can find it by id. --on-conflict overwrite
+      # ensures the runner picks up the committed fixture verbatim even
+      # if a stale persona with the same id somehow ended up in the cache.
+      - name: Seed fixture persona
+        run: |
+          pnpm mosaiq personas import \
+            "tests/fixtures/personas/${{ steps.persona.outputs.id }}.json" \
+            --on-conflict overwrite
+
+      # The heart of the workflow. --quiet suppresses per-site progress
+      # lines (would spam the Actions log); --json emits the full
+      # DetectionRun to stdout, which we redirect to a file the next step
+      # consumes. --fail-on-hits=none because the comparator (next step)
+      # handles the regression policy; we don't want this step to fail
+      # just because the baseline already had a known hit.
+      - name: Run Detection Lab
+        id: run
+        run: |
+          pnpm mosaiq detection-lab run \
+            "${{ steps.persona.outputs.id }}" \
+            --json \
+            --quiet \
+            --retries 3 \
+            --timeout 60000 \
+            > "candidate-${{ steps.persona.outputs.id }}.json"
+
+      # File-vs-file comparison against the committed baseline. Writes a
+      # markdown report to regression.md (also appended to step summary)
+      # and exits non-zero on regression. Network failures up to the
+      # tolerance threshold don't trip the gate.
+      - name: Compare against baseline
+        id: compare
+        run: |
+          node scripts/ci-compare-baseline.mjs compare \
+            "tests/fixtures/baseline-runs/${{ steps.persona.outputs.id }}/baseline.json" \
+            "candidate-${{ steps.persona.outputs.id }}.json" \
+            --fail-on-regression \
+            --markdown-out "regression-${{ steps.persona.outputs.id }}.md" \
+            --network-failure-tolerance 2
+
+      # Always-on step (success or failure): make the markdown report
+      # visible at the top of the run's "Summary" tab in the Actions UI.
+      - name: Append to step summary
+        if: always()
+        run: |
+          if [ -f "regression-${{ steps.persona.outputs.id }}.md" ]; then
+            cat "regression-${{ steps.persona.outputs.id }}.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Always upload the candidate run JSON — useful for bootstrapping a
+      # missing baseline AND for post-mortem analysis on a regression.
+      # Per-site HTML / PNG artifacts live under ~/.mosaiq/detection-runs/
+      # and are uploaded too for failure debugging.
+      - name: Upload candidate + artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detection-lab-${{ steps.persona.outputs.id }}-${{ github.run_number }}
+          path: |
+            candidate-${{ steps.persona.outputs.id }}.json
+            regression-${{ steps.persona.outputs.id }}.md
+            /home/runner/.mosaiq/detection-runs/${{ steps.persona.outputs.id }}/
+          retention-days: 14
+          if-no-files-found: warn
