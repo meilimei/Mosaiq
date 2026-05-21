@@ -7,9 +7,12 @@ in 0.x (minor bumps may include breaking changes).
 
 ## [Unreleased]
 
-**Track B of v0.10 — the Detection Lab CI gate — is now landing in
-incremental commits on top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 +
-10.8 have shipped; phase 10.9 (per-PR regression comment bot) remains.
+**Track B of v0.10 — the Detection Lab CI gate — has fully landed on
+top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 + 10.8 + 10.9 are all in;
+the only remaining v0.10 work is the maintainer-side bootstrap (commit
+the first `baseline.json` from a green detection-lab workflow's
+candidate artifact) and the actual `npm publish` of `@mosaiq/persona-
+schema` / `@mosaiq/sdk` / `@mosaiq/cli` at `0.10.0`.
 
 ### Added
 
@@ -230,6 +233,60 @@ incremental commits on top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 +
     review PR (the human is the final gate). Sharing infrastructure
     (build / playwright / fixture import) but not the failure
     semantics.
+
+- **Phase 10.9 — sticky PR regression comment** (this entry).
+  Closes the last v0.10 Track B gap: when `detection-lab.yml` fails
+  on a PR, the reviewer no longer has to click into Actions → run →
+  Summary tab to see what regressed. The full regression markdown
+  (the same one written to `$GITHUB_STEP_SUMMARY`) is now posted as
+  a sticky comment on the PR conversation, with a workflow-link
+  footer pointing back to the artifact + reproduction commands.
+  - `.github/workflows/detection-lab.yml`: added a `permissions:`
+    block at workflow scope (`contents: read` + `pull-requests:
+    write` — minimum scope for the bot to comment) plus two new
+    steps appended after "Append to step summary":
+    - **Decorate regression report for PR comment** —
+      conditionally appends a `_Full diff in workflow run #N
+      (link) — reproduce locally with: pnpm mosaiq detection-lab
+      run <persona> + pnpm ci-compare-baseline compare …_` footer
+      to `regression-<persona>.md`. The footer is added in the
+      workflow (not in `ci-compare-baseline.mjs`) because the
+      script doesn't know its caller's run URL.
+    - **Comment on PR with regression diff** —
+      `marocchino/sticky-pull-request-comment@v2` with
+      `header: detection-lab-<persona>` (keyed per-matrix-entry so
+      future multi-persona matrices each get their own sticky
+      slot, no comment stomping) and `recreate: true` (re-push
+      replaces the existing comment in-place rather than spawning
+      a new one each commit).
+    Both steps gated on `failure() && github.event_name ==
+    'pull_request' && hashFiles(regression-<persona>.md) != ''`:
+    - `failure()` — only post if the gate fired red, never on
+      clean / tolerated-network-noise / bootstrap runs.
+    - `github.event_name == 'pull_request'` — push:main / cron /
+      workflow_dispatch have no PR conversation to comment on.
+    - `hashFiles(...) != ''` — defense in depth: if
+      `ci-compare-baseline.mjs` crashed with exit 2 (arg / file
+      error) before writing the markdown, skip the comment rather
+      than fail-cascade on a missing file.
+  - **Why `marocchino/sticky-pull-request-comment@v2` over the
+    spec's `peter-evans/create-or-update-comment@v4`:** the
+    peter-evans action only edits when given a `comment-id` — so
+    the "sticky / replace on re-push" behavior actually requires
+    a `peter-evans/find-comment@v3` step before it, plus a unique
+    HTML-comment marker in the body. marocchino bakes the same
+    semantics into a single action keyed by `header`. Same author
+    trust level, half the YAML, same end-user experience. The
+    spec in `docs/V0.10-... §12.2` is treated as guidance, not
+    contract.
+  - Smoke-verified locally that `ci-compare-baseline.mjs
+    --markdown-out` writes the expected 529-byte regression report
+    on a synthetic regression scenario (1 new high-severity hit,
+    weightedHits 0 → 3) and exits 1 — exactly what triggers
+    `failure()` in the workflow.
+  - **No changes to `ci-compare-baseline.mjs`** — the
+    `--markdown-out` plumbing was already added in phase 10.7
+    against this future use; phase 10.9 is workflow-only wiring.
 
 ## [0.10.0] — 2026-05-21
 

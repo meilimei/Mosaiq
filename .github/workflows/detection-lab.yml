@@ -77,6 +77,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Phase 10.9: marocchino/sticky-pull-request-comment needs pull-requests:
+# write to post the regression comment. contents:read covers the
+# actions/checkout step. Both are minimum-scope.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   detection:
     name: ${{ matrix.persona }} — ubuntu
@@ -183,6 +190,55 @@ jobs:
           if [ -f "regression-${{ steps.persona.outputs.id }}.md" ]; then
             cat "regression-${{ steps.persona.outputs.id }}.md" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      # ──────────────────────────────────────────────────────────────────
+      # Phase 10.9 — sticky PR comment on regression failure.
+      #
+      # When the gate fails on a PR, surface the regression diff as a
+      # comment on the PR conversation instead of forcing the reviewer
+      # to click into Actions → run → Summary tab. Two-step process:
+      #   1. Append a workflow-link footer to the markdown file (the
+      #      ci-compare-baseline.mjs script can't know the run URL, so
+      #      we decorate here).
+      #   2. Post the file as a sticky comment via marocchino. The
+      #      `header` is keyed per persona so each persona in the
+      #      matrix gets its own sticky slot (no comment stomping when
+      #      multiple personas are added in v0.11+). `recreate: true`
+      #      makes a re-push update the existing comment in place.
+      #
+      # Why marocchino vs peter-evans/create-or-update-comment:
+      #   - peter-evans needs a separate find-comment@v3 step + a unique
+      #     body marker to achieve "edit existing on re-push" behavior.
+      #     marocchino bakes the same semantics into a single action
+      #     keyed by `header`. Same author trust level, half the YAML,
+      #     same end result.
+      #
+      # We only post on:
+      #   - failure() (regression OR script crashed — but if the script
+      #     crashed before writing the file, the hashFiles() check below
+      #     skips the comment so we don't post a stale one)
+      #   - github.event_name == 'pull_request' (no comment target on
+      #     push:main / cron / dispatch)
+      #   - the regression markdown file actually exists
+      # ──────────────────────────────────────────────────────────────────
+      - name: Decorate regression report for PR comment
+        if: failure() && github.event_name == 'pull_request' && hashFiles(format('regression-{0}.md', steps.persona.outputs.id)) != ''
+        run: |
+          FILE="regression-${{ steps.persona.outputs.id }}.md"
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "_Full diff + per-site HTML / screenshots in [workflow run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) artifact \`detection-lab-${{ steps.persona.outputs.id }}-${{ github.run_number }}\`. To reproduce locally: \`pnpm mosaiq detection-lab run ${{ steps.persona.outputs.id }}\` against the same fixture persona, then \`pnpm ci-compare-baseline compare tests/fixtures/baseline-runs/${{ steps.persona.outputs.id }}/baseline.json <your-candidate.json>\`._"
+          } >> "$FILE"
+
+      - name: Comment on PR with regression diff
+        if: failure() && github.event_name == 'pull_request' && hashFiles(format('regression-{0}.md', steps.persona.outputs.id)) != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: detection-lab-${{ steps.persona.outputs.id }}
+          recreate: true
+          path: regression-${{ steps.persona.outputs.id }}.md
 
       # Always upload the candidate run JSON — useful for bootstrapping a
       # missing baseline AND for post-mortem analysis on a regression.
