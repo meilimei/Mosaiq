@@ -93,6 +93,8 @@ secrets/
 # cloud-runtime sqlite + browser-pod chromium 持久化目录（dev 跑 docker compose 之外的本地路径）
 apps/cloud-runtime/data/
 apps/browser-pod/data/
+# 本地 e2e 验收时存 pod / runtime pid、log、sqlite、chromium user-data-dir
+tmp/
 
 # ─────────────────────────────────
 # Test / coverage

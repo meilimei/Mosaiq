@@ -74,7 +74,13 @@ export function rewriteCdpHost(cdpUrl: string, podOrigin: string): string {
 export interface StaticPoolOptions {
   podAddrs: string[];
   fetchImpl?: FetchLike;
-  /** 控制 pod 不响应时多久放弃。默认 5_000ms。 */
+  /**
+   * Pod /control/start 的超时上限。
+   *
+   * pod 端 chromium spawn + waitForCdp 默认有 POD_CHROMIUM_BOOT_TIMEOUT_MS=30_000，
+   * 这里至少要覆盖那个，否则 cloud-runtime 会先 abort，留下 pod 端孤儿 chromium。
+   * 我们额外留 5s buffer 给 HTTP roundtrip + JSON 序列化。
+   */
   startTimeoutMs?: number;
 }
 
@@ -92,7 +98,7 @@ export class StaticPoolMachineManager implements MachineManager {
     }
     this.#pods = opts.podAddrs.map((origin) => ({ origin, busyMachineId: null }));
     this.#fetch = opts.fetchImpl ?? fetch;
-    this.#startTimeoutMs = opts.startTimeoutMs ?? 5_000;
+    this.#startTimeoutMs = opts.startTimeoutMs ?? 35_000;
   }
 
   async acquire(spec: AcquireSpec): Promise<AcquiredMachine> {
