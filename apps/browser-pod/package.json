@@ -1,0 +1,41 @@
+{
+  "name": "@mosaiq/browser-pod",
+  "version": "0.11.0",
+  "description": "Mosaiq Cloud — per-session browser pod. Spawns a chromium child process with persona-derived flags and exposes a Node HTTP control plane.",
+  "license": "Apache-2.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "mosaiq-browser-pod": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@mosaiq/persona-schema": "workspace:*",
+    "hono": "^4.6.12",
+    "@hono/node-server": "^1.13.7",
+    "nanoid": "^5.0.9",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "playwright-core": "1.59.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}

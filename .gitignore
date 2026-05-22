@@ -82,12 +82,17 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.cloud
 *.pem
 *.key
 *.p12
 *.cer
 secrets/
 !.env.example
+!.env.cloud.example
+# cloud-runtime sqlite + browser-pod chromium 持久化目录（dev 跑 docker compose 之外的本地路径）
+apps/cloud-runtime/data/
+apps/browser-pod/data/
 
 # ─────────────────────────────────
 # Test / coverage

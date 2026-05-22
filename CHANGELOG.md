@@ -7,12 +7,113 @@ in 0.x (minor bumps may include breaking changes).
 
 ## [Unreleased]
 
-**Track B of v0.10 — the Detection Lab CI gate — has fully landed on
-top of `v0.10.0`.** Phases 10.6a + 10.6b + 10.7 + 10.8 + 10.9 are all in;
-the only remaining v0.10 work is the maintainer-side bootstrap (commit
-the first `baseline.json` from a green detection-lab workflow's
-candidate artifact) and the actual `npm publish` of `@mosaiq/persona-
-schema` / `@mosaiq/sdk` / `@mosaiq/cli` at `0.10.0`.
+### Added — v0.11 phase 11.1: Cloud Runtime alpha (2026-05-22)
+
+第一次把 Mosaiq 的 cloud track 从设计稿（`docs/CLOUD-RUNTIME-ARCH.md`）落到
+能跑的代码：控制平面 + browser-pod + 客户端 SDK + 本地 docker-compose 一键
+起。设计文档 [`docs/CLOUD-V0-IMPLEMENTATION.md`](docs/CLOUD-V0-IMPLEMENTATION.md)
+是七大 ADR 的工程落地版（Hono on Node / 原生 chromium `--remote-debugging-port`
++ 控制平面 WS 反代 / Drizzle + sqlite / Bearer + sha256 / per-session pod /
+不做 Stagehand 兼容预备）。
+
+- **`apps/cloud-runtime`（new app）** — Hono 控制平面，listen `:8787`：
+  - REST：`GET /v1/health`、`POST/GET/DELETE /v1/sessions/:id`、
+    `GET/POST/GET/DELETE /v1/personas[/:id]`
+  - WebSocket：`/v1/sessions/:id/cdp` 全双工反向代理到 pod chromium
+    `:9223/devtools/browser/<uuid>`，鉴权支持 Bearer header 或
+    `?token=` query 兜底（Stagehand / 浏览器端用例）
+  - DB：Drizzle + better-sqlite3（dev 文件 / `:memory:` 测试），6 张表
+    schema（`projects`/`api_keys`/`sessions`/`personas`/`usage_events`/
+    `audit_events`），`bootstrap.ts` 跑 idempotent `CREATE TABLE IF NOT
+    EXISTS`，无 drizzle-kit migration（phase 11.5 上 Stripe 时再引入）
+  - MachineManager 抽象 + 三实现：`StaticPoolMachineManager`（v0.11
+    默认，POD_ADDRS 列出预跑 pod 轮询分配）、`LocalDockerMachineManager`
+    /`FlyMachineManager` 占位（11.2/11.2 落地）
+  - 鉴权：Bearer + `sha256(plaintext)` 存 DB（plaintext 不入库），
+    `audit_events` 异步写
+  - 25/25 vitest 通过（含 Hono `app.request()` 端到端集成 + 静态池单元
+    测试 + bootstrap 幂等校验）
+
+- **`apps/browser-pod`（new app）** — 单 session pod：
+  - Node HTTP `:9222` 控制端：`GET /healthz`、`POST /control/start`
+    （拉起 chromium 子进程）、`POST /control/stop`（kill + 清
+    user-data-dir）
+  - chromium 子进程 spawn：`playwright-core` 解析 binary 路径，cmdline
+    flag 从 persona 派生（`--lang` / `--window-size` /
+    `--proxy-server` / `--user-agent` / `--user-data-dir` / `--no-sandbox`
+    / `--disable-blink-features=AutomationControlled` 等）
+  - chromium `/json/version` 拉到 `webSocketDebuggerUrl` 后回吐给
+    控制平面，控制平面 `rewriteCdpHost` 把 chromium 自报的
+    `localhost:9223` 换成 pod 路由 host（`browser-pod-1:9223`）
+  - TTL 看门狗：`setTimeout(SIGTERM, ttlSeconds*1000)` 兜底失联场景
+  - Dockerfile 基于 `mcr.microsoft.com/playwright:v1.59.1-noble`，
+    多阶段 build（pnpm install → tsc → minimal runner），1GB shm
+
+- **`packages/cloud-sdk`（new package）** — 客户端 SDK：
+  - `MosaiqCloudClient` REST 客户端：`createSession` / `getSession` /
+    `closeSession` / `listPersonas` / `getPersona` / `createPersona` /
+    `health`，所有非 2xx 抛 `CloudApiError(code, status, detail)`
+  - `ManagedCloudSession.injectInto(ctx)` 在 `connectOverCDP` 后用
+    `addInitScript` 注入 persona JS-level spoof —— **复用 `@mosaiq/sdk`
+    `injection` 的 `buildInjectionConfig` + `injectAll` 同款脚本**，
+    让 cloud session 与 desktop `launchPersona()` 行为完全一致
+  - 12/12 vitest 通过，包括设计稿 §9 必过的
+    `injection-survives-cdp.test.ts` smoke（happy-dom 模拟 frame，eval
+    出来的脚本真的把 `navigator.hardwareConcurrency` /
+    `navigator.platform` / `navigator.userAgent` 改成 persona 字段）
+
+- **`docker-compose.cloud.yml`** —— 一键起 `cloud-runtime` + 2 个
+  `browser-pod`，pod 不暴露 host 端口，仅 docker 内部网络可达，控制
+  平面在 `127.0.0.1:8787` 暴露给本机；`.env.cloud.example` 给出 dev
+  `SEED_API_KEY` 生成命令
+
+- **`docs/LAUNCHAI-INTEGRATION.md`** —— 让
+  [LaunchAI](https://github.com/meilimei/LaunchAI) 把 prod 路径
+  `runtime-browserbase.ts`（stub）切到 Mosaiq Cloud 的 hands-on 手册：
+  - `runtime-mosaiq.ts` 完整模板代码
+  - `BROWSER_RUNTIME=mosaiq` env wire
+  - persona 注册流程（POST /v1/personas）+ DEFAULT_PERSONA_ID
+  - 故障排查表（最常见的「`cdp_url` host 在 docker 内部网络不可达」
+    用 `PUBLIC_BASE_URL=http://localhost:8787` 修）
+
+### Cut from phase 11.1（明确留给后续）
+
+| 何时落 | 功能 |
+|---|---|
+| v0.12 phase 11.2 | Fly.io 部署 + Postgres schema 镜像 + `FlyMachineManager` 实现 |
+| v0.13 phase 11.3 | warm pool（冷启动 < 2s）+ Browserbase 兼容 REST 真实现 + sticky session |
+| v0.14 phase 11.4 | Persona Pool Service GA：seed pool / capture / filter-based selection |
+| v0.15 phase 11.5 | Stripe Metered + Admin Console（Next.js 管理台）+ `usage_events` emitter |
+| v0.16 phase 11.6 | 多 Region + MCP server + Captcha solver |
+
+### 全局测试统计
+
+无回归。`pnpm -r test` 总计：
+
+| package | 测试文件 | 测试数 |
+|---|---|---|
+| `@mosaiq/persona-schema` | 1 | 26 |
+| `@mosaiq/sdk` | 29 | 623 |
+| `@mosaiq/cli` | 3 | 64 |
+| `@mosaiq/desktop` | 2 | 45 |
+| `@mosaiq/cloud-runtime` (new) | 3 | 25 |
+| `@mosaiq/browser-pod` (new) | 0 | passWithNoTests |
+| `@mosaiq/cloud-sdk` (new) | 3 | 12 |
+| **总计** | **41** | **795** |
+
+`pnpm typecheck` 7 包全绿；`pnpm --filter <new>... build` 3 个新包都
+出 `dist`。
+
+---
+
+### Track B of v0.10 — the Detection Lab CI gate
+
+**Track B has fully landed on top of `v0.10.0`.** Phases 10.6a + 10.6b
++ 10.7 + 10.8 + 10.9 are all in; the only remaining v0.10 work is the
+maintainer-side bootstrap (commit the first `baseline.json` from a green
+detection-lab workflow's candidate artifact) and the actual
+`npm publish` of `@mosaiq/persona-schema` / `@mosaiq/sdk` /
+`@mosaiq/cli` at `0.10.0`.
 
 ### Added
 

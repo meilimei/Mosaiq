@@ -1,0 +1,160 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+import type { Persona } from '@mosaiq/persona-schema';
+
+import { CloudApiError } from './errors.js';
+import { MosaiqCloudClient } from './client.js';
+import { ManagedCloudSession } from './session.js';
+
+const FIXTURE_PATH = path.resolve(
+  __dirname,
+  '../../../tests/fixtures/personas/win11-chrome-us.json',
+);
+const PERSONA = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as Persona;
+
+function makeFakeFetch(
+  handler: (url: string, init?: RequestInit) => Promise<Response>,
+): typeof fetch {
+  return ((url: string, init?: RequestInit) => handler(url, init)) as unknown as typeof fetch;
+}
+
+const baseOpts = {
+  apiUrl: 'http://api.test',
+  apiKey: 'msq_sk_test_xxxxxxxxxxxxxxxxxxxxxx',
+  projectId: 'proj_test',
+};
+
+describe('MosaiqCloudClient — constructor', () => {
+  it('校验必填', () => {
+    expect(() => new MosaiqCloudClient({ ...baseOpts, apiUrl: '' })).toThrow(/apiUrl/);
+    expect(() => new MosaiqCloudClient({ ...baseOpts, apiKey: '' })).toThrow(/apiKey/);
+    expect(() => new MosaiqCloudClient({ ...baseOpts, projectId: '' })).toThrow(/projectId/);
+  });
+  it('剥末尾斜杠', () => {
+    const c = new MosaiqCloudClient({ ...baseOpts, apiUrl: 'http://x.test///' });
+    expect(c.apiUrl).toBe('http://x.test');
+  });
+});
+
+describe('MosaiqCloudClient.createSession', () => {
+  it('POST 带 Authorization + 返回 ManagedCloudSession', async () => {
+    let captured: { url: string; init: RequestInit | undefined } | null = null;
+    const fetchImpl = makeFakeFetch(async (url, init) => {
+      captured = { url, init };
+      const body = {
+        id: 'ses_abc',
+        project_id: 'proj_test',
+        status: 'live',
+        cdp_url: 'ws://api.test/v1/sessions/ses_abc/cdp',
+        persona: PERSONA,
+        stealth: { inject: true, humanize: true, rebrowserPatches: true },
+        expires_at: '2026-01-01T00:00:00Z',
+        last_seen_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        live_view_url: null,
+        client_label: null,
+      };
+      return new Response(JSON.stringify(body), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    const sess = await client.createSession({
+      persona: { inline: PERSONA },
+    });
+    expect(sess).toBeInstanceOf(ManagedCloudSession);
+    expect(sess.id).toBe('ses_abc');
+    expect(sess.cdpUrl).toContain('/v1/sessions/ses_abc/cdp');
+    expect(captured!.url).toBe('http://api.test/v1/sessions');
+    const headers = (captured!.init?.headers ?? {}) as Record<string, string>;
+    expect(headers.authorization).toBe(`Bearer ${baseOpts.apiKey}`);
+    const reqBody = JSON.parse(String(captured!.init?.body)) as {
+      project_id: string;
+      persona: { inline: unknown };
+      stealth: { inject: boolean };
+      lifecycle: { ttl_seconds: number };
+    };
+    expect(reqBody.project_id).toBe('proj_test');
+    expect(reqBody.persona).toHaveProperty('inline');
+    expect(reqBody.stealth).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
+    expect(reqBody.lifecycle.ttl_seconds).toBe(1800);
+  });
+
+  it('persona.id 形式 → request body { id }', async () => {
+    let body: { persona: unknown } | null = null;
+    const fetchImpl = makeFakeFetch(async (_url, init) => {
+      body = JSON.parse(String(init?.body)) as { persona: unknown };
+      return new Response(
+        JSON.stringify({
+          id: 'ses_xyz',
+          project_id: 'proj_test',
+          status: 'live',
+          cdp_url: 'ws://x',
+          persona: PERSONA,
+          stealth: { inject: true, humanize: true, rebrowserPatches: true },
+          expires_at: 'x',
+          last_seen_at: 'x',
+          created_at: 'x',
+          live_view_url: null,
+          client_label: null,
+        }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    await client.createSession({ persona: { id: 'pers_abc' } });
+    expect(body!.persona).toEqual({ id: 'pers_abc' });
+  });
+
+  it('服务端 401 → CloudApiError(auth.invalid_key)', async () => {
+    const fetchImpl = makeFakeFetch(async () => {
+      return new Response(
+        JSON.stringify({
+          error: { code: 'auth.invalid_key', message: 'unknown API key' },
+        }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    await expect(client.createSession({ persona: { inline: PERSONA } })).rejects.toMatchObject({
+      code: 'auth.invalid_key',
+      httpStatus: 401,
+    } as CloudApiError);
+  });
+
+  it('网络错误 → CloudApiError(transport.network)', async () => {
+    const fetchImpl = makeFakeFetch(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    await expect(client.createSession({ persona: { inline: PERSONA } })).rejects.toMatchObject({
+      code: 'transport.network',
+    } as CloudApiError);
+  });
+});
+
+describe('MosaiqCloudClient.health', () => {
+  it('不带 Authorization', async () => {
+    let captured: RequestInit | undefined;
+    const fetchImpl = makeFakeFetch(async (_url, init) => {
+      captured = init;
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          version: '0.11.0',
+          machine_manager: 'static',
+          pool: { ready: 1, busy: 0, cap: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    const h = await client.health();
+    expect(h.machineManager).toBe('static');
+    const headers = (captured?.headers ?? {}) as Record<string, string>;
+    expect(headers.authorization).toBeUndefined();
+  });
+});

@@ -1,0 +1,72 @@
+/**
+ * MachineManager — 机器（pod）后端抽象。
+ *
+ * 一个 session = 一台 machine。MachineManager 负责拿到一台 machine 的内部
+ * CDP URL、暴露释放回收方法、提供池子健康度。
+ *
+ * 三个实现（v0.11 phase 11.1 只 ship `static` + `local-docker` 占位）：
+ *   - StaticPoolMachineManager  — POD_ADDRS env 列出预跑 pod，轮询分配
+ *   - LocalDockerMachineManager — 调本机 docker socket 即时拉起 pod (TODO 11.1.b)
+ *   - FlyMachineManager         — 调 Fly Machines API (phase 11.2)
+ */
+
+import type { Persona } from '@mosaiq/persona-schema';
+
+/** 机器实例的元信息。 */
+export interface AcquiredMachine {
+  /** machine id（'mch_xxx' / fly machine id / docker container id） */
+  id: string;
+  /** pod 内部控制端口的 origin，例如 'http://browser-pod-1:9222' */
+  podOrigin: string;
+  /**
+   * pod 上 chromium 暴露的 CDP WebSocket URL，可被控制平面反向代理。
+   * 例如 'ws://browser-pod-1:9223' 或 'ws://browser-pod-1:9223/devtools/browser/xxx'。
+   * 控制平面不直接连这个，而是把客户端的 WS 全双工 piping 到这里。
+   */
+  cdpInternalUrl: string;
+}
+
+/** acquire(spec) 入参 —— pod 启动时需要的全部 persona 衍生信息。 */
+export interface AcquireSpec {
+  sessionId: string;
+  persona: Persona;
+  /** pod-side stealth 选项，传给 browser-pod 的 /control/start。 */
+  stealth: {
+    inject: boolean;
+    humanize: boolean;
+    rebrowserPatches: boolean;
+  };
+  viewport?: { width: number; height: number };
+  /** session ttl，pod 内部的看门狗超时使用。 */
+  ttlSeconds: number;
+}
+
+export interface MachineManager {
+  /** 实现类型，记录到 /v1/health 用。 */
+  readonly kind: 'static' | 'local-docker' | 'fly';
+
+  /**
+   * 获取一台 machine。包含与 pod 协商 chromium 启动的全过程：
+   *  1) 选 / 起一个 pod
+   *  2) POST {podOrigin}/control/start  with persona + stealth opts
+   *  3) pod 把 chromium 起好，回 cdp ws path
+   *  4) 拼成 AcquiredMachine 返回
+   *
+   * 失败抛 ApiError('pool.exhausted' | 'machine.spawn_failed' | 'pool.pod_unhealthy')
+   */
+  acquire(spec: AcquireSpec): Promise<AcquiredMachine>;
+
+  /**
+   * 释放 machine。语义按实现：
+   *  - static  → POST {podOrigin}/control/stop（清 user-data，标 idle）
+   *  - docker  → docker rm -f
+   *  - fly     → fly machines destroy
+   */
+  release(machineId: string): Promise<void>;
+
+  /** 当前池容量统计，/v1/health 用。 */
+  capacity(): Promise<{ ready: number; busy: number; cap: number }>;
+
+  /** shutdown：把全部 machine 优雅释放（dev 重启场景）。 */
+  shutdown(): Promise<void>;
+}

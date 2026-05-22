@@ -1,0 +1,86 @@
+# Mosaiq Cloud — 本地一键起 v0.11 phase 11.1 stack
+#
+# 跑法：
+#   docker compose -f docker-compose.cloud.yml up --build
+#
+# 起来后：
+#   - http://localhost:8787/v1/health             控制平面 health
+#   - http://localhost:8787                       根路由（serviceinfo）
+#   - 内部 http://browser-pod-1:9222/healthz      pod 1（不暴露公网）
+#   - 内部 http://browser-pod-2:9222/healthz      pod 2（不暴露公网）
+#
+# Env：
+#   控制平面在 cloud-runtime 服务的 environment 里读 SEED_API_KEY 等。
+#   修改 .env.cloud (cp from .env.cloud.example) 把 key 改成自己 LaunchAI 用的。
+
+services:
+  cloud-runtime:
+    build:
+      context: .
+      dockerfile: apps/cloud-runtime/Dockerfile
+    image: mosaiq/cloud-runtime:0.11.0
+    container_name: mosaiq-cloud-runtime
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      NODE_ENV: development
+      PORT: 8787
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      DATABASE_URL: sqlite:/app/data/cloud-runtime.db
+      MACHINE_MANAGER: static
+      POD_ADDRS: http://browser-pod-1:9222,http://browser-pod-2:9222
+      SEED_PROJECT_ID: ${SEED_PROJECT_ID:-proj_launchai}
+      # ⚠️ dev only。换成自己生成的 32 字符随机串。
+      SEED_API_KEY: ${SEED_API_KEY:-msq_sk_dev_seed_change_me_in_prod_xxxxxxxxxxxx}
+      SESSION_TTL_DEFAULT_SECONDS: 1800
+      SESSION_TTL_MAX_SECONDS: 7200
+      PUBLIC_BASE_URL: http://localhost:8787
+    volumes:
+      - cloud-runtime-data:/app/data
+    depends_on:
+      browser-pod-1:
+        condition: service_healthy
+      browser-pod-2:
+        condition: service_healthy
+
+  browser-pod-1:
+    build:
+      context: .
+      dockerfile: apps/browser-pod/Dockerfile
+    image: mosaiq/browser-pod:0.11.0
+    container_name: mosaiq-browser-pod-1
+    # 不暴露任何端口给 host：pod 仅在 docker 内部网络可达
+    expose:
+      - "9222"
+      - "9223"
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: info
+      POD_HEADLESS: "true"
+    volumes:
+      - browser-pod-1-data:/data
+    # chromium 需要稍多 shm，否则 tab crash
+    shm_size: "1gb"
+
+  browser-pod-2:
+    build:
+      context: .
+      dockerfile: apps/browser-pod/Dockerfile
+    image: mosaiq/browser-pod:0.11.0
+    container_name: mosaiq-browser-pod-2
+    expose:
+      - "9222"
+      - "9223"
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: info
+      POD_HEADLESS: "true"
+    volumes:
+      - browser-pod-2-data:/data
+    shm_size: "1gb"
+
+volumes:
+  cloud-runtime-data:
+  browser-pod-1-data:
+  browser-pod-2-data:

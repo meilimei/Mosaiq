@@ -1,0 +1,73 @@
+{
+  "name": "@mosaiq/cloud-sdk",
+  "version": "0.11.0",
+  "description": "Mosaiq Cloud client SDK — REST + CDP-over-WebSocket access to managed anti-detect browser sessions.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/meilimei/Mosaiq/tree/main/packages/cloud-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/meilimei/Mosaiq/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meilimei/Mosaiq.git",
+    "directory": "packages/cloud-sdk"
+  },
+  "keywords": [
+    "mosaiq",
+    "mosaiq-cloud",
+    "antidetect",
+    "playwright",
+    "cdp",
+    "browserbase",
+    "stagehand",
+    "browser-as-a-service"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run typecheck",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@mosaiq/persona-schema": "workspace:*",
+    "@mosaiq/sdk": "workspace:*"
+  },
+  "peerDependencies": {
+    "playwright-core": "1.59.1"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "happy-dom": "^15.11.7",
+    "playwright-core": "1.59.1",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}
