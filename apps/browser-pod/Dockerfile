@@ -49,8 +49,11 @@ COPY --from=build /tmp/deploy /app
 # 留空即用 playwright-core chromium.executablePath()
 ENV POD_CHROME_EXECUTABLE=
 
-# 持久化目录（dev 用 host bind mount 即可，prod 是 Fly Volume）
-RUN mkdir -p /data/profile
+# 持久化目录（dev 用 host bind mount 即可，prod 是 Fly Volume）。
+# 必须 chown 给 pwuser：USER pwuser 之后 chromium.ts 会 mkdir /data/profile/<machineId>，
+# 默认 root:root 0755 的目录 pwuser 写不了，会 EACCES。VOLUME 声明在 chown 之后，
+# 匿名卷首次挂载时会从镜像内容初始化（含权限），这样 pod 容器起来 /data 就是 pwuser owned。
+RUN mkdir -p /data/profile && chown -R pwuser:pwuser /data
 VOLUME ["/data"]
 
 EXPOSE 9222
