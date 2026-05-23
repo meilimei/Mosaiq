@@ -38,20 +38,26 @@ COPY apps/cloud-runtime apps/cloud-runtime
 RUN pnpm --filter @mosaiq/persona-schema build && \
     pnpm --filter @mosaiq/cloud-runtime build
 
+# pnpm deploy 把目标 workspace 包 + 所有 prod deps（含 workspace 间的 @mosaiq/persona-schema）
+# 展平成一个**没有 symlink** 的独立目录，runner stage 一句 COPY 就能拿到完整可跑的 app。
+#
+# 这是 pnpm 官方为 docker 多阶段推荐的做法（https://pnpm.io/cli/deploy）。
+# 之前的做法（COPY /repo/node_modules 然后单独叠 dist）在 pnpm 严格模式下会丢
+# per-workspace 的 deps —— 比如 @hono/node-server 是 cloud-runtime 的 direct dep，
+# 它只在 apps/cloud-runtime/node_modules/ 里有 symlink，root /repo/node_modules/ 里没有，
+# 所以 runner 起来就 ERR_MODULE_NOT_FOUND。deploy 会真把这些包复制进 /tmp/deploy/node_modules/。
+RUN pnpm --filter=@mosaiq/cloud-runtime deploy --prod /tmp/deploy
+
 # ─── stage: runner ──────────────────────────────────────────────────────────
 FROM node:20.18-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8787
 
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+# better-sqlite3 是 native module，prebuilt 在 install 时已下到 .pnpm store 并 deploy 进来；
+# runner image 跟 build image 都是 node:20.18-bookworm-slim（同 glibc + 同 arch），ABI 一致。
 
-# 复制 prod node_modules（不含 dev deps —— 见下）
-COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/packages/persona-schema/dist ./node_modules/@mosaiq/persona-schema/dist
-COPY --from=build /repo/packages/persona-schema/package.json ./node_modules/@mosaiq/persona-schema/package.json
-COPY --from=build /repo/apps/cloud-runtime/dist ./dist
-COPY --from=build /repo/apps/cloud-runtime/package.json ./package.json
+COPY --from=build /tmp/deploy /app
 
 # data 目录给 sqlite。Fly volume 挂载点，dev 也能跑。
 RUN mkdir -p /app/data

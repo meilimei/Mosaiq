@@ -26,6 +26,12 @@ COPY apps/browser-pod apps/browser-pod
 RUN pnpm --filter @mosaiq/persona-schema build && \
     pnpm --filter @mosaiq/browser-pod build
 
+# pnpm deploy 把目标 workspace 包 + 所有 prod deps 展平成 symlink-free 目录。
+# 之前 runner 只 COPY /repo/node_modules 会漏掉 apps/browser-pod/node_modules/ 里的
+# per-workspace symlinks（hono、@hono/node-server、playwright-core 等都在那里），
+# 起来就 ERR_MODULE_NOT_FOUND。详见 apps/cloud-runtime/Dockerfile 同款修复。
+RUN pnpm --filter=@mosaiq/browser-pod deploy --prod /tmp/deploy
+
 # ─── stage: runner ──────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/playwright:v1.59.1-noble AS runner
 WORKDIR /app
@@ -34,14 +40,10 @@ ENV POD_CONTROL_PORT=9222
 ENV POD_CDP_PORT=9223
 ENV POD_PROFILE_DIR=/data/profile
 
-# Playwright base 已经含 node + chromium，pnpm 用 corepack 启用
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+# Playwright base 已含 node + chromium。pnpm deploy 输出已经是独立 prod 树，
+# runner 不需要 corepack/pnpm 也能跑（CMD 直接 node dist/index.js）。
 
-COPY --from=build /repo/node_modules ./node_modules
-COPY --from=build /repo/packages/persona-schema/dist ./node_modules/@mosaiq/persona-schema/dist
-COPY --from=build /repo/packages/persona-schema/package.json ./node_modules/@mosaiq/persona-schema/package.json
-COPY --from=build /repo/apps/browser-pod/dist ./dist
-COPY --from=build /repo/apps/browser-pod/package.json ./package.json
+COPY --from=build /tmp/deploy /app
 
 # pod 内 chromium 路径（playwright base 镜像里 playwright-core 已知道路径）
 # 留空即用 playwright-core chromium.executablePath()
