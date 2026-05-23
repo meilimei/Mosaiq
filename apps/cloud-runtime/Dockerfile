@@ -35,7 +35,20 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages/persona-schema packages/persona-schema
 COPY apps/cloud-runtime apps/cloud-runtime
-RUN pnpm --filter @mosaiq/persona-schema build && \
+
+# 防御层：上面的 COPY 把 host 上 packages/persona-schema 整个目录 + apps/cloud-runtime
+# 整个目录搬进容器。理论上 .dockerignore 会拦掉 host 的 node_modules，但万一：
+#   - 仓库根 .dockerignore 被误删（人为或工具）
+#   - 老旧 docker 客户端不读 BuildKit 默认 .dockerignore
+#   - 跨 OS 测试时 host 的 NTFS junction 在 Linux 容器里变 broken symlink
+# 都会把 deps stage pnpm install 出来的隔离 store 给覆盖掉，build 时报 MODULE_NOT_FOUND。
+# 这里在 build 前强制清掉 workspace node_modules，再用 cached pnpm-store 重 link，
+# 几秒完成。详见 .dockerignore 文件头注释 + commit df5447d 排查记录。
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    rm -rf packages/persona-schema/node_modules apps/cloud-runtime/node_modules && \
+    pnpm install --frozen-lockfile \
+      --filter @mosaiq/persona-schema --filter @mosaiq/cloud-runtime && \
+    pnpm --filter @mosaiq/persona-schema build && \
     pnpm --filter @mosaiq/cloud-runtime build
 
 # pnpm deploy 把目标 workspace 包 + 所有 prod deps（含 workspace 间的 @mosaiq/persona-schema）

@@ -23,7 +23,14 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 COPY tsconfig.base.json ./
 COPY packages/persona-schema packages/persona-schema
 COPY apps/browser-pod apps/browser-pod
-RUN pnpm --filter @mosaiq/persona-schema build && \
+
+# 防御层：详见 apps/cloud-runtime/Dockerfile 同位置注释 + .dockerignore + commit df5447d。
+# 简言之：清掉 host 灌进来可能污染过的 node_modules，再用 cached pnpm-store 重 link 隔离结构。
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    rm -rf packages/persona-schema/node_modules apps/browser-pod/node_modules && \
+    pnpm install --frozen-lockfile \
+      --filter @mosaiq/persona-schema --filter @mosaiq/browser-pod && \
+    pnpm --filter @mosaiq/persona-schema build && \
     pnpm --filter @mosaiq/browser-pod build
 
 # pnpm deploy 把目标 workspace 包 + 所有 prod deps 展平成 symlink-free 目录。
