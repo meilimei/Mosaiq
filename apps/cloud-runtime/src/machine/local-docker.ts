@@ -154,8 +154,27 @@ export class LocalDockerMachineManager implements MachineManager {
       });
     }
 
+    // ─── 并发占位 ─────────────────────────────────────────────────────
+    // 在 await createContainer 之前先在 #alive 里放一个 placeholder，让并发
+    // 进来的后续 acquire 立刻看到 size 已增。否则 N+M 个并发请求都会通过
+    // 上面的 cap 检查（因为大家都在 await 期间看到旧的 #alive.size），
+    // 实际起 N+M 个容器，超 cap 把 host 资源打爆。
+    //
+    // placeholder key 用 `pending_` 前缀，与 docker container id（64 hex）
+    // 无碰撞风险；value 空字符串。createContainer 成功后被真 id 替换。
+    // 详见 static.ts 同款 provisionalMachineId 修复，以及 commit 历史 phase
+    // 11.2 prod 加固。
+    const placeholder = `pending_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    this.#alive.set(placeholder, '');
+
     // ─── 1) create container ────────────────────────────────────────────
-    const created = await this.#createContainer(spec);
+    let created: DockerCreateResponse;
+    try {
+      created = await this.#createContainer(spec);
+    } catch (err) {
+      this.#alive.delete(placeholder);
+      throw err;
+    }
     log.info({ containerId: created.Id }, 'docker: container created');
 
     let podOrigin: string | null = null;
@@ -191,6 +210,8 @@ export class LocalDockerMachineManager implements MachineManager {
       const cdpOriginForRewrite = this.#derivePodOrigin(inspect, this.#opts.podCdpPort);
       const cdpRouted = rewriteCdpHost(podResp.cdpUrl, cdpOriginForRewrite);
 
+      // placeholder → 真 id，整个生命周期 size 不掉到 0
+      this.#alive.delete(placeholder);
       this.#alive.set(created.Id, podOrigin);
 
       return {
@@ -199,6 +220,7 @@ export class LocalDockerMachineManager implements MachineManager {
         cdpInternalUrl: cdpRouted,
       };
     } catch (err) {
+      this.#alive.delete(placeholder);
       const podLogs = await this.#fetchContainerLogs(created.Id, 200).catch(
         (logsErr) =>
           `(failed to read pod logs: ${logsErr instanceof Error ? logsErr.message : String(logsErr)})`,

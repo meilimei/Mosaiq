@@ -414,6 +414,90 @@ describe('LocalDockerMachineManager — failure paths', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(true);
   });
 
+  it('并发 acquire 超 cap 时只放过 cap 个，多余的 reject pool.exhausted（race condition 防御）', async () => {
+    // 回归保护：phase 11.1 alpha 版本的 acquire() 在 cap 检查之后、`#alive.set`
+    // 之前有个 `await this.#createContainer(spec)`。如果 N+M 个并发请求同时进入
+    // acquire，所有 M 个超 cap 的请求都会通过 cap 检查（因为大家都看到旧的
+    // `#alive.size`），最终在 docker 起 N+M 个容器，把 host 资源烧穿。修法是
+    // 在 await 之前先在 #alive 里放 placeholder，详见 local-docker.ts 的并发占位
+    // 注释。
+    //
+    // 测试策略：让 docker /containers/create stub 用一个 deferred Promise 永远
+    // 不 resolve，强制所有进入第一个 await 的 acquire 都卡住。然后启动 5 个
+    // 并发 acquire，cap=2。修了 race condition 之后：
+    //   - 2 个 acquire 占了 placeholder + 卡在 createContainer await
+    //   - 3 个 acquire 立刻 reject with pool.exhausted（同步看到 size=2）
+    //   - createContainer 只被调 2 次（不是 5 次）
+    let createCalls = 0;
+    let resolveCreate: ((resp: Response) => void) | undefined;
+    const createDeferred = new Promise<Response>((r) => {
+      resolveCreate = r;
+    });
+
+    const { fetchImpl } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'POST' && u.includes('/containers/create'),
+        handler: () => {
+          createCalls++;
+          return createDeferred;
+        },
+      },
+      {
+        match: (u, init) => init?.method === 'DELETE',
+        handler: () => new Response(null, { status: 204 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { maxContainers: 2 });
+
+    // 同步启动 5 个 acquire（cap=2）。立即把每个 promise 转成 settled-status
+    // 对象 + 显式 .then，让 v8 不报 unhandled rejection（cleanup 阶段 hung promise
+    // 走 reject 路径时会触发第二次 settle，如果没人监听就会 warn）。
+    type AcquireStatus =
+      | { kind: 'resolved' }
+      | { kind: 'rejected'; reason: unknown };
+    const statusPromises: Promise<AcquireStatus>[] = [1, 2, 3, 4, 5].map((i) =>
+      mm.acquire({ ...acquireSpec, sessionId: `ses_race_${i}` }).then(
+        (): AcquireStatus => ({ kind: 'resolved' }),
+        (reason: unknown): AcquireStatus => ({ kind: 'rejected', reason }),
+      ),
+    );
+
+    // 让 microtask queue 跑完，使同步 cap 拒绝路径都 surface 出来
+    await new Promise((r) => setImmediate(r));
+
+    // 用 Promise.race + setImmediate 把"还 pending"区分出来。Pending 的会被
+    // setImmediate 注入的 'PENDING' 占位字符串先 resolve。
+    const settled = await Promise.all(
+      statusPromises.map((sp) =>
+        Promise.race<AcquireStatus | 'PENDING'>([
+          sp,
+          new Promise((r) => setImmediate(() => r('PENDING'))),
+        ]),
+      ),
+    );
+
+    const exhausted = settled.filter(
+      (s) =>
+        typeof s === 'object' &&
+        s.kind === 'rejected' &&
+        s.reason instanceof ApiError &&
+        (s.reason as ApiError).code === 'pool.exhausted',
+    );
+    const stillPending = settled.filter((s) => s === 'PENDING');
+
+    expect(exhausted.length).toBe(3);
+    expect(stillPending.length).toBe(2);
+    // 关键回归断言：cap=2 时 docker create 只被调 2 次，不会被 race 重复触发
+    expect(createCalls).toBe(2);
+
+    // cleanup：解除 deferred，让所有 hung acquire 走 reject 路径，触发
+    // placeholder cleanup 避免影响后续测试。statusPromises 已 attach handler，
+    // 后续 settle 不会 unhandled。
+    resolveCreate?.(new Response('cleanup', { status: 599 }));
+    await Promise.all(statusPromises);
+  });
+
   it('pool 满 → pool.exhausted 不调 Docker API', async () => {
     const { fetchImpl, calls } = makeStubFetch([
       {

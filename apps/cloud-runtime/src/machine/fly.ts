@@ -148,8 +148,26 @@ export class FlyMachineManager implements MachineManager {
       });
     }
 
+    // ─── 并发占位 ─────────────────────────────────────────────────────
+    // cap 检查与 #alive.set 之间有 await createMachine + waitForState +
+    // healthz + callPodStart 一系列网络往返（可能几秒）。如果不占位，N+M
+    // 个并发 POST /v1/sessions 都会通过这里的 cap 检查，最终在 Fly 起 N+M
+    // 台 machine，超 cap 烧账单 + 拖垮 region quota。
+    //
+    // placeholder key 前缀 `pending_`，与 Fly 真实 machine id（24 hex）
+    // 无碰撞。createMachine 成功后被真 id 替换；任何失败路径都要清掉。
+    // 详见 static.ts 同款 provisionalMachineId + local-docker.ts 同款修复。
+    const placeholder = `pending_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    this.#alive.set(placeholder, '');
+
     // ─── 1) provision machine ────────────────────────────────────────────
-    const created = await this.#createMachine(spec);
+    let created: FlyMachineResponse;
+    try {
+      created = await this.#createMachine(spec);
+    } catch (err) {
+      this.#alive.delete(placeholder);
+      throw err;
+    }
     log.info(
       { machineId: created.id, region: created.region, ip: created.private_ip },
       'fly: machine created',
@@ -177,6 +195,8 @@ export class FlyMachineManager implements MachineManager {
         timeoutMs: this.#opts.podStartTimeoutMs,
       });
 
+      // placeholder → 真 id，整个生命周期 size 不掉到 0
+      this.#alive.delete(placeholder);
       this.#alive.set(created.id, podOrigin);
 
       return {
@@ -185,6 +205,7 @@ export class FlyMachineManager implements MachineManager {
         cdpInternalUrl: rewriteCdpHost(podResp.cdpUrl, podOrigin),
       };
     } catch (err) {
+      this.#alive.delete(placeholder);
       // 把 fly machine 销毁，避免孤儿。failure 不阻塞主错误抛出。
       log.warn(
         { machineId: created.id, cause: err instanceof Error ? err.message : String(err) },

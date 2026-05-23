@@ -422,6 +422,78 @@ describe('FlyMachineManager — failure paths', () => {
     expect(calls.some((c) => c.method === 'DELETE')).toBe(true);
   });
 
+  it('并发 acquire 超 cap 时只放过 cap 个，多余的 reject pool.exhausted（race condition 防御）', async () => {
+    // 回归保护：见 local-docker.test.ts 同款测试 + fly.ts 并发占位注释。
+    // Fly 路径下 race 后果尤其严重：超 cap 起 machine 会烧 Fly 账单 + 拖垮
+    // region quota，比 host docker 资源烧穿更难恢复。
+    //
+    // 测试策略同 local-docker：让 POST /machines stub 用一个 deferred Promise
+    // 永远不 resolve，强制所有 acquire 卡在 createMachine 第一个 await。
+    let createCalls = 0;
+    let resolveCreate: ((resp: Response) => void) | undefined;
+    const createDeferred = new Promise<Response>((r) => {
+      resolveCreate = r;
+    });
+
+    const { fetchImpl } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
+        handler: () => {
+          createCalls++;
+          return createDeferred;
+        },
+      },
+      {
+        match: (u, init) => init?.method === 'DELETE',
+        handler: () => new Response(null, { status: 200 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { maxMachines: 2 });
+
+    // 同步启动 5 个 acquire（cap=2）。详见 local-docker.test.ts 同款测试里
+    // unhandled-rejection 动机的注释。
+    type AcquireStatus =
+      | { kind: 'resolved' }
+      | { kind: 'rejected'; reason: unknown };
+    const statusPromises: Promise<AcquireStatus>[] = [1, 2, 3, 4, 5].map((i) =>
+      mm.acquire({ ...acquireSpec, sessionId: `ses_race_${i}` }).then(
+        (): AcquireStatus => ({ kind: 'resolved' }),
+        (reason: unknown): AcquireStatus => ({ kind: 'rejected', reason }),
+      ),
+    );
+
+    await new Promise((r) => setImmediate(r));
+
+    const settled = await Promise.all(
+      statusPromises.map((sp) =>
+        Promise.race<AcquireStatus | 'PENDING'>([
+          sp,
+          new Promise((r) => setImmediate(() => r('PENDING'))),
+        ]),
+      ),
+    );
+
+    const exhausted = settled.filter(
+      (s) =>
+        typeof s === 'object' &&
+        s.kind === 'rejected' &&
+        s.reason instanceof ApiError &&
+        (s.reason as ApiError).code === 'pool.exhausted',
+    );
+    const stillPending = settled.filter((s) => s === 'PENDING');
+
+    expect(exhausted.length).toBe(3);
+    expect(stillPending.length).toBe(2);
+    // 关键回归断言：cap=2 时 Fly POST /machines 只被调 2 次，不会被 race 重复触发
+    expect(createCalls).toBe(2);
+
+    // cleanup：解除 deferred，让 hung acquire 走 reject 路径。statusPromises 已 attach
+    // handler，后续 settle 不会 unhandled。
+    resolveCreate?.(new Response('cleanup', { status: 599 }));
+    await Promise.all(statusPromises);
+  });
+
   it('pool 满 → pool.exhausted 不调 Fly API', async () => {
     const { fetchImpl, calls } = makeStubFetch([
       {
