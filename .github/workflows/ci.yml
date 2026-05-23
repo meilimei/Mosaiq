@@ -61,10 +61,28 @@ jobs:
 
       # Desktop + CLI typecheck imports workspace packages through their
       # built dist `.d.ts` files (per DEVELOPMENT.md). Build the upstream
-      # packages first so the resolution succeeds. SDK + persona-schema
-      # build is fast (<10s).
+      # packages first so the resolution succeeds.
+      #
+      # We build ALL publishable packages here (not just persona-schema +
+      # sdk) for two reasons:
+      #   1. The audit-tarballs step at the bottom runs `npm pack --dry-run`
+      #      against persona-schema / sdk / cli and asserts REQUIRED dist
+      #      files (e.g. cli's dist/cli.js) are present. Before commit
+      #      6cae6a9 each package's prepublishOnly hook would clean+build
+      #      itself when npm pack ran; that hook was removed to fix a
+      #      monorepo parallel-publish race in changesets, so dist must
+      #      exist BEFORE audit-tarballs runs.
+      #   2. cloud-sdk is added to the typecheck graph in phase 11.1 and
+      #      will join the audit list in a future PR; building it now
+      #      keeps the build sequence consistent with release.yml.
+      # Total cost: <30s, all packages build in topological order.
       - name: Build workspace packages
-        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" build
+        run: |
+          pnpm --filter "@mosaiq/persona-schema" \
+               --filter "@mosaiq/sdk" \
+               --filter "@mosaiq/cloud-sdk" \
+               --filter "@mosaiq/cli" \
+               build
 
       - name: Typecheck (all packages)
         run: pnpm -r typecheck
