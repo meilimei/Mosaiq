@@ -28,6 +28,11 @@ services:
   # 不预跑 pod 容器，但要确保 mosaiq/browser-pod:0.11.0 镜像在本地 docker daemon 里
   # 存在，否则 cloud-runtime 第一次 acquire 时 docker 不会自动 pull（本地镜像，无远程
   # registry）。让这个 service build 完镜像就立刻退出（exit 0），不占资源。
+  #
+  # NB: 不要给这个 service 设 `profiles:` —— compose 的 profile 没有 magic 默认名，
+  # 任何 `profiles: [...]` 都会让 service 在不传 `--profile` 时不存在于 project 里，
+  # cloud-runtime 的 `depends_on: browser-pod-image` 会变成「依赖未定义服务」直接报错。
+  # 不写 profiles 等于「永远 active」，这正是我们要的：cloud-runtime 启动前先 exit 0。
   browser-pod-image:
     build:
       context: .
@@ -38,7 +43,6 @@ services:
     command: ["true"]
     restart: "no"
     # 不需要进 network — 它不跑业务。
-    profiles: ["default"]
 
   # ─── 2) control plane ─────────────────────────────────────────────────────
   cloud-runtime:
