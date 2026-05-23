@@ -180,10 +180,16 @@ export class LocalDockerMachineManager implements MachineManager {
         cdpInternalUrl: cdpRouted,
       };
     } catch (err) {
+      const podLogs = await this.#fetchContainerLogs(created.Id, 200).catch(
+        (logsErr) =>
+          `(failed to read pod logs: ${logsErr instanceof Error ? logsErr.message : String(logsErr)})`,
+      );
       log.warn(
         {
           containerId: created.Id,
           cause: err instanceof Error ? err.message : String(err),
+          podOrigin,
+          podLogs: podLogs.slice(0, 4096),
         },
         'docker acquire failed mid-way; removing container',
       );
@@ -347,6 +353,55 @@ export class LocalDockerMachineManager implements MachineManager {
       });
     }
   }
+
+  /**
+   * 拉 pod 容器最近 N 行 stdout+stderr，用于 acquire 失败时归档到控制平面日志。
+   *
+   * Docker Engine `/containers/{id}/logs` 默认返回 multiplexed stream，每帧:
+   *   [STREAM_TYPE(1)] [0,0,0(3)] [SIZE_BE32(4)] [PAYLOAD(SIZE)]
+   * STREAM_TYPE: 0=stdin, 1=stdout, 2=stderr。
+   * 我们把 stdout/stderr 都按时间顺序拼成一份纯文本，足够 grep 启动失败原因；
+   * tty=true 的容器不走 multiplex 但 pod 默认无 TTY，不会触发那条路径。
+   *
+   * 失败也只是返回字符串，不抛错——这是诊断路径，绝不能挡住主 cleanup 流程。
+   */
+  async #fetchContainerLogs(id: string, tail: number): Promise<string> {
+    const url = `${this.#opts.apiBaseUrl}/containers/${id}/logs?stdout=1&stderr=1&tail=${tail}&timestamps=0`;
+    const resp = await this.#opts.fetchImpl(url, { method: 'GET' });
+    if (!resp.ok) {
+      return `(docker logs ${resp.status})`;
+    }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    return demuxDockerLogStream(buf);
+  }
+}
+
+/**
+ * Demux Docker Engine multiplexed log stream → plain UTF-8 string.
+ *
+ * 容错策略：如果某一帧的 header 看起来不合法（例如 size 越界），认为这条流不是
+ * multiplexed（即 tty=true 的少数情况），直接当 raw text 返回，避免诊断信息丢失。
+ */
+function demuxDockerLogStream(buf: Buffer): string {
+  if (buf.length === 0) return '';
+  const parts: string[] = [];
+  let i = 0;
+  while (i + 8 <= buf.length) {
+    const streamType = buf.readUInt8(i);
+    const size = buf.readUInt32BE(i + 4);
+    if (streamType !== 0 && streamType !== 1 && streamType !== 2) {
+      return buf.toString('utf8');
+    }
+    if (i + 8 + size > buf.length) {
+      return buf.toString('utf8');
+    }
+    parts.push(buf.subarray(i + 8, i + 8 + size).toString('utf8'));
+    i += 8 + size;
+  }
+  if (i !== buf.length) {
+    return buf.toString('utf8');
+  }
+  return parts.join('');
 }
 
 /**
