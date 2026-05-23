@@ -87,6 +87,23 @@ jobs:
       - name: Test — desktop
         run: pnpm --filter @mosaiq/desktop test
 
+      # v0.11 phase 11.1+ cloud surface unit tests:
+      #
+      #   cloud-sdk     12 tests — client.ts (REST), session.ts (CDP proxy +
+      #                 injection survival across reconnect), injection-survives-cdp
+      #   cloud-runtime 63 tests — env / db / persona / sessions / health routes,
+      #                 static / fly / local-docker machine managers
+      #                 (mocked Fly + Docker Engine APIs), pod-control wire helpers
+      #   browser-pod   0 tests — no unit surface (control HTTP server is exercised
+      #                 transitively through cloud-runtime fly/local-docker manager
+      #                 tests via mocked pod responses). Kept as a typecheck-only
+      #                 gate so `pnpm -r typecheck` still covers it.
+      - name: Test — cloud-sdk
+        run: pnpm --filter @mosaiq/cloud-sdk test
+
+      - name: Test — cloud-runtime
+        run: pnpm --filter @mosaiq/cloud-runtime test
+
       # Phase 7.0 drift detection: regenerate the captured-profiles TS in
       # `--check` mode and fail if the on-disk file differs. This is the
       # exact contract documented in docs/CAPTURING-WEBGL-PROFILES.md.

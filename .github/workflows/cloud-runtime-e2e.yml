@@ -1,0 +1,201 @@
+# Cloud Runtime — phase 11.2 LocalDocker e2e gate.
+#
+# What this catches that ci.yml does NOT:
+#   - LocalDockerMachineManager unit tests use a mocked Docker Engine fetch.
+#     This workflow exercises the REAL Docker Engine API via /var/run/docker.sock
+#     on ubuntu-latest (Actions runners ship docker + compose v2 by default).
+#   - browser-pod Dockerfile actually builds and chromium actually boots inside
+#     the playwright base image.
+#   - cloud-runtime container can mount /var/run/docker.sock and drive the
+#     daemon via undici's unix-socket Agent.
+#   - The full wire path: REST createSession → manager acquire → docker run
+#     pod → /healthz → /control/start → CDP ws proxy → playwright-core
+#     connectOverCDP → injectInto → page.evaluate persona assertions.
+#
+# Why a separate workflow from ci.yml (mirrors detection-lab.yml split):
+#   - ci.yml is the "code layer" gate: ~2 min, runs on every PR.
+#   - cloud-runtime-e2e.yml is the "behavior layer" gate: ~5-10 min cold,
+#     ~2 min with docker layer cache, only triggered when cloud-*/pod-* code
+#     or this workflow itself changes.
+#
+# Trigger policy:
+#   - pull_request paths-filter: only cloud-runtime / browser-pod / cloud-sdk /
+#     persona-schema / docker-compose.local-docker.yml / smoke script changes
+#     trigger the run. Doc-only / desktop-only / cli-only PRs skip.
+#   - push:main: always run after merge.
+#   - workflow_dispatch: manual handle for debugging.
+#
+# Not gated by detection-lab path filter: those are independent surfaces
+# (anti-detect regression vs. cloud-runtime e2e), they can run in parallel.
+
+name: Cloud Runtime E2E (LocalDocker)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/cloud-runtime/**'
+      - 'apps/browser-pod/**'
+      - 'packages/cloud-sdk/**'
+      - 'packages/persona-schema/**'
+      - 'packages/sdk/**'
+      - 'docker-compose.local-docker.yml'
+      - 'scripts/dev-local-docker-smoke.mjs'
+      - '.env.cloud.example'
+      - '.github/workflows/cloud-runtime-e2e.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/cloud-runtime/**'
+      - 'apps/browser-pod/**'
+      - 'packages/cloud-sdk/**'
+      - 'packages/persona-schema/**'
+      - 'packages/sdk/**'
+      - 'docker-compose.local-docker.yml'
+      - 'scripts/dev-local-docker-smoke.mjs'
+      - '.env.cloud.example'
+      - '.github/workflows/cloud-runtime-e2e.yml'
+  workflow_dispatch:
+
+# Cancel superseded runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-local-docker:
+    name: e2e — docker compose LocalDocker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # e2e-smoke.mjs imports from `../dist/index.js` (cloud-sdk dist) and
+      # `@mosaiq/persona-schema/templates`. cloud-sdk depends transitively on
+      # @mosaiq/sdk + persona-schema, so build all three upstream.
+      - name: Build workspace packages (cloud-sdk + sdk + persona-schema)
+        run: |
+          pnpm --filter @mosaiq/persona-schema build
+          pnpm --filter @mosaiq/sdk build
+          pnpm --filter @mosaiq/cloud-sdk build
+
+      - name: Verify docker daemon
+        run: |
+          docker --version
+          docker compose version
+          docker info | head -20
+
+      # Generate a fresh .env.cloud with a random SEED_API_KEY for this run.
+      # Same shape as .env.cloud.example; docker compose picks it up via the
+      # ${SEED_API_KEY:-...} fallback inside docker-compose.local-docker.yml.
+      - name: Prepare .env.cloud
+        id: env
+        run: |
+          set -euo pipefail
+          SEED_API_KEY="msq_sk_dev_ci_$(openssl rand -hex 12)"
+          cat > .env.cloud <<EOF
+          SEED_PROJECT_ID=proj_launchai
+          SEED_API_KEY=$SEED_API_KEY
+          EOF
+          echo "::add-mask::$SEED_API_KEY"
+          echo "seed_api_key=$SEED_API_KEY" >> "$GITHUB_OUTPUT"
+          echo ".env.cloud written (SEED_API_KEY masked above)"
+
+      # `docker compose up --build -d` builds:
+      #   - browser-pod-image service (multi-stage, ~5min cold, includes
+      #     pulling mcr.microsoft.com/playwright base image), exits 0
+      #   - cloud-runtime service (multi-stage, includes better-sqlite3 native
+      #     build on bookworm-slim), stays running on :8787
+      # No `--wait` flag: dev-local-docker-smoke.mjs already polls /v1/health
+      # for up to 60s, which is more accurate than docker's HEALTHCHECK
+      # (30s interval would make `--wait` block ≥30s even when the server is
+      # actually ready immediately).
+      - name: docker compose up
+        env:
+          # docker compose picks these up via ${SEED_API_KEY:-default} expansion
+          # in docker-compose.local-docker.yml. Could also use --env-file .env.cloud
+          # but env vars override .env.cloud, which is what we want for CI.
+          SEED_API_KEY: ${{ steps.env.outputs.seed_api_key }}
+          SEED_PROJECT_ID: proj_launchai
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.local-docker.yml up --build -d
+          echo "--- compose ps ---"
+          docker compose -f docker-compose.local-docker.yml ps
+          echo "--- networks ---"
+          docker network ls | grep mosaiq || true
+
+      # Tail cloud-runtime logs in the background to surface boot errors
+      # immediately in the workflow log (otherwise we only see them after
+      # smoke fails). Non-fatal background process.
+      - name: Stream cloud-runtime logs (background)
+        run: |
+          docker compose -f docker-compose.local-docker.yml logs -f --tail=20 cloud-runtime \
+            > cloud-runtime.boot.log 2>&1 &
+          echo $! > .compose-log.pid
+
+      - name: Run LocalDocker smoke
+        env:
+          MOSAIQ_API_URL: http://127.0.0.1:8787
+          MOSAIQ_API_KEY: ${{ steps.env.outputs.seed_api_key }}
+          MOSAIQ_PROJECT_ID: proj_launchai
+        run: node scripts/dev-local-docker-smoke.mjs
+
+      # On failure (or always — `if: always()`), dump compose state + each
+      # container's full logs + listing of any dangling pod containers, then
+      # upload as a workflow artifact. This is the difference between "CI
+      # red, no idea why" and "CI red, here's the chromium stderr".
+      - name: Collect docker logs on failure
+        if: always()
+        run: |
+          set +e
+          mkdir -p _artifacts
+          docker compose -f docker-compose.local-docker.yml ps > _artifacts/compose-ps.txt 2>&1
+          docker compose -f docker-compose.local-docker.yml logs --no-color --timestamps \
+            > _artifacts/compose-logs.txt 2>&1
+          docker ps -a --filter label=com.mosaiq.runtime=cloud-runtime \
+            > _artifacts/dangling-pods.txt 2>&1
+          # Per-pod stderr (force, in case pod is still running)
+          for cid in $(docker ps -aq --filter label=com.mosaiq.runtime=cloud-runtime); do
+            docker logs --timestamps "$cid" > "_artifacts/pod-$cid.log" 2>&1 || true
+          done
+          # The streamed cloud-runtime log
+          cp cloud-runtime.boot.log _artifacts/ 2>/dev/null || true
+          ls -la _artifacts/
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-runtime-e2e-logs-${{ github.run_id }}
+          path: _artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: docker compose down
+        if: always()
+        run: |
+          # Stop streaming logs first
+          if [ -f .compose-log.pid ]; then
+            kill "$(cat .compose-log.pid)" 2>/dev/null || true
+          fi
+          docker compose -f docker-compose.local-docker.yml down -v
+          # Belt-and-suspenders: force-remove any orphan pod containers
+          docker ps -aq --filter label=com.mosaiq.runtime=cloud-runtime | \
+            xargs -r docker rm -f
