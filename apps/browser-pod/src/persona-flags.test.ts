@@ -29,17 +29,21 @@ const persona = {
 describe('buildChromiumFlags', () => {
   const baseInput = {
     persona,
-    cdpPort: 9223,
+    internalCdpPort: 9224,
     userDataDir: '/tmp/profile/m_test',
     headless: true,
   };
 
-  it('always emits CDP exposure trio (port + address + allow-origins)', () => {
+  it('emits CDP exposure flags using internalCdpPort + allow-origins, NOT --remote-debugging-address', () => {
     const flags = buildChromiumFlags(baseInput);
-    expect(flags).toContain('--remote-debugging-port=9223');
-    expect(flags).toContain('--remote-debugging-address=0.0.0.0');
+    // chromium 实际监听 127.0.0.1:internalCdpPort（默认 9224）。外面 relay 把
+    // 0.0.0.0:POD_CDP_PORT 转发到这里。
+    expect(flags).toContain('--remote-debugging-port=9224');
     // 回归：chromium 111+ 必须有这个 flag 才会接受非 localhost Host 的 WS upgrade
     expect(flags).toContain('--remote-allow-origins=*');
+    // 回归：故意不传 --remote-debugging-address —— headless 模式下 chromium 这个
+    // flag 不生效（已知 bug），传了误导。relay 兜底外部可达。
+    expect(flags.some((f) => f.startsWith('--remote-debugging-address'))).toBe(false);
   });
 
   it('emits --user-data-dir from input', () => {

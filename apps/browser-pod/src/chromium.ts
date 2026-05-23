@@ -121,14 +121,20 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
   const exe = resolveChromiumExecutable();
   const flags = buildChromiumFlags({
     persona: input.persona,
-    cdpPort: env.POD_CDP_PORT,
+    internalCdpPort: env.POD_CDP_INTERNAL_PORT,
     userDataDir: sessionUserDir,
     headless: env.POD_HEADLESS,
     ...(input.viewport ? { viewport: input.viewport } : {}),
   });
 
   log.info(
-    { exe, flagsCount: flags.length, cdpPort: env.POD_CDP_PORT, sessionUserDir },
+    {
+      exe,
+      flagsCount: flags.length,
+      internalCdpPort: env.POD_CDP_INTERNAL_PORT,
+      externalCdpPort: env.POD_CDP_PORT,
+      sessionUserDir,
+    },
     'spawning chromium',
   );
 
@@ -150,22 +156,32 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     if (text) log.debug({ chromiumStderr: text.slice(0, 500) }, 'chromium stderr');
   });
 
-  let cdpUrl: string;
+  let internalCdpUrl: string;
   try {
-    cdpUrl = await waitForCdp(env.POD_CDP_PORT, env.POD_CHROMIUM_BOOT_TIMEOUT_MS);
+    // 探活走 internal port —— chromium 真正 listen 在 127.0.0.1:POD_CDP_INTERNAL_PORT
+    internalCdpUrl = await waitForCdp(
+      env.POD_CDP_INTERNAL_PORT,
+      env.POD_CHROMIUM_BOOT_TIMEOUT_MS,
+    );
   } catch (err) {
     proc.kill('SIGKILL');
     throw err;
   }
 
-  // chromium 自报的 webSocketDebuggerUrl 形如 ws://localhost:9223/devtools/browser/<uuid>。
-  // 控制平面用 POD_ADDRS 配置（http://browser-pod-1:9222）已经知道 pod 的可路由 host，
-  // 它会接收这个 url 然后把 host 部分替换掉。我们这里原样返回，保持 port（9223）
-  // 与 path（/devtools/browser/<uuid>）信息完整。
+  // chromium 自报的 webSocketDebuggerUrl 形如 ws://127.0.0.1:<INTERNAL>/devtools/browser/<uuid>。
+  // 我们要把这个 URL 上报给 cloud-runtime 之前，把 port 从 INTERNAL（chromium 实际监听）
+  // 改成 EXTERNAL（relay 对外监听）—— 这样 cloud-runtime 的 rewriteCdpHost 只需要换
+  // host 不需要改 port（与 fly / static 模式的契约保持一致）。
+  //
+  // host 保留为 127.0.0.1（cloud-runtime 会再用容器 IP 替换）。
+  const externalUrl = new URL(internalCdpUrl);
+  externalUrl.port = String(env.POD_CDP_PORT);
+  const cdpUrl = externalUrl.toString();
+
   const info: RunningChromium = {
     machineId: input.machineId,
     pid: proc.pid ?? -1,
-    cdpUrl, // 完整 ws://...，控制平面 swap host 部分
+    cdpUrl, // ws://127.0.0.1:<EXTERNAL>/devtools/browser/<uuid>，cloud-runtime swap host
     startedAt: Date.now(),
   };
 

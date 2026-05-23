@@ -18,27 +18,36 @@ import type { Persona } from '@mosaiq/persona-schema';
 
 export interface SpawnFlagsInput {
   persona: Persona;
-  cdpPort: number;
+  /**
+   * chromium 内部监听的 CDP port（默认会 bind 127.0.0.1）。**不是**对外暴露的 port。
+   * browser-pod 在外面跑一个 TCP relay 把 0.0.0.0:POD_CDP_PORT 转发到这个 port —— 因为
+   * chromium issues.chromium.org/issues/40261787 已知 bug 让 --remote-debugging-address
+   * 在 headless 模式下不生效，单靠 chromium 自己永远只 bind 127.0.0.1，相当于对外
+   * ECONNREFUSED。relay 是绕开这个 bug 的最干净办法。
+   */
+  internalCdpPort: number;
   userDataDir: string;
   headless: boolean;
   viewport?: { width: number; height: number };
 }
 
 export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
-  const { persona, cdpPort, userDataDir, headless, viewport } = input;
+  const { persona, internalCdpPort, userDataDir, headless, viewport } = input;
 
   const width = viewport?.width ?? persona.system.screen.width;
   const height = viewport?.height ?? persona.system.screen.height;
 
   const flags: string[] = [
-    // CDP 暴露
-    `--remote-debugging-port=${cdpPort}`,
-    `--remote-debugging-address=0.0.0.0`,
+    // CDP 暴露。
+    // 注意：故意不传 --remote-debugging-address —— chromium headless 模式下这个 flag
+    // 不生效（已知 bug），写了反而误导以为已经 bind 0.0.0.0。让 chromium 默认 bind
+    // 127.0.0.1:<internalCdpPort>，外面用 TCP relay 解决跨容器可达性。
+    `--remote-debugging-port=${internalCdpPort}`,
     // chromium 111+ 在 devtools_http_handler 层强制 Origin / Host 头检查（防 DNS
-    // rebinding）。控制面板从 docker 容器 IP 连进来时 Host 不是 localhost，没这个 flag
-    // chromium 会直接 reject WebSocket upgrade，cdp proxy 立刻收到 ws error → 客户端
-    // 拿到 1011 "pod error"。pod 的 CDP 只在 docker user-defined network / Fly 6PN
-    // 内部可达，'*' 等价于 "信任本子网"，安全边界已经在网络层。
+    // rebinding）。即使 cdp proxy 在控制平面侧已经显式打 Origin: http://localhost，
+    // 这个 flag 依然必要 —— 因为 cdp proxy 拨到 relay 时的 Host 头是 relay 外部
+    // ip:port（172.18.0.3:9223），chromium 拿到 Host 后仍要校验。'*' 通配安全：
+    // pod CDP 只在 docker user-defined network / Fly 6PN 内部可达，安全边界在网络层。
     `--remote-allow-origins=*`,
 
     // 持久化

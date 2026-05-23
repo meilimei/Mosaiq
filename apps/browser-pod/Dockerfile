@@ -37,7 +37,12 @@ FROM mcr.microsoft.com/playwright:v1.59.1-noble AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV POD_CONTROL_PORT=9222
+# 外部可见的 CDP port —— browser-pod 的 node TCP relay 监听 0.0.0.0:9223
 ENV POD_CDP_PORT=9223
+# chromium 实际监听的内部 CDP port —— 只 bind 127.0.0.1:9224。
+# 不能跟 POD_CDP_PORT 重叠，否则 relay 会自环 listen→connect 同 port。
+# 见 src/persona-flags.ts 注释和 chromium issues.chromium.org/issues/40261787。
+ENV POD_CDP_INTERNAL_PORT=9224
 ENV POD_PROFILE_DIR=/data/profile
 
 # Playwright base 已含 node + chromium。pnpm deploy 输出已经是独立 prod 树，
@@ -57,6 +62,7 @@ RUN mkdir -p /data/profile && chown -R pwuser:pwuser /data
 VOLUME ["/data"]
 
 EXPOSE 9222
+# 9223 是 relay 对外端口。9224 是 chromium 内部 only，不 EXPOSE（也不应该让外面碰）。
 EXPOSE 9223
 
 # 用非 root 用户跑（playwright base 的 pwuser）—— chromium --no-sandbox 已开
