@@ -90,10 +90,35 @@ log('session', {
   stealth: session.stealth,
 });
 ok(`session.id=${session.id}`);
-if (!session.cdpUrl.startsWith('ws://127.0.0.1:8787/v1/sessions/')) {
-  fail('cdpUrl points to control plane ws', session.cdpUrl);
-} else {
-  ok(`cdpUrl=${session.cdpUrl}`);
+// cdpUrl 必须指向控制面（cloud-runtime 的 ws proxy），不能漏 pod 内网地址。
+// host 由 server 端 PUBLIC_BASE_URL 决定（默认 localhost:8787，也可以是 127.0.0.1
+// 或域名），client 不该绑死 host 字面值 —— 改为 parse 后看 pathname。
+// 真正要防的是 cdpUrl 直接暴露 pod 私网 IP（172.x.x.x / fdaa:: 等），所以同时
+// 黑名单一下常见私网段。
+{
+  const cdpUrl = session.cdpUrl;
+  let parsed;
+  try {
+    parsed = new URL(cdpUrl);
+  } catch {
+    fail('cdpUrl is not a valid URL', cdpUrl);
+    parsed = null;
+  }
+  if (parsed) {
+    const protoOk = parsed.protocol === 'ws:' || parsed.protocol === 'wss:';
+    const pathOk = parsed.pathname === `/v1/sessions/${session.id}/cdp`;
+    // pod 私网段：docker bridge 默认 172.16.0.0/12、Fly 6PN fdaa::/16、k8s 10.0.0.0/8。
+    // 这些不应该出现在客户端拿到的 cdpUrl 里。
+    const looksLikePodPrivateIp =
+      /^172\.(1[6-9]|2\d|3[01])\./.test(parsed.hostname) ||
+      /^10\./.test(parsed.hostname) ||
+      /^fdaa[:.]/i.test(parsed.hostname);
+
+    if (!protoOk) fail('cdpUrl protocol not ws/wss', cdpUrl);
+    else if (!pathOk) fail('cdpUrl path != /v1/sessions/<id>/cdp', cdpUrl);
+    else if (looksLikePodPrivateIp) fail('cdpUrl leaks pod private IP', cdpUrl);
+    else ok(`cdpUrl=${cdpUrl}`);
+  }
 }
 
 // ─── GET /v1/health pool reflects busy ──────────────────────────────────────
