@@ -80,8 +80,22 @@ export interface LocalDockerMachineManagerOptions {
   podCdpPort?: number;
   /** 透传给 pod 容器的 env。 */
   podEnv?: Record<string, string>;
-  /** Fetch 注入（单测必填）。生产路径自动用 undici + socketPath。 */
+  /**
+   * Fetch 注入用于 **Docker Engine API**（走 unix domain socket）。生产路径
+   * 自动用 undici + socketPath。单测里替换成 stub。
+   */
   fetchImpl?: FetchLike;
+  /**
+   * Fetch 注入用于 **pod 内部 HTTP**（走 docker user-defined network 的容器 IP，
+   * 真实 TCP 连接）。生产路径默认用 globalThis.fetch，单测里和 fetchImpl 共享 stub
+   * 即可——stub 自己用 URL 来分发 docker API vs pod URL。
+   *
+   * 必须跟 fetchImpl 分开：dockerFetchImpl 是 unix socket fetch，**会忽略 URL 的
+   * host:port，所有请求都打到 docker.sock**。如果错误地用它发请求到 pod，docker
+   * daemon 收到不认识的 path，会回 HTTP 404 + JSON `{"message":"page not found"}`，
+   * pod 端探活会一直误判失败。
+   */
+  podFetchImpl?: FetchLike;
   /** 等 /healthz 就绪超时。 */
   waitForPodReadyTimeoutMs?: number;
   podStartTimeoutMs?: number;
@@ -103,7 +117,7 @@ export class LocalDockerMachineManager implements MachineManager {
       | 'waitForPodReadyTimeoutMs'
       | 'podStartTimeoutMs'
     >
-  > & { podEnv: Record<string, string>; fetchImpl: FetchLike };
+  > & { podEnv: Record<string, string>; fetchImpl: FetchLike; podFetchImpl: FetchLike };
 
   /** containerId → podOrigin（含动态分配的 host port）。 */
   readonly #alive: Map<string, string> = new Map();
@@ -122,6 +136,9 @@ export class LocalDockerMachineManager implements MachineManager {
       podCdpPort: opts.podCdpPort ?? 9223,
       podEnv: opts.podEnv ?? {},
       fetchImpl: opts.fetchImpl ?? makeUnixSocketFetch(opts.socketPath),
+      // pod fetch 默认顺序：显式 podFetchImpl > 复用 fetchImpl（仅单测，stub 能分发） > 全局 fetch（生产）
+      podFetchImpl:
+        opts.podFetchImpl ?? opts.fetchImpl ?? (globalThis.fetch.bind(globalThis) as FetchLike),
       waitForPodReadyTimeoutMs: opts.waitForPodReadyTimeoutMs ?? 15_000,
       podStartTimeoutMs: opts.podStartTimeoutMs ?? 35_000,
     };
@@ -152,9 +169,11 @@ export class LocalDockerMachineManager implements MachineManager {
       podOrigin = this.#derivePodOrigin(inspect, this.#opts.podControlPort);
 
       // ─── 4) 等 /healthz ───────────────────────────────────────────────
+      // 注意：这里必须用 podFetchImpl（TCP 直连容器 IP），不能复用 fetchImpl
+      // （那是 unix socket fetch，会把所有请求打到 /var/run/docker.sock）。
       await waitForPodReady({
         podOrigin,
-        fetchImpl: this.#opts.fetchImpl,
+        fetchImpl: this.#opts.podFetchImpl,
         timeoutMs: this.#opts.waitForPodReadyTimeoutMs,
       });
 
@@ -162,7 +181,7 @@ export class LocalDockerMachineManager implements MachineManager {
       const podResp = await callPodStart({
         podOrigin,
         spec,
-        fetchImpl: this.#opts.fetchImpl,
+        fetchImpl: this.#opts.podFetchImpl,
         timeoutMs: this.#opts.podStartTimeoutMs,
       });
 
@@ -210,7 +229,11 @@ export class LocalDockerMachineManager implements MachineManager {
     const log = getLogger();
     const podOrigin = this.#alive.get(containerId);
     if (podOrigin) {
-      await callPodStop({ podOrigin, machineId: containerId, fetchImpl: this.#opts.fetchImpl });
+      await callPodStop({
+        podOrigin,
+        machineId: containerId,
+        fetchImpl: this.#opts.podFetchImpl,
+      });
       this.#alive.delete(containerId);
     }
     await this.#removeContainer(containerId).catch((err) => {

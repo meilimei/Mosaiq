@@ -484,6 +484,94 @@ describe('LocalDockerMachineManager — constructor + shutdown', () => {
     ).toThrow(/image/);
   });
 
+  // ─── 回归：dockerFetchImpl vs podFetchImpl 分离 ──────────────────────────
+  // 真实 prod 环境里 dockerFetchImpl 是 unix-socket fetch（把所有请求打到 docker.sock），
+  // 如果错误地复用它去发 pod /healthz 请求，docker daemon 就会回 404 + JSON
+  // `{"message":"page not found"}`，pod 探活永远失败。本测试用一对**只识各自 URL**
+  // 的 stub 验证：docker stub 拒绝 pod URL，pod stub 拒绝 docker URL，acquire 仍要成功。
+  it('uses podFetchImpl for pod calls and fetchImpl for docker calls (no crosstalk)', async () => {
+    const podControlBase = `http://${POD_IP}:9222`;
+    const dockerStubCalls: string[] = [];
+    const podStubCalls: string[] = [];
+
+    const dockerFetchImpl = (async (url: string, init?: RequestInit) => {
+      dockerStubCalls.push(`${init?.method ?? 'GET'} ${url}`);
+      // 模拟 unix socket fetch：如果不是 docker base 的 URL，就当作不认识的 path，
+      // 仍照常返回 docker daemon 的 404 JSON（这就是真实环境里 pod URL 错走 docker
+      // socket 时拿到的响应）。
+      if (!url.startsWith(DOCKER_BASE)) {
+        return new Response(JSON.stringify({ message: 'page not found' }) + '\n', {
+          status: 404,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (init?.method === 'POST' && url.includes('/containers/create')) {
+        return new Response(JSON.stringify({ Id: 'docker_iso' }), { status: 201 });
+      }
+      if (init?.method === 'POST' && /\/containers\/[^/]+\/start$/.test(url)) {
+        return new Response(null, { status: 204 });
+      }
+      if (init?.method === 'GET' && url.endsWith('/json')) {
+        return inspectResp('docker_iso');
+      }
+      if (init?.method === 'DELETE') {
+        return new Response(null, { status: 204 });
+      }
+      return new Response('unmocked docker', { status: 599 });
+    }) as unknown as FetchLike;
+
+    const podFetchImpl = (async (url: string, init?: RequestInit) => {
+      podStubCalls.push(`${init?.method ?? 'GET'} ${url}`);
+      // 模拟真实 TCP fetch：只接 podOrigin 的 URL，docker URL 给 599 显式失败
+      if (!url.startsWith(podControlBase)) {
+        return new Response('unmocked pod', { status: 599 });
+      }
+      if (url === `${podControlBase}/healthz`) {
+        return new Response('{}', { status: 200 });
+      }
+      if (url === `${podControlBase}/control/start`) {
+        return new Response(
+          JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/devtools/browser/u', machineId: 'm' }),
+          { status: 200 },
+        );
+      }
+      if (url === `${podControlBase}/control/stop`) {
+        return new Response(null, { status: 204 });
+      }
+      return new Response('unmocked pod path', { status: 599 });
+    }) as unknown as FetchLike;
+
+    const mm = new LocalDockerMachineManager({
+      socketPath: '/var/run/docker.sock',
+      image: 'mosaiq/browser-pod:test',
+      network: NETWORK,
+      apiBaseUrl: DOCKER_BASE,
+      maxContainers: 3,
+      shmBytes: 1_073_741_824,
+      podControlPort: 9222,
+      podCdpPort: 9223,
+      fetchImpl: dockerFetchImpl,
+      podFetchImpl,
+      waitForPodReadyTimeoutMs: 500,
+      podStartTimeoutMs: 500,
+    });
+
+    const acquired = await mm.acquire(acquireSpec);
+    expect(acquired.podOrigin).toBe(podControlBase);
+
+    // dockerFetchImpl 只能看到 docker base 的 URL，绝不能有 pod URL
+    expect(dockerStubCalls.every((c) => c.includes(DOCKER_BASE))).toBe(true);
+    expect(dockerStubCalls.some((c) => c.includes(podControlBase))).toBe(false);
+
+    // podFetchImpl 只能看到 podOrigin 的 URL，绝不能有 docker URL
+    expect(podStubCalls.every((c) => c.includes(podControlBase))).toBe(true);
+    expect(podStubCalls.some((c) => c.includes('/containers/'))).toBe(false);
+
+    // release 也必须走 podFetchImpl 去打 /control/stop
+    await mm.release(acquired.id);
+    expect(podStubCalls.some((c) => c.includes('/control/stop'))).toBe(true);
+  });
+
   it('shutdown 释放所有 alive', async () => {
     let createIdx = 0;
     const ids = ['docker_s1', 'docker_s2'];
