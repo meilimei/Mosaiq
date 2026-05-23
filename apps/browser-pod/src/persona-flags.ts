@@ -34,6 +34,12 @@ export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
     // CDP 暴露
     `--remote-debugging-port=${cdpPort}`,
     `--remote-debugging-address=0.0.0.0`,
+    // chromium 111+ 在 devtools_http_handler 层强制 Origin / Host 头检查（防 DNS
+    // rebinding）。控制面板从 docker 容器 IP 连进来时 Host 不是 localhost，没这个 flag
+    // chromium 会直接 reject WebSocket upgrade，cdp proxy 立刻收到 ws error → 客户端
+    // 拿到 1011 "pod error"。pod 的 CDP 只在 docker user-defined network / Fly 6PN
+    // 内部可达，'*' 等价于 "信任本子网"，安全边界已经在网络层。
+    `--remote-allow-origins=*`,
 
     // 持久化
     `--user-data-dir=${userDataDir}`,
