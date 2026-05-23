@@ -9,14 +9,25 @@
  *   - acquire = provision 一台机器 → 等就绪 → callPodStart（共享）
  *   - release = callPodStop（共享）→ destroy 机器
  *
- * 网络拓扑选择：动态 host port binding（兼容 Linux/macOS/Windows Docker Desktop）。
- * pod 容器把 9222（control）和 9223（CDP）publish 到 host 随机端口；控制平面
- * 通过 host:127.0.0.1:<assignedPort> 访问。inspect 容器后从
- * NetworkSettings.Ports['9222/tcp'][0].HostPort 取真实分配的 host port。
+ * 网络拓扑：docker user-defined network 内部 IP 直连（跟 Fly 6PN 拓扑对称）。
  *
- * 为什么不用 bridge IP 直连：
- *   - Docker Desktop（Mac/Win）的 bridge IP 在 host 上不可路由
- *   - 用 published port 在所有 OS 上都能跑，是最小公分母
+ *   cloud-runtime 容器  ─┐
+ *                        ├─ docker network `<DOCKER_NETWORK>` ──┐
+ *   manager 动态拉的 pod ─┘                                       │
+ *                                                                 │
+ *     manager 调用 Docker Engine API 把 pod 容器 attach 到这个 network，
+ *     inspect 后从 NetworkSettings.Networks[name].IPAddress 拿到容器 IP，
+ *     podOrigin = 'http://<ip>:9222'。pod 之间不暴露到 host。
+ *
+ * 为什么不用 host port publishing：
+ *   - cloud-runtime 容器化跑时，127.0.0.1 是它自己的 loopback，到不了 host 的
+ *     publish port。
+ *   - publish port 会污染 host port range，dev 多副本互相冲突。
+ *   - 跟 Fly internal DNS 拓扑不对称，多一套心智模型。
+ *
+ * 配置约束：DOCKER_NETWORK 必须是 user-defined network（不是默认 'bridge'）。
+ * 默认 'bridge' 不会做容器 DNS resolve，且我们要 cloud-runtime 跟 pod 在同一
+ * network 内通信。docker compose v2 默认会建 user-defined network。
  *
  * Unix socket HTTP：用 undici Agent({ connect: { socketPath } })，把它绑到一个
  * 自定义的 fetch 包装上，所有路径都伪装成 'http://localhost/...'，让 fetch
@@ -37,7 +48,7 @@ interface DockerInspectResponse {
   Name?: string;
   State?: { Status?: string; Running?: boolean };
   NetworkSettings?: {
-    Ports?: Record<string, Array<{ HostIp: string; HostPort: string }> | null>;
+    Networks?: Record<string, { IPAddress?: string } | undefined>;
   };
 }
 
@@ -51,7 +62,11 @@ export interface LocalDockerMachineManagerOptions {
   /** Unix socket 路径，例 '/var/run/docker.sock'。Windows Docker Desktop 是 '//./pipe/docker_engine'，但通常通过 TCP 代理走。 */
   socketPath: string;
   image: string;
-  /** Docker network mode；默认 'bridge'。我们仍然用 port publishing，network 仅用于命名。 */
+  /**
+   * Docker user-defined network 名（必须 user-defined，不能是 'bridge'）。
+   * docker compose v2 默认建的 network 即可用；裸跑 docker 时需要先
+   * `docker network create <name>` 再把 cloud-runtime + pod 容器都 attach 进去。
+   */
   network: string;
   /** Docker API base URL —— 配合 unix socket 时 host 部分被忽略，单测可指向真实 mock server。 */
   apiBaseUrl: string;
@@ -132,9 +147,9 @@ export class LocalDockerMachineManager implements MachineManager {
       // ─── 2) start ─────────────────────────────────────────────────────
       await this.#startContainer(created.Id);
 
-      // ─── 3) inspect 取动态分配的 host port ─────────────────────────────
+      // ─── 3) inspect 取容器在 user-defined network 上的 IP ─────────────
       const inspect = await this.#inspectContainer(created.Id);
-      podOrigin = this.#deriveHostOrigin(inspect, this.#opts.podControlPort);
+      podOrigin = this.#derivePodOrigin(inspect, this.#opts.podControlPort);
 
       // ─── 4) 等 /healthz ───────────────────────────────────────────────
       await waitForPodReady({
@@ -151,11 +166,10 @@ export class LocalDockerMachineManager implements MachineManager {
         timeoutMs: this.#opts.podStartTimeoutMs,
       });
 
-      // ─── 6) CDP 也用 host published port，从 inspect 取 ────────────────
-      const cdpOriginForRewrite = this.#deriveHostOrigin(inspect, this.#opts.podCdpPort);
-      // rewriteCdpHost 用 cdpOriginForRewrite 的 host:port 替换 chromium 自报的
-      // 0.0.0.0:9223。pod 内部说自己是 9223，但 host 上是动态端口，所以这里换
-      // 成 cdpOriginForRewrite。
+      // ─── 6) rewriteCdpHost：chromium 自报的 0.0.0.0:9223 → containerIp:9223
+      // pod 内 chromium 在 9223 上听 CDP，host 用容器 IP（同一 docker network 内
+      // 直连）。rewriteCdpHost 保留 chromium 自报的端口 9223。
+      const cdpOriginForRewrite = this.#derivePodOrigin(inspect, this.#opts.podCdpPort);
       const cdpRouted = rewriteCdpHost(podResp.cdpUrl, cdpOriginForRewrite);
 
       this.#alive.set(created.Id, podOrigin);
@@ -227,19 +241,18 @@ export class LocalDockerMachineManager implements MachineManager {
         MOSAIQ_SESSION_ID: spec.sessionId,
         ...this.#opts.podEnv,
       }).map(([k, v]) => `${k}=${v}`),
+      // ExposedPorts 仅作文档/兼容意图；同 network 内 container-to-container
+      // 不依赖 EXPOSE 也能通。保留以维持与 Dockerfile EXPOSE 一致。
       ExposedPorts: {
         [controlPortKey]: {},
         [cdpPortKey]: {},
       },
       HostConfig: {
-        // dynamic host port: 空字符串让 Docker 分配
-        PortBindings: {
-          [controlPortKey]: [{ HostIp: '127.0.0.1', HostPort: '' }],
-          [cdpPortKey]: [{ HostIp: '127.0.0.1', HostPort: '' }],
-        },
+        // 不 publish 到 host。手工创建容器时直接 attach 到 user-defined network；
+        // 默认 'bridge' network 不支持容器 DNS resolve，env 校验时应避免使用。
         NetworkMode: this.#opts.network,
         ShmSize: this.#opts.shmBytes,
-        // dev：容器停就删，避免堆积。prod 用 fly 不走这里。
+        // dev：release 时 manager 主动 force-remove；不依赖 AutoRemove，更可控。
         AutoRemove: false,
         // chromium 需要 SYS_ADMIN 才能用 sandbox，但 v0.11 pod 镜像默认 --no-sandbox，
         // 因此不开 CapAdd，最小权限原则。
@@ -299,19 +312,27 @@ export class LocalDockerMachineManager implements MachineManager {
     return json;
   }
 
-  #deriveHostOrigin(inspect: DockerInspectResponse, containerPort: number): string {
-    const portsMap = inspect.NetworkSettings?.Ports ?? {};
-    const key = `${containerPort}/tcp`;
-    const bindings = portsMap[key];
-    if (!bindings || bindings.length === 0 || !bindings[0]?.HostPort) {
+  /**
+   * 从 inspect 结果取出容器在配置的 docker network 上的 IP，组成
+   * `http://<ip>:<port>`。如果容器没 attach 到该 network，或 network 没分配
+   * IP，抛 machine.spawn_failed（一般是 DOCKER_NETWORK 配错了）。
+   */
+  #derivePodOrigin(inspect: DockerInspectResponse, containerPort: number): string {
+    const networks = inspect.NetworkSettings?.Networks ?? {};
+    const net = networks[this.#opts.network];
+    const ip = net?.IPAddress;
+    if (!ip) {
       throw new ApiError(
         'machine.spawn_failed',
-        `docker container ${inspect.Id} did not publish ${key} to host`,
-        { containerId: inspect.Id },
+        `docker container ${inspect.Id} has no IP on network '${this.#opts.network}'`,
+        {
+          containerId: inspect.Id,
+          network: this.#opts.network,
+          availableNetworks: Object.keys(networks),
+        },
       );
     }
-    const hostIp = bindings[0]?.HostIp || '127.0.0.1';
-    return `http://${hostIp}:${bindings[0]?.HostPort}`;
+    return `http://${ip}:${containerPort}`;
   }
 
   async #removeContainer(id: string): Promise<void> {

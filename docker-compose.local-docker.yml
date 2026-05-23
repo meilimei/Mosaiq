@@ -1,0 +1,100 @@
+# Mosaiq Cloud — local-docker 模式（phase 11.2 dev parity）
+#
+# 跟 docker-compose.cloud.yml（static pool，phase 11.1）的区别：
+#
+#   docker-compose.cloud.yml      MACHINE_MANAGER=static + 预跑 N 个 browser-pod 容器
+#   docker-compose.local-docker.yml  MACHINE_MANAGER=local-docker
+#                                    cloud-runtime 通过 Docker Engine API 按需拉起 pod，
+#                                    跟 prod (Fly per-session microVM) 拓扑同构。
+#
+# 跑法：
+#   docker compose -f docker-compose.local-docker.yml up --build
+#
+# 起来后：
+#   - http://localhost:8787/v1/health     控制平面 health
+#   - 第一次 POST /v1/sessions 时 cloud-runtime 自动 `docker run mosaiq/browser-pod:0.11.0`
+#     创建 pod 容器，attach 到 mosaiq-net network，inspect 拿到内部 IP 后通信。
+#   - 容器命名 `mosaiq-pod-<sessionId>-<ts>`，session 结束自动 force-remove。
+#
+# Env：
+#   见 .env.cloud.example，复制成 .env.cloud。
+#
+# Windows 注意：本配置 mount /var/run/docker.sock，要求 Docker Desktop 的 WSL2
+# integration 已启用（WSL2 distro 里跑 docker compose），或者在 native Windows 下
+# 改成 named pipe。最稳定的 dev 路径是在 WSL2 里跑。
+
+services:
+  # ─── 1) helper: build browser-pod 镜像 ───────────────────────────────────
+  # 不预跑 pod 容器，但要确保 mosaiq/browser-pod:0.11.0 镜像在本地 docker daemon 里
+  # 存在，否则 cloud-runtime 第一次 acquire 时 docker 不会自动 pull（本地镜像，无远程
+  # registry）。让这个 service build 完镜像就立刻退出（exit 0），不占资源。
+  browser-pod-image:
+    build:
+      context: .
+      dockerfile: apps/browser-pod/Dockerfile
+    image: mosaiq/browser-pod:0.11.0
+    container_name: mosaiq-browser-pod-image-builder
+    # 镜像 build 后立刻退出。`true` 在 playwright base image (ubuntu noble) 里是 /usr/bin/true。
+    command: ["true"]
+    restart: "no"
+    # 不需要进 network — 它不跑业务。
+    profiles: ["default"]
+
+  # ─── 2) control plane ─────────────────────────────────────────────────────
+  cloud-runtime:
+    build:
+      context: .
+      dockerfile: apps/cloud-runtime/Dockerfile
+    image: mosaiq/cloud-runtime:0.11.0
+    container_name: mosaiq-cloud-runtime
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      NODE_ENV: development
+      PORT: 8787
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      DATABASE_URL: sqlite:/app/data/cloud-runtime.db
+
+      # ─── manager 切到 local-docker ──────────────────────────────────────
+      MACHINE_MANAGER: local-docker
+      # cloud-runtime 容器通过 mount 的 /var/run/docker.sock 调 Docker Engine API
+      DOCKER_SOCKET: /var/run/docker.sock
+      # browser-pod 镜像（由 browser-pod-image service 提前 build 出来）
+      DOCKER_IMAGE: mosaiq/browser-pod:0.11.0
+      # 容器 attach 到的 user-defined network。必须跟下面 networks: 段对齐。
+      DOCKER_NETWORK: mosaiq-net
+      # 软上限，避免 dev 跑飞
+      DOCKER_MAX_CONTAINERS: 4
+      # chromium 需要大 shm，否则 tab crash
+      DOCKER_POD_SHM_BYTES: 1073741824
+      # pod 容器内 control HTTP 端口（跟 Dockerfile EXPOSE 一致）
+      FLY_POD_CONTROL_PORT: 9222
+
+      SEED_PROJECT_ID: ${SEED_PROJECT_ID:-proj_launchai}
+      SEED_API_KEY: ${SEED_API_KEY:-msq_sk_dev_seed_change_me_in_prod_xxxxxxxxxxxx}
+      SESSION_TTL_DEFAULT_SECONDS: 1800
+      SESSION_TTL_MAX_SECONDS: 7200
+      PUBLIC_BASE_URL: http://localhost:8787
+    volumes:
+      # cloud-runtime sqlite 持久化
+      - cloud-runtime-data:/app/data
+      # 关键：mount docker socket，让 LocalDockerMachineManager 能控制 host 上的 docker
+      # Linux/macOS/WSL2 默认就是 /var/run/docker.sock；Windows native 须改 named pipe。
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mosaiq-net
+    depends_on:
+      browser-pod-image:
+        condition: service_completed_successfully
+
+networks:
+  # 给 network 一个 fixed name（不带 docker-compose project prefix），这样
+  # DOCKER_NETWORK=mosaiq-net 在 compose 内外都能 resolve 到同一个 network。
+  # LocalDockerMachineManager 手工 attach pod 容器时直接用这个名字。
+  mosaiq-net:
+    name: mosaiq-net
+    driver: bridge
+
+volumes:
+  cloud-runtime-data:
