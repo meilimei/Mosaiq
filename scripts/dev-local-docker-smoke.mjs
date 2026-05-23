@@ -36,6 +36,7 @@ const REPO = path.resolve(HERE, '..');
 const apiUrl = (process.env.MOSAIQ_API_URL ?? 'http://127.0.0.1:8787').replace(/\/+$/, '');
 const apiKey = process.env.MOSAIQ_API_KEY;
 const projectId = process.env.MOSAIQ_PROJECT_ID ?? 'proj_launchai';
+const requestTimeoutMs = process.env.MOSAIQ_REQUEST_TIMEOUT_MS ?? '90000';
 
 if (!apiKey) {
   console.error('FATAL: MOSAIQ_API_KEY env required (must match cloud-runtime SEED_API_KEY)');
@@ -102,6 +103,27 @@ function dumpDockerDiagnostics() {
     '--format',
     'table {{.ID}}\t{{.Status}}\t{{.Names}}',
   ]);
+  console.error('\n--- dynamic pod logs (label=com.mosaiq.runtime=cloud-runtime, last 120 lines each) ---');
+  try {
+    const ids = spawnSync('docker', [
+      'ps',
+      '-aq',
+      '--filter',
+      'label=com.mosaiq.runtime=cloud-runtime',
+    ], { encoding: 'utf8', cwd: REPO });
+    if (ids.error) {
+      console.error(`(skipped: ${ids.error.message})`);
+    } else {
+      for (const id of ids.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)) {
+        console.error(`\n--- docker logs ${id} ---`);
+        const logs = spawnSync('docker', ['logs', '--tail=120', id], { encoding: 'utf8', cwd: REPO });
+        if (logs.stdout) console.error(logs.stdout.trimEnd());
+        if (logs.stderr) console.error(logs.stderr.trimEnd());
+      }
+    }
+  } catch (err) {
+    console.error(`(failed: ${err instanceof Error ? err.message : String(err)})`);
+  }
   console.error('--- end docker diagnostics ---\n');
 }
 
@@ -144,6 +166,7 @@ function runNode(scriptRelPath, label) {
         MOSAIQ_API_URL: apiUrl,
         MOSAIQ_API_KEY: apiKey,
         MOSAIQ_PROJECT_ID: projectId,
+        MOSAIQ_REQUEST_TIMEOUT_MS: requestTimeoutMs,
       },
     });
     child.on('exit', (code) => {
@@ -152,6 +175,7 @@ function runNode(scriptRelPath, label) {
         resolve(true);
       } else {
         log(`❌ ${label} FAILED (exit=${code})`);
+        dumpDockerDiagnostics();
         resolve(false);
       }
     });
@@ -163,7 +187,7 @@ function runNode(scriptRelPath, label) {
 }
 
 // ─── main ────────────────────────────────────────────────────────────────
-log(`MOSAIQ_API_URL=${apiUrl}  PROJECT=${projectId}`);
+log(`MOSAIQ_API_URL=${apiUrl}  PROJECT=${projectId}  REQUEST_TIMEOUT_MS=${requestTimeoutMs}`);
 await waitForHealth();
 
 const registerOk = await runNode('packages/cloud-sdk/scripts/register-persona.mjs', 'register-persona');

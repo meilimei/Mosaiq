@@ -27,6 +27,7 @@ import { chromium } from 'playwright-core';
 const apiUrl = process.env.MOSAIQ_API_URL ?? 'http://127.0.0.1:8787';
 const apiKey = process.env.MOSAIQ_API_KEY;
 const projectId = process.env.MOSAIQ_PROJECT_ID ?? 'proj_launchai';
+const requestTimeoutMs = Number(process.env.MOSAIQ_REQUEST_TIMEOUT_MS ?? '90000');
 
 if (!apiKey) {
   console.error('FATAL: MOSAIQ_API_KEY env required');
@@ -64,7 +65,8 @@ log('persona built', {
   browser: `${persona.browser.brand} ${persona.browser.fullVersion}`,
 });
 
-const client = new MosaiqCloudClient({ apiUrl, apiKey, projectId });
+const client = new MosaiqCloudClient({ apiUrl, apiKey, projectId, requestTimeoutMs });
+log('client configured', { apiUrl, projectId, requestTimeoutMs });
 
 // ─── /v1/health ─────────────────────────────────────────────────────────────
 log('GET /v1/health');
