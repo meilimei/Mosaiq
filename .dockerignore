@@ -1,0 +1,55 @@
+# 不要把 host 的 node_modules 灌进 docker 镜像。
+#
+# 关键背景（2026-05-24 排查到的 build 炸点）：
+# apps/browser-pod/Dockerfile 和 apps/cloud-runtime/Dockerfile 用以下两步：
+#
+#   RUN pnpm install --frozen-lockfile --filter ...    # ① 容器内装隔离 node_modules
+#   COPY packages/persona-schema packages/persona-schema   # ② COPY src
+#
+# 如果没有 .dockerignore，第②步会把 host 上 packages/persona-schema/node_modules
+# 整个目录复制进容器，**覆盖**第①步装好的隔离 store。host 上 pnpm 跑出来的
+# symlink 在 Linux 容器内变成 broken（Windows NTFS junction 跨平台失效 / Linux
+# pnpm 用绝对路径 symlink 到 host 路径失效）。
+#
+# 表象：`pnpm run build` 报 `Cannot find module 'node_modules/typescript/bin/tsc'`，
+# 即使容器内 `find` 能看到该文件 —— 因为它是个 broken symlink。
+#
+# 也避免 host 的 dist / .turbo / .next / .vite 等构建产物污染 build context，
+# 顺便加速 build context 上传到 BuildKit daemon。
+
+# ─── deps & build outputs（每个 workspace） ───────────────────────────────
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+**/.vite
+**/.cache
+**/coverage
+
+# ─── per-app build artifacts ──────────────────────────────────────────────
+apps/desktop/out
+apps/desktop/release
+apps/desktop/.vite
+
+# ─── editor / OS / git ────────────────────────────────────────────────────
+.git
+.gitignore
+.vscode
+.idea
+.windsurf
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── tests / local data we never want in prod image ───────────────────────
+**/*.test.ts.snap
+**/__snapshots__
+**/.env.local
+.env.cloud
+*.log
+.tmp-*
+
+# ─── per-Dockerfile scratch / debug ───────────────────────────────────────
+**/Dockerfile.debug
+**/Dockerfile.*.bak
