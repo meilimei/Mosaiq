@@ -195,6 +195,10 @@ export async function waitForPodReady(opts: {
   const deadline = Date.now() + (opts.timeoutMs ?? 30_000);
   const interval = opts.intervalMs ?? 250;
   let lastError: string | null = null;
+  // 最近一次非 200 响应的 body 摘要——404 的内容是 hono 默认 "404 Not Found"
+  // 还是别的服务器（chromium、nginx default page、HTML），直接决定后续诊断路径。
+  let lastBody: string | null = null;
+  let lastContentType: string | null = null;
 
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
@@ -209,6 +213,8 @@ export async function waitForPodReady(opts: {
       clearTimeout(timer);
       if (resp.ok) return;
       lastError = `pod /healthz returned ${resp.status}`;
+      lastContentType = resp.headers.get('content-type');
+      lastBody = (await resp.text().catch(() => '')).slice(0, 512);
     } catch (err) {
       clearTimeout(timer);
       lastError = err instanceof Error ? err.message : String(err);
@@ -219,5 +225,7 @@ export async function waitForPodReady(opts: {
   throw new ApiError('pool.pod_unhealthy', 'pod did not become ready in time', {
     podOrigin: opts.podOrigin,
     lastError,
+    ...(lastBody !== null ? { lastBody } : {}),
+    ...(lastContentType !== null ? { lastContentType } : {}),
   });
 }
