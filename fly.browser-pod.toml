@@ -1,0 +1,51 @@
+# fly.browser-pod.toml — Mosaiq Cloud per-session browser pod (phase 11.2 prod path)
+#
+# Topology role:
+#   This Fly app is a CONTAINER for ephemeral per-session microVMs. It does NOT
+#   run a long-lived process of its own. The cloud-runtime control plane calls
+#   POST /v1/apps/{this-app}/machines through the Fly Machines API to create
+#   one Machine per session, then DELETE ?force=true to destroy it on close.
+#
+#   This means:
+#     - no [http_service] / [[services]] — pod talks to control plane over
+#       6PN IPv6 private networking only (cloud-runtime is in the same Fly org)
+#     - no [[mounts]] here — per-machine volumes (chromium profile dirs) are
+#       provisioned dynamically per acquire() call by FlyMachineManager when
+#       it wants persistence; phase 11.2 starts with ephemeral pods (no
+#       volume), profiles dropped on machine destroy
+#     - no [[vm]] default — guest cpu/memory is set per-machine via the
+#       Machines API config.guest field (FLY_MACHINE_CPUS / FLY_MACHINE_MEMORY_MB
+#       env vars on cloud-runtime drive this)
+#
+# Deploy usage:
+#   # First-time setup:
+#   flyctl apps create mosaiq-browser-pod --org <your-org>
+#
+#   # Build + push image to registry.fly.io WITHOUT creating any default
+#   # machine (the default `fly deploy` would create one — we don't want it).
+#   flyctl deploy --config fly.browser-pod.toml \
+#                 --dockerfile apps/browser-pod/Dockerfile \
+#                 --build-only --push
+#
+#   The pushed image ref becomes `registry.fly.io/mosaiq-browser-pod:latest`,
+#   which is exactly what `FLY_BROWSER_POD_IMAGE` on cloud-runtime points to.
+#
+# Re-deploy a new pod build:
+#   Same command — the new `:latest` is what new sessions will boot with.
+#   Sessions already in flight keep running the old image (their machine is
+#   already created); they roll over naturally on next acquire.
+
+app = "mosaiq-browser-pod"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/browser-pod/Dockerfile"
+
+# No [env] block: env vars are passed per-machine by FlyMachineManager
+# (POD_HEADLESS=true, PORT=9222, MOSAIQ_SESSION_ID=ses_xxx, plus opt-in podEnv).
+# Anything baked into the image (POD_CONTROL_PORT etc.) is set by the
+# browser-pod Dockerfile's ENV directives.
+
+# Explicitly DO NOT define [http_service] or [[services]]: any such block
+# would make Fly allocate an anycast IP + provision a default 1-machine fleet.
+# We want neither — machines are 100% manager-driven.

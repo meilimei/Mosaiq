@@ -1,0 +1,118 @@
+# fly.cloud-runtime.toml — Mosaiq Cloud control plane (phase 11.2 prod path)
+#
+# Topology role:
+#   Long-lived Hono HTTP + WebSocket server on :8787. Reads / writes one sqlite
+#   DB on a Fly Volume. Acts as:
+#     - REST control plane for /v1/sessions, /v1/personas, /v1/health
+#     - WebSocket CDP proxy: ws://.../v1/sessions/:id forwards to pod 6PN [ipv6]:9223
+#     - Machines API client: drives mosaiq-browser-pod app
+#
+# Single-region (iad) for v0.12; multi-region read-replicas tracked for later.
+#
+# Deploy usage:
+#   # First-time setup:
+#   flyctl apps create mosaiq-cloud-runtime --org <your-org>
+#
+#   # Create the sqlite volume (1 GB is generous for v0.12 — sqlite is the
+#   # control-plane DB only, all chromium / session state lives per-machine).
+#   flyctl volumes create cloud_runtime_data \
+#     --app mosaiq-cloud-runtime --region iad --size 1
+#
+#   # Set secrets. FLY_API_TOKEN must have access to the browser-pod app's
+#   # Machines API (org-scoped deploy token is the simplest). SEED_API_KEY must
+#   # be left UNSET in prod — bootstrap a real key after first deploy with:
+#   #   flyctl ssh console -a mosaiq-cloud-runtime \
+#   #     -C 'node dist/admin/create-api-key.js proj_launchai'
+#   flyctl secrets set \
+#     FLY_API_TOKEN=$(cat ~/.fly-machines-token) \
+#     FLY_APP_NAME=mosaiq-browser-pod \
+#     --app mosaiq-cloud-runtime
+#
+#   # Deploy.
+#   flyctl deploy --config fly.cloud-runtime.toml \
+#                 --dockerfile apps/cloud-runtime/Dockerfile
+#
+#   # After it goes green:
+#   curl https://mosaiq-cloud-runtime.fly.dev/v1/health
+#   # Then bootstrap a prod API key (see docs/PHASE-11.2-FLY-DEPLOY.md §6).
+
+app = "mosaiq-cloud-runtime"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/cloud-runtime/Dockerfile"
+
+[env]
+  # ─── runtime ─────────────────────────────────────────────────────────────
+  NODE_ENV = "production"
+  PORT = "8787"
+  HOST = "0.0.0.0"
+  LOG_LEVEL = "info"
+
+  # ─── DB: sqlite on the mounted volume ────────────────────────────────────
+  DATABASE_URL = "sqlite:/data/cloud-runtime.db"
+
+  # ─── machine manager: fly per-session microVMs ───────────────────────────
+  MACHINE_MANAGER = "fly"
+  # Points at the OTHER app — the browser-pod template. FlyMachineManager calls
+  # POST /v1/apps/$FLY_APP_NAME/machines against this.
+  # (FLY_APP_NAME comes from `flyctl secrets set` — see header.)
+  FLY_REGION = "iad"
+  # registry.fly.io is automatically resolvable from Fly Machines without auth
+  # so long as FLY_API_TOKEN has access to the source app.
+  FLY_BROWSER_POD_IMAGE = "registry.fly.io/mosaiq-browser-pod:latest"
+  FLY_MAX_MACHINES = "10"
+  FLY_MACHINE_CPUS = "2"
+  FLY_MACHINE_MEMORY_MB = "2048"
+  FLY_POD_CONTROL_PORT = "9222"
+
+  # ─── project + API key seeding ───────────────────────────────────────────
+  # SEED_API_KEY is deliberately NOT set here (env.ts forbids it under
+  # NODE_ENV=production). Bootstrap via admin CLI after first deploy.
+  SEED_PROJECT_ID = "proj_launchai"
+
+  # ─── session policy ──────────────────────────────────────────────────────
+  SESSION_TTL_DEFAULT_SECONDS = "1800"
+  SESSION_TTL_MAX_SECONDS = "7200"
+
+  # ─── public URL (used for cdp_public_url in createSession response) ──────
+  PUBLIC_BASE_URL = "https://mosaiq-cloud-runtime.fly.dev"
+
+# ─── sqlite volume ──────────────────────────────────────────────────────────
+# `flyctl volumes create cloud_runtime_data --region iad --size 1` first.
+# Volume is bound to a single machine; scaling to >1 machine requires
+# multi-region replication strategy (deferred to phase 11.4).
+[[mounts]]
+  source = "cloud_runtime_data"
+  destination = "/data"
+
+# ─── public HTTPS service ───────────────────────────────────────────────────
+# Fly proxy terminates TLS at fly-edge and forwards HTTP + WS upgrade requests
+# to internal_port. Force HTTPS to avoid mixed-content + insecure CDP tokens.
+[http_service]
+  internal_port = 8787
+  force_https = true
+  # Control plane MUST stay up — no autoscale-to-zero.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/v1/health"
+
+# Single machine sizing — small box is fine for control plane (it's
+# I/O bound on sqlite + Fly Machines API calls, not CPU bound).
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "512mb"
+
+# Restart on crash; cap retries to avoid hammering on a bad sqlite state.
+[[restart]]
+  policy = "on-failure"
+  retries = 5
