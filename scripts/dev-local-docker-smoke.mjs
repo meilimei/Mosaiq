@@ -26,7 +26,7 @@
  *   node scripts/dev-local-docker-smoke.mjs
  */
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -49,6 +49,62 @@ function log(msg, ...rest) {
 }
 
 // ─── 1) wait for /v1/health ──────────────────────────────────────────────
+
+/**
+ * Health probe 超时时把 docker 状态 + cloud-runtime 容器 stderr 直接打到 stdout，
+ * 这样 CI 失败时不用下载 artifact，看 workflow 网页就知道为啥起不来（OOM、
+ * sqlite 路径权限、pnpm install 漏依赖、native 模块编译失败 等）。
+ *
+ * 我们故意 try/catch 每个子命令独立 —— 即使 docker daemon 在某些 dev 环境里没装
+ * （比如 Windows 没开 WSL2 integration），脚本也别第二次崩，至少把已知信息打出来。
+ */
+function dumpDockerDiagnostics() {
+  const composeFile = path.join(REPO, 'docker-compose.local-docker.yml');
+  const tryRun = (label, args) => {
+    console.error(`\n--- ${label} ---`);
+    try {
+      const r = spawnSync('docker', args, { encoding: 'utf8', cwd: REPO });
+      if (r.error) {
+        console.error(`(skipped: ${r.error.message})`);
+        return;
+      }
+      if (r.stdout) console.error(r.stdout.trimEnd());
+      if (r.stderr) console.error(r.stderr.trimEnd());
+    } catch (err) {
+      console.error(`(failed: ${err instanceof Error ? err.message : String(err)})`);
+    }
+  };
+
+  tryRun('docker compose ps', ['compose', '-f', composeFile, 'ps', '-a']);
+  tryRun('cloud-runtime logs (last 200 lines)', [
+    'compose',
+    '-f',
+    composeFile,
+    'logs',
+    '--no-color',
+    '--tail=200',
+    'cloud-runtime',
+  ]);
+  tryRun('browser-pod-image logs (last 50 lines)', [
+    'compose',
+    '-f',
+    composeFile,
+    'logs',
+    '--no-color',
+    '--tail=50',
+    'browser-pod-image',
+  ]);
+  tryRun('docker ps -a (cloud-runtime label)', [
+    'ps',
+    '-a',
+    '--filter',
+    'label=com.mosaiq.runtime=cloud-runtime',
+    '--format',
+    'table {{.ID}}\t{{.Status}}\t{{.Names}}',
+  ]);
+  console.error('--- end docker diagnostics ---\n');
+}
+
 async function waitForHealth() {
   const deadline = Date.now() + 60_000;
   let attempts = 0;
@@ -72,6 +128,7 @@ async function waitForHealth() {
   }
   console.error(`FATAL: cloud-runtime /v1/health not ready in 60s. last error: ${lastError}`);
   console.error('Hint: did you run `docker compose -f docker-compose.local-docker.yml up -d` first?');
+  dumpDockerDiagnostics();
   process.exit(1);
 }
 

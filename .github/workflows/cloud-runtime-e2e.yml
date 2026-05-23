@@ -137,13 +137,41 @@ jobs:
           set -euo pipefail
           docker compose -f docker-compose.local-docker.yml up --build -d
           echo "--- compose ps ---"
-          docker compose -f docker-compose.local-docker.yml ps
+          docker compose -f docker-compose.local-docker.yml ps -a
           echo "--- networks ---"
           docker network ls | grep mosaiq || true
 
-      # Tail cloud-runtime logs in the background to surface boot errors
-      # immediately in the workflow log (otherwise we only see them after
-      # smoke fails). Non-fatal background process.
+      # Print cloud-runtime + browser-pod-image current logs to the workflow
+      # console immediately after compose up. Sleep 5s first to let the
+      # cloud-runtime container at least START (or crash) so its boot output
+      # is captured. This is the difference between "smoke red, no idea why"
+      # and "smoke red, here's the cloud-runtime stack trace right above".
+      #
+      # browser-pod-image should already be in 'exited (0)' state by now —
+      # its job was just to build the chromium image.
+      - name: Snapshot logs after compose up
+        run: |
+          set +e
+          sleep 5
+          echo "::group::browser-pod-image logs (build-only service)"
+          docker compose -f docker-compose.local-docker.yml logs --no-color --tail=50 browser-pod-image
+          echo "::endgroup::"
+          echo "::group::cloud-runtime logs (first 100 lines)"
+          docker compose -f docker-compose.local-docker.yml logs --no-color --tail=100 cloud-runtime
+          echo "::endgroup::"
+          echo "::group::cloud-runtime container inspect"
+          CR_CID=$(docker compose -f docker-compose.local-docker.yml ps -aq cloud-runtime)
+          if [ -n "$CR_CID" ]; then
+            docker inspect "$CR_CID" --format '{{json .State}}' | head -c 800; echo
+          else
+            echo "(no cloud-runtime container found)"
+          fi
+          echo "::endgroup::"
+
+      # Tail cloud-runtime logs in the background so post-mortem artifact has
+      # the full stream (snapshot above only catches first 5s; smoke runs up
+      # to 60s health-poll + e2e). Redirected to file so it doesn't pollute
+      # the live workflow log; collected into _artifacts/ on always-step.
       - name: Stream cloud-runtime logs (background)
         run: |
           docker compose -f docker-compose.local-docker.yml logs -f --tail=20 cloud-runtime \
