@@ -15,6 +15,7 @@
 | docker | 24+（Mosaiq cloud 用 docker compose 起 pod 池） |
 | pnpm | 9.12+ |
 | @mosaiq/cloud-sdk | workspace local（v0.11.0），prod 之后 npm 装 |
+| playwright-core | 1.59.1（cloud-sdk 的 peer dep — 仅 type-only import；LaunchAI 主依赖是 `playwright`，但 pnpm isolated 模式不把内嵌 playwright-core 提到顶级 node_modules，要补装一份满足 TS 类型解析） |
 
 ---
 
@@ -51,168 +52,181 @@ curl http://localhost:8787/v1/health
 
 ### 2.1 装依赖
 
-LaunchAI 在 monorepo 之外（独立仓库），因此本地用 `npm link` 或 file-link 引用 Mosaiq workspace：
+LaunchAI 在 monorepo 之外（独立仓库），用 pnpm 的 dir-based link 直接指向 Mosaiq workspace 的源码目录（比 `--global` 稳，且不依赖 pnpm 全局 registry 状态）：
 
 ```bash
-cd D:/projects/Mosaiq/packages/cloud-sdk
-pnpm build
-pnpm link --global
+# 一次性：先在 Mosaiq 侧 build 出 cloud-sdk / persona-schema 的 dist
+cd D:/projects/Mosaiq
+pnpm --filter @mosaiq/persona-schema build
+pnpm --filter @mosaiq/cloud-sdk build
 
+# 装 link：在 LaunchAI 仓库内调用，路径指向 Mosaiq 源码目录
 cd D:/projects/LaunchAI
-pnpm link --global @mosaiq/cloud-sdk
-# 同时也得 link persona-schema 因为 cloud-sdk 类型 re-export
-cd D:/projects/Mosaiq/packages/persona-schema
-pnpm link --global
-cd D:/projects/LaunchAI
-pnpm link --global @mosaiq/persona-schema
+pnpm link D:/projects/Mosaiq/packages/cloud-sdk
+pnpm link D:/projects/Mosaiq/packages/persona-schema
 
-# playwright-core 是 cloud-sdk 的 peer dep，LaunchAI 已经装过
+# cloud-sdk 把 playwright-core 列为 peer dep（仅 type-only import，runtime 不 require）。
+# LaunchAI 主依赖是 `playwright`，但 pnpm isolated 模式不把 playwright 内嵌的
+# playwright-core 提到顶级 node_modules，TS 类型解析失败。补一份 devDep（不下载
+# 浏览器二进制）：
+pnpm add -D playwright-core@1.59.1
 ```
 
 > **prod 之后**：`@mosaiq/cloud-sdk` 上 npm，直接 `pnpm add @mosaiq/cloud-sdk @mosaiq/persona-schema` 即可。
 
 ### 2.2 写 runtime-mosaiq.ts
 
-新建 `src/lib/browser/runtime-mosaiq.ts`：
+LaunchAI 既有 BrowserRuntime 契约（见 `src/lib/browser/types.ts`）：
+
+- `BrowserRuntime.kind` 当前是 `'local' | 'browserbase'` — **本步要扩成 `... | 'mosaiq'`**
+- `BrowserRuntime.startSession(input: StartSessionInput): Promise<ManagedBrowser>`
+- `ManagedBrowser`：`{ id, runtime, page, saveStorageState(), close() }`
+
+先改 `src/lib/browser/types.ts`：
+
+```diff
+- export type BrowserRuntimeKind = 'local' | 'browserbase'
++ export type BrowserRuntimeKind = 'local' | 'browserbase' | 'mosaiq'
+```
+
+新建 `src/lib/browser/runtime-mosaiq.ts`。要点：
+
+- LaunchAI 主依赖是 `playwright`（不是 `playwright-core`），核心类型相通
+- cloud-sdk 的 `injectInto(ctx)` 参数类型来自 playwright-core，结构兼容，cast 一下即可
+- session 创建 → CDP 连接 → injectInto → goto，**顺序关键**
 
 ```typescript
-import { chromium, type BrowserContext, type Page } from 'playwright-core';
+import { chromium, type BrowserContext, type Page } from 'playwright'
+import { nanoid } from 'nanoid'
 
-import {
-  MosaiqCloudClient,
-  type ManagedCloudSession,
-  type Persona,
-} from '@mosaiq/cloud-sdk';
+import { MosaiqCloudClient, type ManagedCloudSession } from '@mosaiq/cloud-sdk'
 
-import type { BrowserRuntime, BrowserRuntimeStartInput, BrowserRuntimeSession } from './runtime';
+import type { BrowserRuntime, ManagedBrowser, StartSessionInput } from './types'
 
-/**
- * Mosaiq Cloud runtime — prod 路径。
- *
- * 与 LocalPlaywrightRuntime 的边界：
- *   - LocalPlaywright = dev only，调本机 chromium
- *   - MosaiqCloud     = prod，调远程 cloud-runtime + 远程 browser-pod
- *
- * BrowserRuntime 契约（LaunchAI/src/lib/browser/runtime.ts）：
- *   - startSession({ userId, platform, startUrl?, storageState? }) → BrowserRuntimeSession
- *   - session.page  : Playwright Page
- *   - session.saveStorageState() : 持久化 cookie
- *   - session.close()
- */
-
-const REQUIRED_ENV = ['MOSAIQ_API_URL', 'MOSAIQ_API_KEY', 'MOSAIQ_PROJECT_ID'] as const;
+const REQUIRED_ENV = ['MOSAIQ_API_URL', 'MOSAIQ_API_KEY', 'MOSAIQ_PROJECT_ID'] as const
 function readEnv() {
   for (const k of REQUIRED_ENV) {
-    if (!process.env[k]) throw new Error(`Mosaiq runtime: missing env ${k}`);
+    if (!process.env[k]) throw new Error(`Mosaiq runtime: missing env ${k}`)
   }
   return {
     apiUrl: process.env.MOSAIQ_API_URL!,
     apiKey: process.env.MOSAIQ_API_KEY!,
     projectId: process.env.MOSAIQ_PROJECT_ID!,
-  };
+  }
 }
 
-let cachedClient: MosaiqCloudClient | null = null;
+let cachedClient: MosaiqCloudClient | null = null
 function getClient(): MosaiqCloudClient {
-  if (cachedClient) return cachedClient;
-  cachedClient = new MosaiqCloudClient(readEnv());
-  return cachedClient;
+  if (cachedClient) return cachedClient
+  cachedClient = new MosaiqCloudClient(readEnv())
+  return cachedClient
 }
 
 /**
- * LaunchAI 给 mosaiq runtime 的 persona 来源：
- *   1) 从 LaunchAI 自己的 user profile DB 读 PersonaJSON（v0.11 由前端 onboarding 绑定）
- *   2) 没有 → 用环境变量 MOSAIQ_DEFAULT_PERSONA_ID 拿一个全局 seed persona
- *
- * 这一段属于 LaunchAI 业务逻辑，下面只给 stub 接口；填充策略让 LaunchAI 自己决定。
+ * v0.11 phase 11.1：LaunchAI 还没有 per-user persona DB，先用单一默认 persona id。
+ * LaunchAI 接好 user persona DB 后改这里（参考第 4 节 Persona 来源策略）。
  */
-async function resolvePersonaForUser(userId: string): Promise<{
-  persona?: Persona;
-  personaId?: string;
-}> {
-  // TODO: 接 LaunchAI BrowserStorageState DB 后改这里
-  // const stored = await db.userPersonas.findUnique({ where: { userId } });
-  // if (stored) return { persona: stored.persona };
-  if (process.env.MOSAIQ_DEFAULT_PERSONA_ID) {
-    return { personaId: process.env.MOSAIQ_DEFAULT_PERSONA_ID };
+async function resolvePersonaIdForUser(_userId: string): Promise<string> {
+  const id = process.env.MOSAIQ_DEFAULT_PERSONA_ID
+  if (!id) {
+    throw new Error(
+      'Mosaiq runtime: MOSAIQ_DEFAULT_PERSONA_ID is not set. Either set it to a ' +
+        'persona id you previously POSTed to /v1/personas, or extend ' +
+        'resolvePersonaIdForUser() to look up the user-specific persona.',
+    )
   }
-  throw new Error(
-    `Mosaiq runtime: no persona for userId=${userId}. ` +
-      'Set MOSAIQ_DEFAULT_PERSONA_ID or wire LaunchAI persona DB.',
-  );
+  return id
 }
 
 export const mosaiqCloudRuntime: BrowserRuntime = {
   kind: 'mosaiq',
-  async startSession(input: BrowserRuntimeStartInput): Promise<BrowserRuntimeSession> {
-    const client = getClient();
-    const { persona, personaId } = await resolvePersonaForUser(input.userId);
+  async startSession(input: StartSessionInput): Promise<ManagedBrowser> {
+    const client = getClient()
+    const personaId = await resolvePersonaIdForUser(input.userId)
 
     const sess: ManagedCloudSession = await client.createSession({
-      persona: persona ? { inline: persona } : { id: personaId! },
+      persona: { id: personaId },
       stealth: { inject: true, humanize: true, rebrowserPatches: true },
       ttlSeconds: 1800,
       clientLabel: `launchai:${input.userId}:${input.platform}`,
-    });
+    })
 
-    // playwright-core 的 connectOverCDP 支持 headers，控制平面用 Bearer 鉴权
-    const browser = await chromium.connectOverCDP(sess.cdpUrl, {
-      headers: { Authorization: `Bearer ${getClient().apiKey}` },
-    });
-    const ctx: BrowserContext = browser.contexts()[0] ?? (await browser.newContext());
-
-    // ⚠️ 关键：必须在任何 page.goto() 前调，否则首屏指纹是 raw chromium
-    await sess.injectInto(ctx);
-
-    // 还原 LaunchAI 之前保存的 BrowserStorageState（如果有）
-    if (input.storageState) {
-      await ctx.addCookies(input.storageState.cookies ?? []);
-      // localStorage / IndexedDB 由 browser-pod 的 user-data-dir 持久化，
-      // 这里只补 cookies。Phase 11.4 加上 sticky session 后可以彻底交给 pod。
+    let browser
+    try {
+      browser = await chromium.connectOverCDP(sess.cdpUrl, {
+        headers: { Authorization: `Bearer ${client.apiKey}` },
+        timeout: 30_000,
+      })
+    } catch (err) {
+      // CDP 握手失败 → pod 这边也 wedge，先释放再 throw
+      await sess.close().catch(() => undefined)
+      throw err
     }
 
-    const page: Page = ctx.pages()[0] ?? (await ctx.newPage());
-    if (input.startUrl) await page.goto(input.startUrl, { waitUntil: 'domcontentloaded' });
+    const ctx: BrowserContext = browser.contexts()[0] ?? (await browser.newContext())
+
+    // ⚠️ 关键：必须在任何 page.goto() 前调，否则首屏指纹是 raw chromium
+    // cloud-sdk 的 BrowserContext 来自 playwright-core，与 playwright 的结构兼容
+    await sess.injectInto(ctx as unknown as Parameters<typeof sess.injectInto>[0])
+
+    if (input.storageState) {
+      await ctx.addCookies(input.storageState.cookies ?? [])
+      // localStorage / IndexedDB 由 browser-pod 的 user-data-dir 持久化
+      // Phase 11.4 加上 sticky session 后可以彻底交给 pod
+    }
+
+    const page: Page = ctx.pages()[0] ?? (await ctx.newPage())
+    if (input.startUrl) {
+      await page.goto(input.startUrl, { waitUntil: 'domcontentloaded' })
+    }
+
+    const id = `mosaiq_${nanoid(10)}`
 
     return {
-      id: sess.id,
+      id,
       runtime: 'mosaiq',
       page,
       async saveStorageState() {
-        return ctx.storageState();
+        const state = await ctx.storageState()
+        return state as Awaited<ReturnType<ManagedBrowser['saveStorageState']>>
       },
       async close() {
         try {
-          await browser.close();
+          await browser.close()
         } catch {
-          /* browser 已断 */
+          /* browser already disconnected; pod side cleaned up by sess.close */
         }
-        await sess.close();
+        await sess.close().catch(() => undefined)
       },
-    };
+    }
   },
-};
+}
 ```
 
 ### 2.3 wire 到 BrowserRuntime 工厂
 
-LaunchAI 通常有个 `getBrowserRuntime()` 函数按 `BROWSER_RUNTIME` env 选实现：
+LaunchAI 现有工厂在 `src/lib/browser/runtime.ts`（已有 `'local'` / `'browserbase'` 分支），patch 加 `'mosaiq'` 分支：
 
-```typescript
-// src/lib/browser/index.ts
-import { localPlaywrightRuntime } from './runtime-local';
-import { mosaiqCloudRuntime } from './runtime-mosaiq';
+```diff
+  // src/lib/browser/runtime.ts
+  import type { BrowserRuntime, BrowserRuntimeKind } from './types'
+  import { localPlaywrightRuntime } from './runtime-local'
+  import { browserbaseRuntime } from './runtime-browserbase'
++ import { mosaiqCloudRuntime } from './runtime-mosaiq'
 
-export function getBrowserRuntime(): BrowserRuntime {
-  const kind = process.env.BROWSER_RUNTIME ?? 'local';
-  switch (kind) {
-    case 'mosaiq':
-      return mosaiqCloudRuntime;
-    case 'local':
-    default:
-      return localPlaywrightRuntime;
+  function resolveKind(): BrowserRuntimeKind {
+    const raw = (process.env.BROWSER_RUNTIME ?? 'local').toLowerCase()
+    if (raw === 'browserbase') return 'browserbase'
++   if (raw === 'mosaiq') return 'mosaiq'
+    return 'local'
   }
-}
+
+  export function getBrowserRuntime(): BrowserRuntime {
+    const kind = resolveKind()
+    if (kind === 'browserbase') return browserbaseRuntime
++   if (kind === 'mosaiq') return mosaiqCloudRuntime
+    return localPlaywrightRuntime
+  }
 ```
 
 ### 2.4 .env.local
@@ -227,50 +241,68 @@ MOSAIQ_DEFAULT_PERSONA_ID=                                   # 见 §2.5
 
 ### 2.5 上一个 persona 进 cloud-runtime
 
-第一次跑前需要在控制平面注册一个 persona（v0.11 没有 seed pool，必须手工上）：
+第一次跑前需要在控制平面注册一个 persona（v0.11 没有 seed pool，必须手工上）。Mosaiq 仓库带了一个幂等的注册脚本（重跑 → 409 duplicate 视作成功），它从 `@mosaiq/persona-schema` 的内置模板生成 PersonaJSON 并 POST 上去：
 
-```bash
-# 用任意一个 desktop 或 fixture persona JSON
-PERSONA_JSON=$(cat tests/fixtures/personas/win11-chrome-us.json)
+```powershell
+cd D:/projects/Mosaiq
+$env:MOSAIQ_API_URL    = "http://127.0.0.1:8787"
+$env:MOSAIQ_API_KEY    = "<你的 SEED_API_KEY，与 .env.cloud 一致>"
+$env:MOSAIQ_PROJECT_ID = "proj_launchai"
 
-curl -X POST http://localhost:8787/v1/personas \
-  -H "Authorization: Bearer $MOSAIQ_API_KEY" \
-  -H "content-type: application/json" \
-  -d "$PERSONA_JSON"
-
-# → 201 { "id": "win11-chrome-us", "source": "user", "project_id": "proj_launchai" }
+node packages/cloud-sdk/scripts/register-persona.mjs
+# → ✅ registered: id=win11-chrome-us-default source=user project_id=proj_launchai
 ```
 
-把 `MOSAIQ_DEFAULT_PERSONA_ID=win11-chrome-us` 写进 LaunchAI `.env.local`。
+把 `MOSAIQ_DEFAULT_PERSONA_ID=win11-chrome-us-default` 写进 LaunchAI `.env.local`。
+
+> 想换其他 persona id / 模板：传 `MOSAIQ_PERSONA_ID` / `MOSAIQ_PERSONA_TEMPLATE` /
+> `MOSAIQ_PERSONA_DISPLAY_NAME` / `MOSAIQ_PERSONA_SEED` 给脚本即可。详见
+> `packages/cloud-sdk/scripts/register-persona.mjs` 头注释。
 
 ---
 
 ## 3. 端到端 smoke
 
+LaunchAI 仓库提供了独立 smoke 脚本 `scripts/dev-mosaiq-smoke.ts`，不需要启 Next.js / Clerk / queue —— 直接调 `getBrowserRuntime().startSession()` 验完整链路（runtime 选择 → REST → CDP proxy → pod chromium → persona injection → navigator/screen 观察 → close）：
+
 ```bash
-# 三个终端：
-#   T1：cd D:/projects/Mosaiq && docker compose -f docker-compose.cloud.yml up
-#   T2：cd D:/projects/LaunchAI && pnpm dev
-#   T3：手工触发 launch（按 LaunchAI 自己的 happy-path，例如 reddit launch）
+# T1：Mosaiq 控制平面（pod + cloud-runtime）已起，§1 那一节
+# T2：persona 已注册，§2.5 那一节
+# 然后：
+cd D:/projects/LaunchAI
+pnpm dev:mosaiq-smoke
 ```
 
-观察：
+期望输出（首次 chromium spawn 约 9–11s，整体 10–15s）：
 
-1. **T1（cloud-runtime log）** —— 出现：
-   ```
-   [info] session created  sessionId=ses_xxx machineId=mch_xxx ttl=1800
-   [info] cdp proxy: client upgraded, dialing pod
-   ```
-2. **T2（LaunchAI log）** —— `BrowserRuntime` 选 mosaiq + page.goto 成功
-3. **手工**：在 LaunchAI 的目标网站观察 navigator.userAgent / screen 等指标，应该
-   与 `MOSAIQ_DEFAULT_PERSONA_ID` 对应的 persona 一致
+```
+[+    3ms] BROWSER_RUNTIME=mosaiq
+[+   79ms] runtime.kind = mosaiq
+[+   79ms] startSession({ userId: mosaiq-smoke-user, platform: reddit, startUrl: about:blank })
+[+ 9252ms] session.id = mosaiq_xxxxxxxxxx  runtime = mosaiq
+  ✅ session.runtime === 'mosaiq'
+  ✅ navigator.platform == "Win32"
+  ✅ navigator.languages == ["en-US","en"]
+  ✅ navigator.hardwareConcurrency == 8
+  ✅ navigator.deviceMemory == 8
+  ✅ screen.width == 1920
+  ✅ Intl.timezone == America/New_York
+  ✅ userAgent contains Windows NT 10.0
+  ✅ userAgent contains Chrome/130.
+  ... (14 checks total)
+[+10445ms] state.cookies is array
+[+12097ms] done
+🎉 LaunchAI ↔ Mosaiq Cloud smoke PASSED in 12.1s
+```
 
-如果挂在 chromium connect 那一步：
+跑通后，把 `BROWSER_RUNTIME=mosaiq` 留在 `.env.local` 里，LaunchAI 现有所有 `getBrowserRuntime()` 调用点（agent / connect:account / browser:check 等）都会自动走 mosaiq 路径，业务代码无需改。
+
+如果挂在 `chromium.connectOverCDP` 那一步：
 
 - 99% 是 cdp_url host 不通。控制平面在 docker 内部网络，但
   `chromium.connectOverCDP` 在 LaunchAI 进程里跑（不在 docker 里），需要走
   host 暴露的 `127.0.0.1:8787`。检查 `PUBLIC_BASE_URL` env 是否是
-  `http://localhost:8787`（不是 `http://cloud-runtime:8787`）
+  `http://localhost:8787` / `http://127.0.0.1:8787`（不是 `http://cloud-runtime:8787`）
 
 ---
 
@@ -338,4 +370,4 @@ interface BrowserStorageState {
 
 **owner（Mosaiq 侧）**：cloud infra
 **owner（LaunchAI 侧）**：browser runtime maintainer
-**最后更新**：2026-05-22（v0.11 phase 11.1 落地）
+**最后更新**：2026-05-23（v0.11 phase 11.1 落地 + LaunchAI 端集成验收 14/14）
