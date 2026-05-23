@@ -19,6 +19,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && rm -rf /var/lib/apt/lists/*
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc tsconfig.base.json ./
+# 同 apps/browser-pod/Dockerfile：root pnpm.patchedDependencies 引用 patches/playwright-core@1.59.1.patch
+# 必须在 pnpm install --frozen-lockfile 前 COPY 进来，否则 exit 254 (ENOENT during patch verify)。
+# cloud-runtime 不直接依赖 playwright-core，但 workspace 级 patch 校验依然会触发。
+COPY patches patches/
 COPY packages/persona-schema/package.json packages/persona-schema/
 COPY apps/cloud-runtime/package.json apps/cloud-runtime/
 

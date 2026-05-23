@@ -9,6 +9,11 @@ WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc tsconfig.base.json ./
+# root package.json 声明了 pnpm.patchedDependencies → patches/playwright-core@1.59.1.patch
+# pnpm install --frozen-lockfile 会在解析 lockfile 时校验 patch 文件存在，缺了就 exit 254
+# (ENOENT during patch hash verify)。即使 browser-pod 不直接依赖 playwright-core，workspace
+# 级的 patch 配置依然要 satisfied。13 KB，几乎免费。
+COPY patches patches/
 COPY packages/persona-schema/package.json packages/persona-schema/
 COPY apps/browser-pod/package.json apps/browser-pod/
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
