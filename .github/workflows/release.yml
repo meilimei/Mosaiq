@@ -1,32 +1,39 @@
 # Release — auto-version + publish via changesets
 #
-# Trigger: every push to main.
+# CURRENTLY MANUAL-ONLY (workflow_dispatch). Re-enable push:main trigger
+# when ALL of the following are true:
+#   1. The `@mosaiq` npm org exists and the actor running this workflow has
+#      publish rights to every package below.
+#   2. EITHER `NPM_TOKEN` secret is set in repo settings (`automation`
+#      granular token, scoped to @mosaiq) OR each package has trusted
+#      publishing configured on npmjs.com pointing at this exact workflow.
+#   3. The first publish (0.10.0 / 0.11.0) has been done from a maintainer's
+#      shell with NPM_TOKEN — see docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md §8.
+#      Trusted publishing requires the package to already exist; it cannot
+#      bootstrap the very first version.
 #
-# Behavior:
+# Why this is locked down right now (phase 11.x):
+#   - npm scope `@mosaiq` is unregistered → every PUT returns E404.
+#   - phase 11.x is internal dev iteration, not a release cadence; we don't
+#     want every push to main to attempt a publish.
+#   - Re-enable by uncommenting the `push:` block below.
+#
+# Behavior (when active):
 #   - If `.changeset/*.md` files are present on main, opens a
 #     `chore(release): version packages` PR that bumps versions in the
-#     lock-step `fixed` group (@mosaiq/persona-schema + @mosaiq/sdk +
-#     @mosaiq/cli) and removes the consumed changeset files.
-#   - When the release PR merges (and there are no more pending changesets),
-#     runs `pnpm changeset publish` — publishes the three packages to npm
-#     with provenance attestation.
-#
-# Prerequisites:
-#   - `NPM_TOKEN` secret in the repo settings (`automation` granular token
-#     scoped to the @mosaiq org)
-#   - `id-token: write` permission for npm OIDC provenance
-#
-# v0.10.0 first publish:
-#   This workflow is wired up but DOES NOT run for the very first 0.10.0
-#   publish. That's done manually from a maintainer's shell with NPM_TOKEN
-#   set (see docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md §8). After 0.10.0
-#   is live on npm, all subsequent publishes go through this workflow.
+#     lock-step `fixed` group and removes the consumed changeset files.
+#   - When the release PR merges (and no pending changesets remain), runs
+#     `pnpm changeset publish` — publishes the four publishable packages
+#     (@mosaiq/persona-schema + @mosaiq/sdk + @mosaiq/cli + @mosaiq/cloud-sdk)
+#     to npm with provenance attestation.
 
 name: Release
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+  # Locked: re-enable after first manual 0.10.0/0.11.0 publish + NPM_TOKEN.
+  # push:
+  #   branches: [main]
 
 # Don't run two release jobs in parallel — npm publish ordering must be
 # sequential to avoid version conflicts.
@@ -67,12 +74,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Build the three publishable packages BEFORE running changesets publish.
-      # prepublishOnly in each package will also clean+build+typecheck, but
-      # building up-front gives us a faster feedback loop and lets the
-      # tarball-audit step below see consistent dist/.
+      # Build all four publishable packages BEFORE running changesets publish.
+      #
+      # We do NOT rely on prepublishOnly inside each package anymore — that
+      # hook used to `clean && build && typecheck`, which created a race in
+      # changesets's parallel `npm publish`: persona-schema's `clean` would
+      # delete its dist while sdk's tsc was concurrently reading
+      # @mosaiq/persona-schema/dist/*.d.ts, producing TS2307 storms. CI
+      # already enforces typecheck+test+build on every PR, so this single
+      # up-front build is sufficient gate.
+      #
+      # Order matters: persona-schema is a dep of sdk + cloud-sdk + cli;
+      # pnpm respects topological order within --filter, so this single
+      # invocation builds them in the right sequence.
       - name: Build publishable packages
-        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" --filter "@mosaiq/cli" build
+        run: |
+          pnpm --filter "@mosaiq/persona-schema" \
+               --filter "@mosaiq/sdk" \
+               --filter "@mosaiq/cloud-sdk" \
+               --filter "@mosaiq/cli" \
+               build
 
       # Defense-in-depth: even the release path must pass the same audit
       # gates as CI. This catches "version PR somehow shipped a broken

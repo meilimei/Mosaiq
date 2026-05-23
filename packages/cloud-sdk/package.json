@@ -47,7 +47,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "prepublishOnly": "pnpm run clean && pnpm run build && pnpm run typecheck",
     "clean": "rimraf dist"
   },
   "dependencies": {
