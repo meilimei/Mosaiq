@@ -112,7 +112,13 @@ export function createCdpProxy() {
     wss.handleUpgrade(req, socket, head, (clientWs) => {
       const podUrl = row.cdpInternalUrl;
       log.info({ sessionId, podUrl }, 'cdp proxy: client upgraded, dialing pod');
-      const podWs = new WebSocket(podUrl);
+      // ws 客户端默认不发 Origin。chromium 111+ 在 --remote-allow-origins 没匹配时
+      // 会拒 upgrade，缺 Origin 又不在允许列表里也会被拒。即使 pod 端我们已经传了
+      // --remote-allow-origins=*，这里依然显式打一个安全的 origin 兜底（chromium
+      // 接 '*' 时也接非 null Origin）。
+      const podWs = new WebSocket(podUrl, {
+        headers: { Origin: 'http://localhost' },
+      });
 
       // 缓冲：在 podWs OPEN 前 client 发的帧先 buffer 不丢
       const pendingFromClient: Array<Buffer | string> = [];
@@ -173,7 +179,28 @@ export function createCdpProxy() {
         log.warn({ sessionId, err: err.message }, 'cdp proxy: client error');
       });
       podWs.on('error', (err) => {
-        log.warn({ sessionId, err: err.message }, 'cdp proxy: pod error');
+        // err 可能携带的关键诊断字段（按 Node ws 的实际形状）：
+        //   - message    'connect ECONNREFUSED 1.2.3.4:9223' / 'Unexpected server response: 403'
+        //   - code       errno 'ECONNREFUSED' 'ECONNRESET' 'ETIMEDOUT'
+        //   - statusCode HTTP 状态码（仅 ws upgrade 被拒时）
+        // 三者一起 dump 才能区分「拨号失败」vs「chromium 拒了 upgrade」vs「连接被中断」。
+        const e = err as Error & {
+          code?: string;
+          statusCode?: number;
+          headers?: Record<string, string | string[]>;
+        };
+        log.warn(
+          {
+            sessionId,
+            podUrl,
+            err: e.message,
+            errCode: e.code,
+            statusCode: e.statusCode,
+            podWsReadyState: podWs.readyState,
+            podOpen,
+          },
+          'cdp proxy: pod error',
+        );
         closeBoth(1011, 'pod error');
       });
 
