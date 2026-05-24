@@ -10,7 +10,8 @@
  *   2) ensureSchema() — 建表
  *   3) seedDevAuth() — dev 种子 key（prod env 自动 skip）
  *   4) listen
- *   5) graceful shutdown 接 SIGTERM
+ *   5) startSessionExpiryJob() — 周期 reap 过期 session（防止 client crash 后泄漏）
+ *   6) graceful shutdown 接 SIGTERM（先停 expiry job，再 close http，再放 mm + db）
  */
 
 import { createServer, type RequestListener } from 'node:http';
@@ -20,10 +21,11 @@ import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
 import { ensureSchema } from './db/bootstrap.js';
 import { seedDevAuth } from './db/seed.js';
-import { disposeDb } from './db/client.js';
+import { disposeDb, getDb } from './db/client.js';
 import { loadEnv } from './env.js';
-import { shutdownMachineManager } from './machine/factory.js';
+import { getMachineManager, shutdownMachineManager } from './machine/factory.js';
 import { createCdpProxy } from './cdp/proxy.js';
+import { startSessionExpiryJob } from './jobs/session-expiry.js';
 import { getLogger } from './utils/logger.js';
 
 async function bootstrap() {
@@ -95,8 +97,21 @@ async function bootstrap() {
     },
   );
 
+  // 启动 session expiry reaper —— 周期扫表把 status='live' 但 expires_at 过的
+  // session 强制 release。防 client crash / 忘 close 导致 pool 永久泄漏。
+  // 在 listen 之后启动，确保 reaper 第一次 tick 时 server 已经 ready。
+  const expiryJob = startSessionExpiryJob({
+    intervalMs: env.SESSION_EXPIRY_INTERVAL_MS,
+    getDb,
+    getMachineManager,
+    logger: log,
+  });
+
   const shutdown = async (sig: string) => {
     log.info({ sig }, 'shutdown initiated');
+    // 先停 reaper，避免 shutdown 中途 reap tick 调已 dispose 的 mm/db。
+    // expiryJob.stop() 会 await 当前 in-flight tick 完成。
+    await expiryJob.stop();
     server.close(() => log.info('http server closed'));
     await Promise.allSettled([shutdownMachineManager(), disposeDb()]);
     process.exit(0);

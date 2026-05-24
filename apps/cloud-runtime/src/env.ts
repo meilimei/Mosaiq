@@ -52,6 +52,17 @@ const EnvSchema = z
 
     SESSION_TTL_DEFAULT_SECONDS: z.coerce.number().int().min(60).max(86400).default(1800),
     SESSION_TTL_MAX_SECONDS: z.coerce.number().int().min(60).max(86400).default(7200),
+    /**
+     * session expiry reaper 的轮询间隔 ms。每个 tick 扫一次 sessions 表把
+     * status='live' 但 expires_at 已过的强制 release + 标 closed。
+     *
+     * 默认 30s 是个保守值：跟 SESSION_TTL_DEFAULT_SECONDS=1800 比是 1/60，
+     * 过期后最多多占 30s 资源。prod 真实场景 client crash 后泄漏一个 session
+     * 30s 是可接受的；调小到 5s 在 cap=1000 时会让扫表噪音变大但收益有限。
+     *
+     * 测试可调到 1000（最小值）加速；< 1000 startSessionExpiryJob 会抛错。
+     */
+    SESSION_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(30_000),
 
     PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
   })
