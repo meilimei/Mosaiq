@@ -29,6 +29,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 
 import { getDb } from '../db/client.js';
 import { sessions as sessionsTable } from '../db/schema.js';
+import { bumpLastSeenAt } from '../db/session-activity.js';
 import { sha256Hex } from '../utils/hash.js';
 import { apiKeys } from '../db/schema.js';
 import { getLogger } from '../utils/logger.js';
@@ -39,6 +40,15 @@ interface ProxyAuth {
 }
 
 const SESSION_RE = /^\/v1\/sessions\/([A-Za-z0-9_-]+)\/cdp\/?$/;
+
+/**
+ * last_seen_at 周期 bump 间隔。60s 是写入率（sqlite WAL）和 ops 信号粒度
+ * 之间的折中：每分钟一次写入对 prod 几千个 alive session 也只是 ~17 写/s，
+ * 完全在 sqlite WAL 容量内；ops 想看"过去 5 分钟有没有动过"完全 OK。
+ *
+ * 测试可通过模块边界注入，不暴露 env 因为这是稳定常量（业务上不需要调）。
+ */
+const LAST_SEEN_BUMP_INTERVAL_MS = 60_000;
 
 export function createCdpProxy() {
   const wss = new WebSocketServer({ noServer: true });
@@ -213,12 +223,32 @@ export function createCdpProxy() {
       clientWs.on('close', stopHeartbeat);
       podWs.on('close', stopHeartbeat);
 
-      // 更新 last_seen_at
-      handle.drizzle
-        .update(sessionsTable)
-        .set({ lastSeenAt: new Date().toISOString() })
-        .where(eq(sessionsTable.id, sessionId))
-        .catch(() => undefined);
+      // last_seen_at 维护：
+      //
+      //   - 立即 bump 一次（client 刚 upgrade 上来）
+      //   - 后续每 LAST_SEEN_BUMP_INTERVAL_MS 周期 bump 一次（活跃信号）
+      //   - close 时再 bump 一次（关闭时刻精确记录）
+      //
+      // 用周期 bump 而不是 "每帧 bump"：
+      //   - 单 session CDP 一秒可能上百帧（mouse move、网络事件），每帧打
+      //     一次 sqlite UPDATE 会让 sqlite WAL 飙升
+      //   - 周期 bump（默认 60s）只产生 ~每分钟一次写入，prod 可接受
+      //   - 容忍 last_seen_at 至多滞后 60s，比 reaper 周期（30s）粗，但
+      //     last_seen_at 的语义是"是否还活着"而非"精确到秒的活动时间"，60s
+      //     粒度对 ops 排查"僵尸 session"足够
+      const bumpLastSeen = (): void => {
+        // 不 await：CDP 转发是热路径，DB 写要走完异步链。bumpLastSeenAt
+        // 自身吞所有错误，不需要这里再 catch。
+        void bumpLastSeenAt(handle, sessionId);
+      };
+      bumpLastSeen();
+      const lastSeenTicker = setInterval(bumpLastSeen, LAST_SEEN_BUMP_INTERVAL_MS);
+      const stopLastSeenTicker = (): void => {
+        clearInterval(lastSeenTicker);
+        bumpLastSeen(); // close 时刻再 bump 一次
+      };
+      clientWs.on('close', stopLastSeenTicker);
+      podWs.on('close', stopLastSeenTicker);
     });
   }
 
