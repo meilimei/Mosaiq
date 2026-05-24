@@ -2,7 +2,7 @@
  * FlyMachineManager —— v0.12 phase 11.2 prod 路径。
  *
  * 一次 acquire 的全流程：
- *   1) POST {FLY_API_BASE_URL}/apps/{FLY_APP_NAME}/machines
+ *   1) POST {FLY_API_BASE_URL}/apps/{FLY_POD_APP_NAME}/machines
  *      body: { region, config: { image, env, services: [], guest: {cpus,mem} } }
  *      → response: { id, private_ip ('fdaa:0:...:5'), state: 'created' | 'starting' }
  *   2) 轮询 GET .../machines/{id} 直到 state === 'started'（max 30s）
@@ -131,10 +131,19 @@ export class FlyMachineManager implements MachineManager {
       machineMemoryMb: opts.machineMemoryMb,
       podEnv: opts.podEnv ?? {},
       fetchImpl: opts.fetchImpl ?? fetch,
-      waitForStartedTimeoutMs: opts.waitForStartedTimeoutMs ?? 30_000,
+      // Fly machine 从 POST /machines （state: created） 到 state: started 的时间。
+      // 含镜像 pull + firecracker boot + init exec。browser-pod 镜像 ~918MB，冷拉
+      // 实测可达 30-60s（取决于 Fly registry CDN 命中和 region 同 host）。给 90s。
+      waitForStartedTimeoutMs: opts.waitForStartedTimeoutMs ?? 90_000,
       waitForStartedIntervalMs: opts.waitForStartedIntervalMs ?? 500,
-      waitForPodReadyTimeoutMs: opts.waitForPodReadyTimeoutMs ?? 15_000,
-      podStartTimeoutMs: opts.podStartTimeoutMs ?? 35_000,
+      // Fly firecracker microVM 上 pod 启动到 hono /healthz 就绪需要 ~5s（vsLocalDocker
+      // 的 ~1s）—— 内核启动 + node 启动 + pnpm imports + hono 起来。30s 给够余量。
+      waitForPodReadyTimeoutMs: opts.waitForPodReadyTimeoutMs ?? 30_000,
+      // Fly chromium 自身启动 ~18s（NetworkService init + 字体扫描 + dbus 探测累积），
+      // pod 内部 POD_CHROMIUM_BOOT_TIMEOUT_MS 默认 60s。这边给 75s = 60s + 15s
+      // HTTP roundtrip 余量，让 pod 内的 timeout 先 fire（拿到 chromium stderr）
+      // 而不是 cloud-runtime 这边的 fetch 超时（只能拿到 abort 错误，没有诊断信息）。
+      podStartTimeoutMs: opts.podStartTimeoutMs ?? 75_000,
     };
   }
 

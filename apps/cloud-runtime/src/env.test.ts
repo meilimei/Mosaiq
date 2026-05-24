@@ -1,0 +1,152 @@
+/**
+ * env.test.ts — schema 校验回归测试
+ *
+ * 主要 pin 住：
+ *   - prod 模式下 SEED_API_KEY 必须为空
+ *   - MACHINE_MANAGER=fly 时 FLY_API_TOKEN + FLY_POD_APP_NAME 必填
+ *   - FLY_APP_NAME / FLY_REGION 这两个名是 Fly machine runtime 保留名（会被
+ *     自动注入覆盖 secrets），所以必须用 FLY_POD_APP_NAME / FLY_POD_REGION。
+ *     这条 invariant 通过：
+ *       a) FLY_APP_NAME 不在 parsed env 里
+ *       b) 同时设置 FLY_APP_NAME 和 FLY_POD_APP_NAME 时只有后者生效
+ *     来保证，回归 2026-05-24 prod 部署踩坑（详见 PHASE-11.2-FLY-DEPLOY.md §10）。
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { loadEnv, resetEnvCache, type Env } from './env.js';
+
+function loadWith(overrides: NodeJS.ProcessEnv): Env {
+  resetEnvCache();
+  // base: empty env so defaults kick in; loadEnv reads from the passed source.
+  return loadEnv(overrides);
+}
+
+describe('env schema — base defaults', () => {
+  beforeEach(() => {
+    resetEnvCache();
+  });
+
+  it('parses an empty env with sensible defaults', () => {
+    const env = loadWith({});
+    expect(env.NODE_ENV).toBe('development');
+    expect(env.PORT).toBe(8787);
+    expect(env.MACHINE_MANAGER).toBe('static');
+    expect(env.FLY_POD_REGION).toBe('iad');
+    expect(env.FLY_BROWSER_POD_IMAGE).toBe('registry.fly.io/mosaiq-browser-pod:latest');
+  });
+});
+
+describe('env schema — production guardrails', () => {
+  beforeEach(() => {
+    resetEnvCache();
+  });
+
+  it('rejects SEED_API_KEY when NODE_ENV=production (test exit via spy)', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() =>
+        loadWith({
+          NODE_ENV: 'production',
+          SEED_API_KEY: 'msq_sk_live_should_not_be_set_in_prod_xx',
+        }),
+      ).toThrow(/exit:1/);
+      expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('SEED_API_KEY'));
+    } finally {
+      exitSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+});
+
+describe('env schema — fly machine manager required vars', () => {
+  beforeEach(() => {
+    resetEnvCache();
+  });
+
+  it('rejects MACHINE_MANAGER=fly when FLY_API_TOKEN missing', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() =>
+        loadWith({
+          MACHINE_MANAGER: 'fly',
+          FLY_POD_APP_NAME: 'mosaiq-browser-pod',
+        }),
+      ).toThrow(/exit:1/);
+      expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('FLY_API_TOKEN'));
+    } finally {
+      exitSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it('rejects MACHINE_MANAGER=fly when FLY_POD_APP_NAME missing', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() =>
+        loadWith({
+          MACHINE_MANAGER: 'fly',
+          FLY_API_TOKEN: 'fo1_test_token',
+        }),
+      ).toThrow(/exit:1/);
+      expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('FLY_POD_APP_NAME'));
+    } finally {
+      exitSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it('accepts valid fly config', () => {
+    const env = loadWith({
+      MACHINE_MANAGER: 'fly',
+      FLY_API_TOKEN: 'fo1_test_token',
+      FLY_POD_APP_NAME: 'mosaiq-browser-pod',
+      FLY_POD_REGION: 'lax',
+    });
+    expect(env.MACHINE_MANAGER).toBe('fly');
+    expect(env.FLY_POD_APP_NAME).toBe('mosaiq-browser-pod');
+    expect(env.FLY_POD_REGION).toBe('lax');
+  });
+});
+
+describe('env schema — FLY_APP_NAME / FLY_REGION are Fly-reserved (regression)', () => {
+  beforeEach(() => {
+    resetEnvCache();
+  });
+
+  it('does NOT read FLY_APP_NAME — Fly auto-injects it and would override secrets', () => {
+    // 模拟 Fly machine runtime: FLY_APP_NAME 被注入为控制平面 app 名，
+    // 但 secrets / .env 里写了 FLY_POD_APP_NAME 指向 pod app。
+    const env = loadWith({
+      MACHINE_MANAGER: 'fly',
+      FLY_API_TOKEN: 'fo1_test_token',
+      FLY_APP_NAME: 'mosaiq-cloud-runtime', // Fly 注入的，不该被读
+      FLY_POD_APP_NAME: 'mosaiq-browser-pod', // 真正的 pod app
+    });
+    // parsed env 不应有 FLY_APP_NAME 字段
+    expect((env as unknown as Record<string, unknown>).FLY_APP_NAME).toBeUndefined();
+    // FLY_POD_APP_NAME 才是 FlyMachineManager 用的
+    expect(env.FLY_POD_APP_NAME).toBe('mosaiq-browser-pod');
+  });
+
+  it('does NOT read FLY_REGION — Fly auto-injects it as current machine region', () => {
+    const env = loadWith({
+      MACHINE_MANAGER: 'fly',
+      FLY_API_TOKEN: 'fo1_test_token',
+      FLY_POD_APP_NAME: 'mosaiq-browser-pod',
+      FLY_REGION: 'sjc', // Fly 注入的当前 machine region
+      FLY_POD_REGION: 'iad', // 我们要 spawn pod 的目标 region
+    });
+    expect((env as unknown as Record<string, unknown>).FLY_REGION).toBeUndefined();
+    expect(env.FLY_POD_REGION).toBe('iad');
+  });
+});

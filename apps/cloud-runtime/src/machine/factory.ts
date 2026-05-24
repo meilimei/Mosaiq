@@ -40,10 +40,10 @@ export function getMachineManager(): MachineManager {
       // env.ts superRefine 已经保证 fly 模式下 token + appName 必填，这里 ! 是安全的。
       cached = new FlyMachineManager({
         apiToken: env.FLY_API_TOKEN!,
-        appName: env.FLY_APP_NAME!,
+        appName: env.FLY_POD_APP_NAME!,
         apiBaseUrl: env.FLY_API_BASE_URL,
         podImage: env.FLY_BROWSER_POD_IMAGE,
-        region: env.FLY_REGION,
+        region: env.FLY_POD_REGION,
         podControlPort: env.FLY_POD_CONTROL_PORT,
         maxMachines: env.FLY_MAX_MACHINES,
         machineCpus: env.FLY_MACHINE_CPUS,

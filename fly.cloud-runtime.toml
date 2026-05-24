@@ -25,9 +25,16 @@
 #   #     -C 'node dist/admin/create-api-key.js proj_launchai'
 #   flyctl secrets set \
 #     FLY_API_TOKEN=$(cat ~/.fly-machines-token) \
-#     FLY_APP_NAME=mosaiq-browser-pod \
+#     FLY_POD_APP_NAME=mosaiq-browser-pod \
 #     METRICS_TOKEN=$(openssl rand -hex 32) \
 #     --app mosaiq-cloud-runtime
+#
+#   # ⚠️  WHY FLY_POD_APP_NAME (not FLY_APP_NAME): Fly 的 machine runtime 会自动
+#   # 注入 FLY_APP_NAME=<当前-app-name> 到每个 machine，覆盖 secrets 里同名
+#   # 的值。史话里踩过坑：如果这边叫FLY_APP_NAME=mosaiq-browser-pod，运行
+#   # 时 FlyMachineManager 看到的是 mosaiq-cloud-runtime，POST /apps/...走错 app
+#   # → Fly Machines API 返 403 unauthorized。同理 FLY_REGION 也 reserved，下面
+#   # [env] 里叫 FLY_POD_REGION。
 #
 #   # Deploy.
 #   flyctl deploy --config fly.cloud-runtime.toml \
@@ -55,12 +62,14 @@ primary_region = "iad"
   # ─── DB: sqlite on the mounted volume ────────────────────────────────────
   DATABASE_URL = "sqlite:/data/cloud-runtime.db"
 
-  # ─── machine manager: fly per-session microVMs ───────────────────────────
+  # ─── machine manager: fly per-session microVMs ───────────────────────
   MACHINE_MANAGER = "fly"
   # Points at the OTHER app — the browser-pod template. FlyMachineManager calls
-  # POST /v1/apps/$FLY_APP_NAME/machines against this.
-  # (FLY_APP_NAME comes from `flyctl secrets set` — see header.)
-  FLY_REGION = "iad"
+  # POST /v1/apps/$FLY_POD_APP_NAME/machines against this.
+  # (FLY_POD_APP_NAME comes from `flyctl secrets set` — see header. We CAN'T use
+  # the obvious name FLY_APP_NAME because Fly auto-injects that with the
+  # current app's name and shadows our secret — manager would 403.)
+  FLY_POD_REGION = "iad"
   # registry.fly.io is automatically resolvable from Fly Machines without auth
   # so long as FLY_API_TOKEN has access to the source app.
   FLY_BROWSER_POD_IMAGE = "registry.fly.io/mosaiq-browser-pod:latest"

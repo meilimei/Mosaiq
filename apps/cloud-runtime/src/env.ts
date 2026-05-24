@@ -34,10 +34,18 @@ const EnvSchema = z
      * Fly app name housing the browser-pod Machines. 控制平面通过 Fly Machines API
      * 在这个 app 下 create/destroy machines。与控制平面自身的 app（一般叫
      * 'mosaiq-cloud-runtime'）不同。
+     *
+     * ⚠️  NAMING: this MUST NOT be called `FLY_APP_NAME` —— Fly 的 machine runtime
+     * 会自动注入 `FLY_APP_NAME=<当前-app-name>` 到每个 machine 的 env，覆盖我们
+     * `flyctl secrets set` 的值（无声覆盖、无错误日志），结果 manager 把 control
+     * plane 自己当成 pod app，所有 POST /apps/{app}/machines 走到错的 app → 403
+     * unauthorized。同理 `FLY_REGION` 也是 reserved，所以这边叫 FLY_POD_REGION。
+     * 完整 reserved 列表见 https://fly.io/docs/machines/runtime-environment。
      */
-    FLY_APP_NAME: z.string().optional(),
+    FLY_POD_APP_NAME: z.string().optional(),
     FLY_BROWSER_POD_IMAGE: z.string().default('registry.fly.io/mosaiq-browser-pod:latest'),
-    FLY_REGION: z.string().default('iad'),
+    /** ⚠️ 同上 FLY_POD_APP_NAME 注释：FLY_REGION 是 Fly 保留名，必须叫 FLY_POD_REGION。 */
+    FLY_POD_REGION: z.string().default('iad'),
     /** Fly Machines API base URL. 单测可覆盖到 mock server。 */
     FLY_API_BASE_URL: z.string().default('https://api.machines.dev/v1'),
     /** 软上限：/v1/health 的 cap 字段；不在 Fly 侧强制（Fly app 配额另算）。 */
@@ -116,12 +124,12 @@ const EnvSchema = z
           message: 'FLY_API_TOKEN is required when MACHINE_MANAGER=fly.',
         });
       }
-      if (!env.FLY_APP_NAME) {
+      if (!env.FLY_POD_APP_NAME) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['FLY_APP_NAME'],
+          path: ['FLY_POD_APP_NAME'],
           message:
-            'FLY_APP_NAME is required when MACHINE_MANAGER=fly (this is the browser-pod fly app, not the cloud-runtime app).',
+            'FLY_POD_APP_NAME is required when MACHINE_MANAGER=fly (this is the browser-pod fly app, not the cloud-runtime app). NOTE: do NOT name this FLY_APP_NAME — Fly auto-injects that into every machine and would override your secret.',
         });
       }
     }
