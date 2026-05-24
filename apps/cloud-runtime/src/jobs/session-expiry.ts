@@ -42,9 +42,10 @@
 import { and, eq, inArray, lt } from 'drizzle-orm';
 import type { Logger } from 'pino';
 
-import { sessions as sessionsTable } from '../db/schema.js';
+import { auditEvents, sessions as sessionsTable } from '../db/schema.js';
 import type { DbHandle } from '../db/client.js';
 import type { MachineManager } from '../machine/types.js';
+import { newId } from '../utils/ids.js';
 
 /**
  * 一个 tick 的统计结果，便于测试断言 + prod 日志聚合。
@@ -104,11 +105,13 @@ export async function reapExpiredSessions(deps: {
 
   for (const row of expired) {
     sessionIds.push(row.id);
+    let thisRowReleaseFailed = false;
     try {
       await mm.release(row.machineId);
       released++;
     } catch (err) {
       releaseFailed++;
+      thisRowReleaseFailed = true;
       // 不抛 —— 我们仍要把 status 标 closed，让下次 tick 不重抓。
       // machine 可能 leak（fly machine 没销毁），ops 通过这条 warn 介入。
       logger.warn(
@@ -124,7 +127,7 @@ export async function reapExpiredSessions(deps: {
 
     // 乐观锁：只在 status 仍是 live/requested 时更新。
     // 若 DELETE handler 已抢先关掉，这里 no-op（drizzle update 没匹配 row 不报错）。
-    await db.drizzle
+    const updated = await db.drizzle
       .update(sessionsTable)
       .set({
         status: 'closed',
@@ -136,7 +139,33 @@ export async function reapExpiredSessions(deps: {
           eq(sessionsTable.id, row.id),
           inArray(sessionsTable.status, ['live', 'requested']),
         ),
-      );
+      )
+      .returning({ id: sessionsTable.id });
+
+    // 写 audit_events 行，让 prod 能追责"是谁在什么时候关了这个 session"。
+    // 跟 routes/sessions.ts 的 audit() 调用并列：那条是 client 主动 DELETE
+    // 时写的 'session.close'，这条是 reaper 强制收的 'session.expire'，从
+    // ip / api_key_id 都为 NULL 一眼看得出来是 background job 写的。
+    //
+    // 只有在乐观锁实际更新到这一行时才写 audit；如果 update no-op（DELETE
+    // 抢先），则 DELETE handler 已经写过 'session.close' 了，不要重复写。
+    if (updated.length > 0) {
+      await db.drizzle.insert(auditEvents).values({
+        id: newId('aud'),
+        projectId: row.projectId,
+        apiKeyId: null,
+        action: 'session.expire',
+        resource: `session:${row.id}`,
+        result: thisRowReleaseFailed ? 'errored' : 'ok',
+        ip: null,
+        detailJson: JSON.stringify({
+          machineId: row.machineId,
+          expiresAt: row.expiresAt,
+          reapedAt: nowIso,
+          ...(thisRowReleaseFailed ? { releaseFailed: true } : {}),
+        }),
+      });
+    }
   }
 
   logger.info(

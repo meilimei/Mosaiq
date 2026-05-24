@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm';
 
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
-import { projects, sessions as sessionsTable } from '../db/schema.js';
+import { auditEvents, projects, sessions as sessionsTable } from '../db/schema.js';
 import { resetEnvCache } from '../env.js';
 import { reapExpiredSessions, startSessionExpiryJob } from './session-expiry.js';
 import type { Logger } from 'pino';
@@ -128,7 +128,7 @@ describe('reapExpiredSessions', () => {
     expect(mm.released).toEqual([]);
   });
 
-  it('单个过期 live session → release + 标 closed + error_message=expired', async () => {
+  it('单个过期 live session → release + 标 closed + error_message=expired + audit row', async () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     await insertSession({
       id: 'ses_expired_1',
@@ -154,6 +154,22 @@ describe('reapExpiredSessions', () => {
     expect(row?.status).toBe('closed');
     expect(row?.closedAt).toBeTruthy();
     expect(row?.errorMessage).toBe('expired');
+
+    // audit_events 行应该写入（result=ok，api_key_id=null 表明是 background job）
+    const audits = await db.drizzle
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.resource, 'session:ses_expired_1'));
+    expect(audits).toHaveLength(1);
+    const [audit] = audits;
+    expect(audit?.action).toBe('session.expire');
+    expect(audit?.result).toBe('ok');
+    expect(audit?.projectId).toBe(PROJECT_ID);
+    expect(audit?.apiKeyId).toBeNull();
+    expect(audit?.ip).toBeNull();
+    const detail = JSON.parse(audit?.detailJson ?? '{}');
+    expect(detail.machineId).toBe('mch_expired_1');
+    expect(detail.releaseFailed).toBeUndefined();
   });
 
   it('混合：live 未过期 + live 过期 + closed 过期 → 只处理 live 过期那条', async () => {
@@ -203,7 +219,7 @@ describe('reapExpiredSessions', () => {
     expect(closedRow?.errorMessage).toBeNull();
   });
 
-  it('mm.release 抛错 → row 仍标 closed，releaseFailed 计数', async () => {
+  it('mm.release 抛错 → row 仍标 closed，releaseFailed 计数，audit result=errored', async () => {
     const past = new Date(Date.now() - 60_000).toISOString();
     await insertSession({
       id: 'ses_release_fails',
@@ -227,6 +243,51 @@ describe('reapExpiredSessions', () => {
       .where(eq(sessionsTable.id, 'ses_release_fails'));
     expect(row?.status).toBe('closed');
     expect(row?.errorMessage).toBe('expired');
+
+    // audit row 必须 result=errored，detail 含 releaseFailed=true 让 ops 能 grep
+    const [audit] = await db.drizzle
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.resource, 'session:ses_release_fails'));
+    expect(audit?.result).toBe('errored');
+    const detail = JSON.parse(audit?.detailJson ?? '{}');
+    expect(detail.releaseFailed).toBe(true);
+  });
+
+  it('混合 release 成功+失败 → 各自独立 audit result', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    await insertSession({
+      id: 'ses_mix_ok',
+      machineId: 'mch_mix_ok',
+      status: 'live',
+      expiresAt: past,
+    });
+    await insertSession({
+      id: 'ses_mix_err',
+      machineId: 'mch_mix_err',
+      status: 'live',
+      expiresAt: past,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm(['mch_mix_err']); // 只有 mch_mix_err 失败
+    const result = await reapExpiredSessions({ db, mm, logger: makeFakeLogger() });
+
+    expect(result.scanned).toBe(2);
+    expect(result.released).toBe(1);
+    expect(result.releaseFailed).toBe(1);
+
+    const [okAudit] = await db.drizzle
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.resource, 'session:ses_mix_ok'));
+    const [errAudit] = await db.drizzle
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.resource, 'session:ses_mix_err'));
+    // 关键回归：result 必须按 row 各自正确，不能是聚合状态
+    expect(okAudit?.result).toBe('ok');
+    expect(errAudit?.result).toBe('errored');
   });
 
   it("status='requested' 也参与 reap（schema 预留状态）", async () => {
