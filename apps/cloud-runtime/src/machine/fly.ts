@@ -15,6 +15,12 @@
  *   1) callPodStop（共享）—— best-effort 通知 pod 干净停 chromium
  *   2) DELETE .../machines/{id}?force=true（不等响应；force 让 Fly 立刻销毁）
  *
+ * Phase 11.3a 重构（commit 2 of phase 11.3a）：
+ *   把 Fly Machines API 调用全部抽到 FlyApiClient（fly-api.ts），让 phase 11.3a
+ *   的 FlyPooledMachineManager 能复用同一份 API 客户端而不继承 FlyMachineManager
+ *   （组合优于继承——pool 是 cold path 的 *包装层*，不是 *变种*）。本文件**业务
+ *   语义零改动**，所有原有单测应保持绿。
+ *
  * 设计要点：
  *   - 用 IPv6 6PN 私网地址（Fly 同 org 内 Machine 之间天然可达，不暴露公网）
  *   - 不使用 Fly Apps 的 [[services]] 段——pod app 完全是内部，控制平面是唯一调用方
@@ -24,36 +30,20 @@
 
 import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
+import { FlyApiClient } from './fly-api.js';
+import type {
+  FlyApiClientOptions,
+  FlyMachineConfig,
+  FlyMachineResponse,
+  FlyMachineState,
+} from './fly-api.js';
 import { callPodStart, callPodStop, rewriteCdpHost, waitForPodReady } from './pod-control.js';
 import type { FetchLike } from './pod-control.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './types.js';
 
-/**
- * Fly Machines API 部分 schema —— 只取我们用到的字段。完整 schema 见
- * https://docs.machines.dev/。
- */
-interface FlyMachineResponse {
-  id: string;
-  state: FlyMachineState;
-  private_ip: string;
-  region?: string;
-  name?: string;
-}
-
-/**
- * Fly Machine 全部状态。我们只关心 'started'（绿灯）+ 各种终态。
- * 参考：https://fly.io/docs/machines/working-with-machines/#machine-states
- */
-type FlyMachineState =
-  | 'created'
-  | 'starting'
-  | 'started'
-  | 'stopping'
-  | 'stopped'
-  | 'destroying'
-  | 'destroyed'
-  | 'replacing'
-  | 'failed';
+// Re-export for callers that historically imported from fly.ts (e.g. factory.ts).
+// New callers should import from './fly-api.js' directly.
+export type { FlyMachineResponse, FlyMachineState } from './fly-api.js';
 
 export interface FlyMachineManagerOptions {
   apiToken: string;
@@ -81,7 +71,11 @@ export interface FlyMachineManagerOptions {
   podStartTimeoutMs?: number;
 }
 
-const TERMINAL_BAD_STATES: ReadonlyArray<FlyMachineState> = [
+/**
+ * Cold path 看到 'stopped' 视为 terminal-bad（机器不该在 acquire 路径上变成 stopped）。
+ * Pool path（fly-pool.ts）走 default abortOn，因为 pool 把 'stopped' 当成功目标。
+ */
+const COLD_PATH_ABORT_STATES: ReadonlyArray<FlyMachineState> = [
   'stopped',
   'destroying',
   'destroyed',
@@ -90,24 +84,22 @@ const TERMINAL_BAD_STATES: ReadonlyArray<FlyMachineState> = [
 
 export class FlyMachineManager implements MachineManager {
   readonly kind = 'fly' as const;
-  readonly #opts: Required<
-    Pick<
-      FlyMachineManagerOptions,
-      | 'apiToken'
-      | 'appName'
-      | 'apiBaseUrl'
-      | 'podImage'
-      | 'region'
-      | 'podControlPort'
-      | 'maxMachines'
-      | 'machineCpus'
-      | 'machineMemoryMb'
-      | 'waitForStartedTimeoutMs'
-      | 'waitForStartedIntervalMs'
-      | 'waitForPodReadyTimeoutMs'
-      | 'podStartTimeoutMs'
-    >
-  > & { podEnv: Record<string, string>; fetchImpl: FetchLike };
+
+  /** Fly Machines API 客户端。复用给 fly-pool.ts。 */
+  readonly #api: FlyApiClient;
+
+  readonly #podImage: string;
+  readonly #region: string;
+  readonly #podControlPort: number;
+  readonly #maxMachines: number;
+  readonly #machineCpus: number;
+  readonly #machineMemoryMb: number;
+  readonly #podEnv: Record<string, string>;
+  readonly #fetchImpl: FetchLike;
+  readonly #waitForStartedTimeoutMs: number;
+  readonly #waitForStartedIntervalMs: number;
+  readonly #waitForPodReadyTimeoutMs: number;
+  readonly #podStartTimeoutMs: number;
 
   /**
    * machineId → podOrigin。release(machineId) 反查用。
@@ -119,40 +111,49 @@ export class FlyMachineManager implements MachineManager {
     if (!opts.apiToken) throw new Error('FlyMachineManager: apiToken required');
     if (!opts.appName) throw new Error('FlyMachineManager: appName required');
     if (!opts.podImage) throw new Error('FlyMachineManager: podImage required');
-    this.#opts = {
+
+    const apiClientOpts: FlyApiClientOptions = {
       apiToken: opts.apiToken,
       appName: opts.appName,
-      apiBaseUrl: (opts.apiBaseUrl ?? 'https://api.machines.dev/v1').replace(/\/+$/, ''),
-      podImage: opts.podImage,
-      region: opts.region,
-      podControlPort: opts.podControlPort,
-      maxMachines: opts.maxMachines,
-      machineCpus: opts.machineCpus,
-      machineMemoryMb: opts.machineMemoryMb,
-      podEnv: opts.podEnv ?? {},
-      fetchImpl: opts.fetchImpl ?? fetch,
-      // Fly machine 从 POST /machines （state: created） 到 state: started 的时间。
-      // 含镜像 pull + firecracker boot + init exec。browser-pod 镜像 ~918MB，冷拉
-      // 实测可达 30-60s（取决于 Fly registry CDN 命中和 region 同 host）。给 90s。
-      waitForStartedTimeoutMs: opts.waitForStartedTimeoutMs ?? 90_000,
-      waitForStartedIntervalMs: opts.waitForStartedIntervalMs ?? 500,
-      // Fly firecracker microVM 上 pod 启动到 hono /healthz 就绪需要 ~5s（vsLocalDocker
-      // 的 ~1s）—— 内核启动 + node 启动 + pnpm imports + hono 起来。30s 给够余量。
-      waitForPodReadyTimeoutMs: opts.waitForPodReadyTimeoutMs ?? 30_000,
-      // Fly chromium 自身启动 ~18s（NetworkService init + 字体扫描 + dbus 探测累积），
-      // pod 内部 POD_CHROMIUM_BOOT_TIMEOUT_MS 默认 60s。这边给 75s = 60s + 15s
-      // HTTP roundtrip 余量，让 pod 内的 timeout 先 fire（拿到 chromium stderr）
-      // 而不是 cloud-runtime 这边的 fetch 超时（只能拿到 abort 错误，没有诊断信息）。
-      podStartTimeoutMs: opts.podStartTimeoutMs ?? 75_000,
+      ...(opts.apiBaseUrl !== undefined ? { apiBaseUrl: opts.apiBaseUrl } : {}),
+      ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
     };
+    this.#api = new FlyApiClient(apiClientOpts);
+
+    this.#podImage = opts.podImage;
+    this.#region = opts.region;
+    this.#podControlPort = opts.podControlPort;
+    this.#maxMachines = opts.maxMachines;
+    this.#machineCpus = opts.machineCpus;
+    this.#machineMemoryMb = opts.machineMemoryMb;
+    this.#podEnv = opts.podEnv ?? {};
+    this.#fetchImpl = opts.fetchImpl ?? fetch;
+    // Fly machine 从 POST /machines （state: created） 到 state: started 的时间。
+    // 含镜像 pull + firecracker boot + init exec。browser-pod 镜像 ~918MB，冷拉
+    // 实测可达 30-60s（取决于 Fly registry CDN 命中和 region 同 host）。给 90s。
+    this.#waitForStartedTimeoutMs = opts.waitForStartedTimeoutMs ?? 90_000;
+    this.#waitForStartedIntervalMs = opts.waitForStartedIntervalMs ?? 500;
+    // Fly firecracker microVM 上 pod 启动到 hono /healthz 就绪需要 ~5s（vsLocalDocker
+    // 的 ~1s）—— 内核启动 + node 启动 + pnpm imports + hono 起来。30s 给够余量。
+    this.#waitForPodReadyTimeoutMs = opts.waitForPodReadyTimeoutMs ?? 30_000;
+    // Fly chromium 自身启动 ~18s（NetworkService init + 字体扫描 + dbus 探测累积），
+    // pod 内部 POD_CHROMIUM_BOOT_TIMEOUT_MS 默认 60s。这边给 75s = 60s + 15s
+    // HTTP roundtrip 余量，让 pod 内的 timeout 先 fire（拿到 chromium stderr）
+    // 而不是 cloud-runtime 这边的 fetch 超时（只能拿到 abort 错误，没有诊断信息）。
+    this.#podStartTimeoutMs = opts.podStartTimeoutMs ?? 75_000;
+  }
+
+  /** 暴露给 fly-pool.ts —— pool 复用同一个 FlyApiClient。仅 phase 11.3a internal use。 */
+  get api(): FlyApiClient {
+    return this.#api;
   }
 
   async acquire(spec: AcquireSpec): Promise<AcquiredMachine> {
     const log = getLogger();
 
-    if (this.#alive.size >= this.#opts.maxMachines) {
+    if (this.#alive.size >= this.#maxMachines) {
       throw new ApiError('pool.exhausted', 'Fly machine cap reached', {
-        cap: this.#opts.maxMachines,
+        cap: this.#maxMachines,
         alive: this.#alive.size,
       });
     }
@@ -172,7 +173,10 @@ export class FlyMachineManager implements MachineManager {
     // ─── 1) provision machine ────────────────────────────────────────────
     let created: FlyMachineResponse;
     try {
-      created = await this.#createMachine(spec);
+      created = await this.#api.createMachine({
+        region: this.#region,
+        config: this.#buildSessionConfig(spec),
+      });
     } catch (err) {
       this.#alive.delete(placeholder);
       throw err;
@@ -183,25 +187,30 @@ export class FlyMachineManager implements MachineManager {
     );
 
     // 从这里开始任何失败都要 force-destroy 这台 machine。
-    const podOrigin = `http://[${created.private_ip}]:${this.#opts.podControlPort}`;
+    const podOrigin = `http://[${created.private_ip}]:${this.#podControlPort}`;
 
     try {
       // ─── 2) 等 fly state=started ──────────────────────────────────────
-      await this.#waitForState(created.id, 'started');
+      // 'stopped' 在 cold path 也算 abortOn——acquire 不该看到机器停掉。
+      await this.#api.waitForState(created.id, 'started', {
+        timeoutMs: this.#waitForStartedTimeoutMs,
+        intervalMs: this.#waitForStartedIntervalMs,
+        abortOn: COLD_PATH_ABORT_STATES,
+      });
 
       // ─── 3) 等 pod /healthz ───────────────────────────────────────────
       await waitForPodReady({
         podOrigin,
-        fetchImpl: this.#opts.fetchImpl,
-        timeoutMs: this.#opts.waitForPodReadyTimeoutMs,
+        fetchImpl: this.#fetchImpl,
+        timeoutMs: this.#waitForPodReadyTimeoutMs,
       });
 
       // ─── 4) callPodStart 共享 ─────────────────────────────────────────
       const podResp = await callPodStart({
         podOrigin,
         spec,
-        fetchImpl: this.#opts.fetchImpl,
-        timeoutMs: this.#opts.podStartTimeoutMs,
+        fetchImpl: this.#fetchImpl,
+        timeoutMs: this.#podStartTimeoutMs,
       });
 
       // placeholder → 真 id，整个生命周期 size 不掉到 0
@@ -220,7 +229,7 @@ export class FlyMachineManager implements MachineManager {
         { machineId: created.id, cause: err instanceof Error ? err.message : String(err) },
         'fly acquire failed mid-way; force-destroying machine',
       );
-      await this.#destroyMachine(created.id).catch((destroyErr) => {
+      await this.#api.destroyMachine(created.id).catch((destroyErr) => {
         log.error(
           {
             machineId: created.id,
@@ -238,13 +247,13 @@ export class FlyMachineManager implements MachineManager {
     const podOrigin = this.#alive.get(machineId);
     if (podOrigin) {
       // best-effort 让 pod 干净停 chromium。pod-control 内部不抛错。
-      await callPodStop({ podOrigin, machineId, fetchImpl: this.#opts.fetchImpl });
+      await callPodStop({ podOrigin, machineId, fetchImpl: this.#fetchImpl });
       this.#alive.delete(machineId);
     } else {
       log.debug({ machineId }, 'release: machine unknown to fly manager, will still attempt destroy');
     }
     // 即使 alive 没记录，也尝试 force-destroy —— 应对控制平面重启后被丢失的孤儿。
-    await this.#destroyMachine(machineId).catch((err) => {
+    await this.#api.destroyMachine(machineId).catch((err) => {
       log.warn(
         { machineId, cause: err instanceof Error ? err.message : String(err) },
         'fly destroy failed during release (treat as best-effort)',
@@ -253,7 +262,7 @@ export class FlyMachineManager implements MachineManager {
   }
 
   async capacity(): Promise<{ ready: number; busy: number; cap: number }> {
-    const cap = this.#opts.maxMachines;
+    const cap = this.#maxMachines;
     const busy = this.#alive.size;
     return { ready: cap - busy, busy, cap };
   }
@@ -265,122 +274,36 @@ export class FlyMachineManager implements MachineManager {
     await Promise.allSettled(ids.map((id) => this.release(id)));
   }
 
-  // ─── Fly Machines API wrappers ───────────────────────────────────────────
-
-  async #createMachine(spec: AcquireSpec): Promise<FlyMachineResponse> {
-    const url = `${this.#opts.apiBaseUrl}/apps/${this.#opts.appName}/machines`;
-    const body = {
-      region: this.#opts.region,
-      config: {
-        image: this.#opts.podImage,
-        env: {
-          // 这些值传给 pod 容器内的 env.ts。pod 自己也有 default，但显式传更可控。
-          PORT: String(this.#opts.podControlPort),
-          POD_HEADLESS: 'true',
-          MOSAIQ_SESSION_ID: spec.sessionId,
-          ...this.#opts.podEnv,
-        },
-        // 关键：no [[services]] block → 不分配 anycast IP / 不开公网端口
-        services: [],
-        guest: {
-          cpu_kind: 'shared',
-          cpus: this.#opts.machineCpus,
-          memory_mb: this.#opts.machineMemoryMb,
-        },
-        // 让 fly 在 start 后 SIGINT 才停（chromium 进程清理依赖 SIGTERM）
-        stop_config: { signal: 'SIGINT', timeout: '15s' },
-        // metadata 让 fly dashboard 上能看出来这台 machine 服务的 session
-        metadata: {
-          mosaiq_session_id: spec.sessionId,
-          mosaiq_runtime: 'cloud-runtime',
-        },
-      },
-    };
-    const resp = await this.#opts.fetchImpl(url, {
-      method: 'POST',
-      headers: this.#authHeaders(),
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => '');
-      throw new ApiError('machine.spawn_failed', `fly machines API ${resp.status}`, {
-        url,
-        body: text.slice(0, 512),
-      });
-    }
-    const json = (await resp.json().catch(() => null)) as FlyMachineResponse | null;
-    if (!json || typeof json.id !== 'string' || typeof json.private_ip !== 'string') {
-      throw new ApiError('machine.spawn_failed', 'fly machines API returned invalid payload', {
-        url,
-      });
-    }
-    return json;
-  }
-
-  async #getMachine(id: string): Promise<FlyMachineResponse> {
-    const url = `${this.#opts.apiBaseUrl}/apps/${this.#opts.appName}/machines/${id}`;
-    const resp = await this.#opts.fetchImpl(url, {
-      method: 'GET',
-      headers: this.#authHeaders(),
-    });
-    if (!resp.ok) {
-      throw new ApiError('machine.spawn_failed', `fly get-machine ${resp.status}`, {
-        machineId: id,
-      });
-    }
-    const json = (await resp.json().catch(() => null)) as FlyMachineResponse | null;
-    if (!json || typeof json.id !== 'string') {
-      throw new ApiError('machine.spawn_failed', 'fly get-machine invalid payload', {
-        machineId: id,
-      });
-    }
-    return json;
-  }
-
-  async #waitForState(id: string, target: FlyMachineState): Promise<void> {
-    const deadline = Date.now() + this.#opts.waitForStartedTimeoutMs;
-    let lastState: FlyMachineState | null = null;
-    while (Date.now() < deadline) {
-      const m = await this.#getMachine(id);
-      lastState = m.state;
-      if (m.state === target) return;
-      if (TERMINAL_BAD_STATES.includes(m.state)) {
-        throw new ApiError('machine.spawn_failed', `fly machine ${id} entered ${m.state}`, {
-          machineId: id,
-          state: m.state,
-        });
-      }
-      if (Date.now() + this.#opts.waitForStartedIntervalMs >= deadline) break;
-      await new Promise((r) => setTimeout(r, this.#opts.waitForStartedIntervalMs));
-    }
-    throw new ApiError(
-      'machine.spawn_failed',
-      `fly machine ${id} did not reach state ${target} in time`,
-      { machineId: id, lastState },
-    );
-  }
-
-  async #destroyMachine(id: string): Promise<void> {
-    const url = `${this.#opts.apiBaseUrl}/apps/${this.#opts.appName}/machines/${id}?force=true`;
-    const resp = await this.#opts.fetchImpl(url, {
-      method: 'DELETE',
-      headers: this.#authHeaders(),
-    });
-    // 200 + 404 都视为成功（幂等 destroy；404 = 已经销毁）
-    if (!resp.ok && resp.status !== 404) {
-      const text = await resp.text().catch(() => '');
-      throw new ApiError('machine.spawn_failed', `fly destroy ${resp.status}`, {
-        machineId: id,
-        body: text.slice(0, 256),
-      });
-    }
-  }
-
-  #authHeaders(): Record<string, string> {
+  /**
+   * 构造 cold-path session machine 的 config block。
+   *
+   * Pool path（fly-pool.ts）会 build 一个 *generic* config（无 sessionId metadata），
+   * 跟这个完全分开——pool entry 创建时还不知道未来会服务哪个 session。
+   */
+  #buildSessionConfig(spec: AcquireSpec): FlyMachineConfig {
     return {
-      authorization: `Bearer ${this.#opts.apiToken}`,
-      'content-type': 'application/json',
-      accept: 'application/json',
+      image: this.#podImage,
+      env: {
+        // 这些值传给 pod 容器内的 env.ts。pod 自己也有 default，但显式传更可控。
+        PORT: String(this.#podControlPort),
+        POD_HEADLESS: 'true',
+        MOSAIQ_SESSION_ID: spec.sessionId,
+        ...this.#podEnv,
+      },
+      // 关键：no [[services]] block → 不分配 anycast IP / 不开公网端口
+      services: [],
+      guest: {
+        cpu_kind: 'shared',
+        cpus: this.#machineCpus,
+        memory_mb: this.#machineMemoryMb,
+      },
+      // 让 fly 在 start 后 SIGINT 才停（chromium 进程清理依赖 SIGTERM）
+      stop_config: { signal: 'SIGINT', timeout: '15s' },
+      // metadata 让 fly dashboard 上能看出来这台 machine 服务的 session
+      metadata: {
+        mosaiq_session_id: spec.sessionId,
+        mosaiq_runtime: 'cloud-runtime',
+      },
     };
   }
 }
