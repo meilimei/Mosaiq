@@ -101,29 +101,39 @@ jobs:
           docker compose version
           docker info | head -20
 
-      # Generate a fresh .env.cloud with a random SEED_API_KEY for this run.
-      # Same shape as .env.cloud.example; docker compose picks it up via the
-      # ${SEED_API_KEY:-...} fallback inside docker-compose.local-docker.yml.
+      # Generate a fresh .env.cloud with a random SEED_API_KEY + METRICS_TOKEN
+      # for this run. Same shape as .env.cloud.example; docker compose picks
+      # them up via ${VAR:-default} fallbacks in docker-compose.local-docker.yml.
+      #
+      # METRICS_TOKEN is what dev-local-docker-smoke.mjs uses to assert the
+      # /v1/metrics prod-hardening regression gate (phase 11.2). Each run gets
+      # a fresh value so a leak in one log doesn't grant scrape access to a
+      # later run (defense-in-depth; tokens are step-scoped already).
       - name: Prepare .env.cloud
         id: env
         run: |
           set -euo pipefail
           SEED_API_KEY="msq_sk_dev_ci_$(openssl rand -hex 12)"
+          METRICS_TOKEN="msq_metrics_ci_$(openssl rand -hex 12)"
           cat > .env.cloud <<EOF
           SEED_PROJECT_ID=proj_launchai
           SEED_API_KEY=$SEED_API_KEY
+          MOSAIQ_METRICS_TOKEN=$METRICS_TOKEN
           EOF
           echo "::add-mask::$SEED_API_KEY"
+          echo "::add-mask::$METRICS_TOKEN"
           echo "seed_api_key=$SEED_API_KEY" >> "$GITHUB_OUTPUT"
-          echo ".env.cloud written (SEED_API_KEY masked above)"
+          echo "metrics_token=$METRICS_TOKEN" >> "$GITHUB_OUTPUT"
+          echo ".env.cloud written (SEED_API_KEY + METRICS_TOKEN masked above)"
 
       # `docker compose up --build -d` builds:
       #   - browser-pod-image service (multi-stage, ~5min cold, includes
-      #     pulling mcr.microsoft.com/playwright base image), exits 0
-      #   - cloud-runtime service (multi-stage, includes better-sqlite3 native
+      #     pulling mcr.microsoft.com/playwrightV R, exits 0 in
+      #   - ud-runtime service (multi-stage, includes better-sqlite3 native
       #     build on bookworm-slim), stays running on :8787
       # No `--wait` flag: dev-local-docker-smoke.mjs already polls /v1/health
-      # for up to 60s, which is more accurate than docker's HEALTHCHECK
+      # for up to 60s, which is more aci
+          MOSAIQ_METRICS_TOKEN: ${{ steps.env.outputs.metrccs_token }}urate than docker's HEALTHCHECK
       # (30s interval would make `--wait` block ≥30s even when the server is
       # actually ready immediately).
       - name: docker compose up
@@ -173,6 +183,9 @@ jobs:
       # to 60s health-poll + e2e). Redirected to file so it doesn't pollute
       # the live workflow log; collected into _artifacts/ on always-step.
       - name: Stream cloud-runtime logs (background)
+          # Enables the /v1/metrics prod-hardening regression gate inside
+          # dev-local-docker-smoke.mjs (asserts 401 unauth + 200 + body shape).
+          MOSAIQ_METRICS_TOKEN: ${{ steps.env.outputs.metrics_token }}
         run: |
           docker compose -f docker-compose.local-docker.yml logs -f --tail=20 cloud-runtime \
             > cloud-runtime.boot.log 2>&1 &

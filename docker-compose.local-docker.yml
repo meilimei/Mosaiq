@@ -80,6 +80,11 @@ services:
       SESSION_TTL_DEFAULT_SECONDS: 1800
       SESSION_TTL_MAX_SECONDS: 7200
       PUBLIC_BASE_URL: http://localhost:8787
+      # METRICS_TOKEN: enables GET /v1/metrics (Prometheus exposition). Empty -> 404.
+      # CI/e2e generates a per-run random value; dev defaults to a static placeholder
+      # so `docker compose up` works without .env.cloud tweaks. dev-local-docker-smoke.mjs
+      # reads MOSAIQ_METRICS_TOKEN and asserts the endpoint round-trips.
+      METRICS_TOKEN: ${MOSAIQ_METRICS_TOKEN:-msq_metrics_local_dev_token_change_me}
     volumes:
       # cloud-runtime sqlite 持久化
       - cloud-runtime-data:/app/data

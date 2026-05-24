@@ -39,6 +39,13 @@ const apiUrl = (process.env.MOSAIQ_API_URL ?? 'http://127.0.0.1:8787').replace(/
 const apiKey = process.env.MOSAIQ_API_KEY;
 const projectId = process.env.MOSAIQ_PROJECT_ID ?? 'proj_launchai';
 const requestTimeoutMs = process.env.MOSAIQ_REQUEST_TIMEOUT_MS ?? '90000';
+// MOSAIQ_METRICS_TOKEN: when set, smoke asserts /v1/metrics auth + body shape.
+// When unset, the new verifyProdSurface() step still runs but only asserts the
+// invariants that don't depend on the token (health.db.ok). Empty token means
+// the operator hasn't enabled /v1/metrics in the cloud-runtime env, which is
+// valid (endpoint returns 404 in that mode). Keeps backwards-compat with
+// older .env.cloud files that don't define MOSAIQ_METRICS_TOKEN.
+const metricsToken = process.env.MOSAIQ_METRICS_TOKEN ?? '';
 
 if (!apiKey) {
   console.error('FATAL: MOSAIQ_API_KEY env required (must match cloud-runtime SEED_API_KEY)');
@@ -142,6 +149,19 @@ async function waitForHealth() {
       if (resp.ok) {
         const json = await resp.json().catch(() => ({}));
         log(`health OK after ${attempts} probe(s)`, json);
+        // Phase 11.2 prod-hardening: /v1/health now reports db.ok. The control
+        // plane can respond 200 with db.ok=false (sqlite handle open but
+        // SELECT 1 failed -- disk full, schema drift, file locked by stale
+        // process). That's a deploy-day footgun we must fail CI on: a "green"
+        // health probe with a non-functional DB silently routes traffic to a
+        // runtime that 500s on every session create.
+        if (json && typeof json === 'object' && json.db && json.db.ok === false) {
+          console.error(
+            `FATAL: /v1/health returned ok but db.ok=false. body=${JSON.stringify(json)}`,
+          );
+          dumpDockerDiagnostics();
+          process.exit(1);
+        }
         return json;
       }
       lastError = `status=${resp.status}`;
@@ -154,6 +174,80 @@ async function waitForHealth() {
   console.error('Hint: did you run `docker compose -f docker-compose.local-docker.yml up -d` first?');
   dumpDockerDiagnostics();
   process.exit(1);
+}
+
+// ─── 1b) /v1/metrics — prod-hardening regression gate (phase 11.2) ─────────
+//
+// Catches regressions in:
+//   - METRICS_TOKEN bearer auth wiring (missing token must 401, NOT 200/500)
+//   - prom-client registry exposition (body must contain known counter names)
+//   - rate-limit middleware doesn't gate /v1/metrics (scraper would be DoS'd
+//     by its own per-IP token bucket if mounted under rate-limit)
+//
+// When MOSAIQ_METRICS_TOKEN is unset, /v1/metrics returns 404 (endpoint is
+// "disabled"). That's a legitimate prod mode (operator decided not to expose
+// metrics); we just log and skip the body assertions. The unauth probe still
+// runs and asserts 404 (NOT 401 or 500).
+async function verifyMetricsEndpoint() {
+  log('verifying /v1/metrics (prod-hardening regression gate)');
+  const expectedStatus = metricsToken ? 401 : 404;
+
+  // (a) unauth probe
+  const noauth = await fetch(`${apiUrl}/v1/metrics`, {
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (noauth.status !== expectedStatus) {
+    console.error(
+      `FATAL: GET /v1/metrics without auth: expected ${expectedStatus}, got ${noauth.status}`,
+    );
+    dumpDockerDiagnostics();
+    process.exit(1);
+  }
+  log(`  unauth probe -> ${noauth.status} OK`);
+
+  if (!metricsToken) {
+    log('  MOSAIQ_METRICS_TOKEN unset -> skipping body assertions (endpoint disabled by env)');
+    return;
+  }
+
+  // (b) wrong-token probe -> 401
+  const wrongToken = await fetch(`${apiUrl}/v1/metrics`, {
+    headers: { authorization: 'Bearer not-the-real-token' },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (wrongToken.status !== 401) {
+    console.error(
+      `FATAL: GET /v1/metrics with wrong bearer: expected 401, got ${wrongToken.status}`,
+    );
+    dumpDockerDiagnostics();
+    process.exit(1);
+  }
+  log('  wrong-token probe -> 401 OK');
+
+  // (c) correct-token probe -> 200 + body contains known counters
+  const authed = await fetch(`${apiUrl}/v1/metrics`, {
+    headers: { authorization: `Bearer ${metricsToken}` },
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (authed.status !== 200) {
+    const body = await authed.text().catch(() => '');
+    console.error(
+      `FATAL: GET /v1/metrics with bearer: expected 200, got ${authed.status}. body=${body.slice(0, 256)}`,
+    );
+    dumpDockerDiagnostics();
+    process.exit(1);
+  }
+  const body = await authed.text();
+  const required = ['sessions_created_total', 'http_request_duration_seconds'];
+  const missing = required.filter((name) => !body.includes(name));
+  if (missing.length > 0) {
+    console.error(
+      `FATAL: /v1/metrics body missing required metric(s): ${missing.join(', ')}. body head=${body.slice(0, 512)}`,
+    );
+    dumpDockerDiagnostics();
+    process.exit(1);
+  }
+  log(`  authed probe -> 200, body contains [${required.join(', ')}] OK`);
 }
 
 // ─── 2) sub-process runner ───────────────────────────────────────────────
@@ -190,7 +284,9 @@ function runNode(scriptRelPath, label) {
 
 // ─── main ────────────────────────────────────────────────────────────────
 log(`MOSAIQ_API_URL=${apiUrl}  PROJECT=${projectId}  REQUEST_TIMEOUT_MS=${requestTimeoutMs}`);
+log(`MOSAIQ_METRICS_TOKEN ${metricsToken ? 'set (will verify /v1/metrics auth+body)' : 'unset (will only verify /v1/metrics returns 404)'}`);
 await waitForHealth();
+await verifyMetricsEndpoint();
 
 const registerOk = await runNode('packages/cloud-sdk/scripts/register-persona.mjs', 'register-persona');
 if (!registerOk) process.exit(1);
