@@ -9,8 +9,10 @@
  * 这个 wrapper 做的事：
  *   1. 轮询 /v1/health 直到 cloud-runtime 就绪（最多 60s）
  *   2. 跑 packages/cloud-sdk/scripts/register-persona.mjs（幂等）
- *   3. 跑 packages/cloud-sdk/scripts/e2e-smoke.mjs（端到端）
- *   4. 任一步失败立即退出非零
+ *   3. 跑 packages/cloud-sdk/scripts/e2e-smoke.mjs（端到端单 session + chromium）
+ *   4. 跑 packages/cloud-sdk/scripts/e2e-smoke-concurrent.mjs（并发 cap+1，
+ *      验证 race fix + 资源池行为；不连 chromium，只测 REST 层）
+ *   5. 任一步失败立即退出非零
  *
  * 区别于 phase 11.1 static smoke：这里 cloud-runtime 在 docker 里跑，会通过
  * mount 的 /var/run/docker.sock 动态拉 mosaiq/browser-pod 容器，跟 prod (Fly
@@ -195,6 +197,14 @@ if (!registerOk) process.exit(1);
 
 const smokeOk = await runNode('packages/cloud-sdk/scripts/e2e-smoke.mjs', 'e2e-smoke');
 if (!smokeOk) process.exit(1);
+
+// 并发 smoke 跑在串行 smoke 之后，依赖前一步已经 release 完所有 session（pool
+// 回到 busy=0），不然 concurrent smoke 第一步 initial-busy 检查会失败。
+const concurrentOk = await runNode(
+  'packages/cloud-sdk/scripts/e2e-smoke-concurrent.mjs',
+  'e2e-smoke-concurrent',
+);
+if (!concurrentOk) process.exit(1);
 
 const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 console.log(`\n🎉 local-docker e2e smoke PASSED in ${elapsed}s`);
