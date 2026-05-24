@@ -220,12 +220,14 @@ if ($acquireBkt.Count -gt 0 -and $acqCountVal -gt 0) {
 
 # ---- save snapshot ---------------------------------------------------------
 if (-not $NoSave) {
-  $snapshotDir = Join-Path $PSScriptRoot '..' 'tmp' 'pool-snapshots'
+  # PS 5.1 `Join-Path` only takes 2 args. Use [System.IO.Path]::Combine for
+  # portable multi-segment joining (works on PS 5.1 + PS 7+).
+  $snapshotDir = [System.IO.Path]::Combine($PSScriptRoot, '..', 'tmp', 'pool-snapshots')
   if (-not (Test-Path $snapshotDir)) {
     New-Item -ItemType Directory -Path $snapshotDir -Force | Out-Null
   }
   $labelSlug = if ($Label) { '-' + ($Label -replace '[^a-zA-Z0-9_-]', '_') } else { '' }
-  $snapshotFile = Join-Path $snapshotDir "snapshot-$ts$labelSlug.json"
+  $snapshotFile = [System.IO.Path]::Combine($snapshotDir, "snapshot-$ts$labelSlug.json")
 
   $payload = [ordered]@{
     timestamp = $ts
