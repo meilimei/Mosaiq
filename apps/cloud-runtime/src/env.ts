@@ -55,6 +55,31 @@ const EnvSchema = z
     /** pod 控制端口（pod 镜像内部约定，默认 9222）。 */
     FLY_POD_CONTROL_PORT: z.coerce.number().int().min(1).max(65535).default(9222),
 
+    // ─── Phase 11.3a stopped-machine pool ──────────────────────────────────
+    // 见 docs/PHASE-11.3-MACHINE-POOL.md。所有 knob 加 `POOL_` 前缀，仅对
+    // MACHINE_MANAGER=fly 生效；其他 manager 模式（static / local-docker）忽略。
+    //
+    // POOL_TARGET_SIZE=0 → 池禁用，factory 回退到 FlyMachineManager（phase 11.2 行为）。
+    // 这是 prod 的"紧急回滚"开关：`flyctl secrets set POOL_TARGET_SIZE=0` 即可
+    // 重启后立即关闭 pool。
+    POOL_TARGET_SIZE: z.coerce.number().int().min(0).max(50).default(0),
+    /** 后台补充 loop 间隔 ms，默认 10s。 */
+    POOL_REPLENISH_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(10_000),
+    /** 单 tick 最多并发起几个 provision，默认 2（防 Fly API rate limit）。 */
+    POOL_REPLENISH_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
+    /** Pool entry 最大年龄秒数；超过则 evict + 补新。默认 86400 = 24h（避免镜像过期 / 节点漂移）。 */
+    POOL_MAX_AGE_SECONDS: z.coerce.number().int().min(60).max(7 * 86400).default(86_400),
+    /** 单次 provision 硬超时 ms（含 POST create + waitForState=stopped）。默认 120s。 */
+    POOL_PROVISION_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(120_000),
+    /**
+     * Bootstrap reconcile 时是否 destroy 看似孤儿的 stopped machine（即非 pool-marked）。
+     * 默认 true（避免账单泄漏）。设 false 用于第一次 deploy pool 上线时谨慎观察。
+     */
+    POOL_BOOTSTRAP_EVICT_FOREIGN: z
+      .union([z.literal('true'), z.literal('false')])
+      .default('true')
+      .transform((v) => v === 'true'),
+
     SEED_PROJECT_ID: z.string().default('proj_launchai'),
     SEED_API_KEY: z.string().default(''),
 

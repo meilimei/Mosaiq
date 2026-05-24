@@ -78,6 +78,28 @@ primary_region = "iad"
   FLY_MACHINE_MEMORY_MB = "2048"
   FLY_POD_CONTROL_PORT = "9222"
 
+  # ─── Phase 11.3a stopped-machine pool ────────────────────────────────────
+  # POOL_TARGET_SIZE 控制是否启用 pool（0 = 关，phase 11.2 cold-only 行为）。
+  # 上线策略（见 docs/PHASE-11.3-MACHINE-POOL.md §11 phased rollout）：
+  #   1. 先 deploy POOL_TARGET_SIZE=0 验证 phase 11.2 仍然绿灯（零回归）。
+  #   2. 调到 1：观察 6h，关注 pool_hits / pool_misses / 账单。
+  #   3. 调到 3：稳定后试一周流量。
+  #   4. 看 P50 / P95 是否真的从 ~40s 降到 ~22s；不达预期就回 0 + 调试。
+  #
+  # 紧急回滚：`flyctl secrets set POOL_TARGET_SIZE=0 --app mosaiq-cloud-runtime`
+  # 然后 `flyctl machines restart`，pool 立即关闭，acquire 100% 回到 cold path。
+  # （未消耗的 pool entry 会在 cloud-runtime shutdown 时被 destroy；下次启动
+  # bootstrap 也会扫描并 evict 任何剩余的 mosaiq_pool=true machine。）
+  POOL_TARGET_SIZE = "0"
+  POOL_REPLENISH_INTERVAL_MS = "10000"
+  POOL_REPLENISH_CONCURRENCY = "2"
+  # 24h 后强制 evict，避免 pool entry 持续累积陈旧镜像 / Fly host 漂移问题。
+  POOL_MAX_AGE_SECONDS = "86400"
+  POOL_PROVISION_TIMEOUT_MS = "120000"
+  # bootstrap 时扫到非 pool-marked 的 stopped machine 也销毁——避免账单泄漏。
+  # 第一次启用 pool 时若担心误杀，可先设 "false" 观察 24h 再打开。
+  POOL_BOOTSTRAP_EVICT_FOREIGN = "true"
+
   # ─── project + API key seeding ───────────────────────────────────────────
   # SEED_API_KEY is deliberately NOT set here (env.ts forbids it under
   # NODE_ENV=production). Bootstrap via admin CLI after first deploy.

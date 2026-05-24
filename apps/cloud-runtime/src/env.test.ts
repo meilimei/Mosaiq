@@ -118,6 +118,59 @@ describe('env schema — fly machine manager required vars', () => {
   });
 });
 
+describe('env schema — phase 11.3a stopped-machine pool knobs', () => {
+  beforeEach(() => {
+    resetEnvCache();
+  });
+
+  it('defaults: POOL_TARGET_SIZE=0 (pool disabled, factory picks FlyMachineManager)', () => {
+    const env = loadWith({});
+    expect(env.POOL_TARGET_SIZE).toBe(0);
+    expect(env.POOL_REPLENISH_INTERVAL_MS).toBe(10_000);
+    expect(env.POOL_REPLENISH_CONCURRENCY).toBe(2);
+    expect(env.POOL_MAX_AGE_SECONDS).toBe(86_400);
+    expect(env.POOL_PROVISION_TIMEOUT_MS).toBe(120_000);
+    expect(env.POOL_BOOTSTRAP_EVICT_FOREIGN).toBe(true);
+  });
+
+  it('coerces POOL_TARGET_SIZE from string env', () => {
+    const env = loadWith({ POOL_TARGET_SIZE: '5' });
+    expect(env.POOL_TARGET_SIZE).toBe(5);
+  });
+
+  it('rejects POOL_TARGET_SIZE > 50 (safety cap)', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => loadWith({ POOL_TARGET_SIZE: '51' })).toThrow(/exit:1/);
+      expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('POOL_TARGET_SIZE'));
+    } finally {
+      exitSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it('POOL_BOOTSTRAP_EVICT_FOREIGN transforms "false" → boolean false', () => {
+    const env = loadWith({ POOL_BOOTSTRAP_EVICT_FOREIGN: 'false' });
+    expect(env.POOL_BOOTSTRAP_EVICT_FOREIGN).toBe(false);
+  });
+
+  it('POOL_BOOTSTRAP_EVICT_FOREIGN invalid string is rejected', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit:${code}`);
+    }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => loadWith({ POOL_BOOTSTRAP_EVICT_FOREIGN: 'yes' })).toThrow(/exit:1/);
+    } finally {
+      exitSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+});
+
 describe('env schema — FLY_APP_NAME / FLY_REGION are Fly-reserved (regression)', () => {
   beforeEach(() => {
     resetEnvCache();
