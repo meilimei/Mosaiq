@@ -26,6 +26,7 @@
 #   flyctl secrets set \
 #     FLY_API_TOKEN=$(cat ~/.fly-machines-token) \
 #     FLY_APP_NAME=mosaiq-browser-pod \
+#     METRICS_TOKEN=$(openssl rand -hex 32) \
 #     --app mosaiq-cloud-runtime
 #
 #   # Deploy.
@@ -34,6 +35,8 @@
 #
 #   # After it goes green:
 #   curl https://mosaiq-cloud-runtime.fly.dev/v1/health
+#   curl -H "Authorization: Bearer $METRICS_TOKEN" \
+#        https://mosaiq-cloud-runtime.fly.dev/v1/metrics | head -40
 #   # Then bootstrap a prod API key (see docs/PHASE-11.2-FLY-DEPLOY.md §6).
 
 app = "mosaiq-cloud-runtime"
@@ -79,6 +82,23 @@ primary_region = "iad"
   # 1.7% 资源 over-allocation 上限，对 Fly machine 计费可接受。详见
   # apps/cloud-runtime/src/jobs/session-expiry.ts。
   SESSION_EXPIRY_INTERVAL_MS = "30000"
+
+  # ─── rate limit (per api_key_id token bucket) ────────────────────────────
+  # 默认值同 env.ts，这里显式写出便于 ops 调整（改完 `flyctl deploy` 或
+  # `flyctl secrets set` 然后重启即可生效）：
+  #   strict (createSession) :  10 burst,  1 RPS  ≈ 60/min   (重路径)
+  #   write  (DELETE/POST persona): 30 burst, 5 RPS  ≈ 300/min
+  #   read   (GET)            : 100 burst, 16 RPS ≈ 1000/min
+  RATE_LIMIT_STRICT_CAPACITY = "10"
+  RATE_LIMIT_STRICT_REFILL_PER_SEC = "1"
+  RATE_LIMIT_WRITE_CAPACITY = "30"
+  RATE_LIMIT_WRITE_REFILL_PER_SEC = "5"
+  RATE_LIMIT_READ_CAPACITY = "100"
+  RATE_LIMIT_READ_REFILL_PER_SEC = "16"
+
+  # ─── metrics ─────────────────────────────────────────────────────────────
+  # METRICS_TOKEN 不在这里（secret，必须 flyctl secrets set）。
+  # 留空 → /v1/metrics 返 404；prod 必须设置。
 
   # ─── public URL (used for cdp_public_url in createSession response) ──────
   PUBLIC_BASE_URL = "https://mosaiq-cloud-runtime.fly.dev"

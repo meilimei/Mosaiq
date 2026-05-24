@@ -63,8 +63,10 @@ curl -L https://fly.io/install.sh | sh
 
 # 跑 flyctl auth login，打开浏览器一次性 OAuth
 flyctl auth login
-flyctl auth whoami
+flyctl auth whoami    # 期望: ifly@163.com
 ```
+
+> **当前 Fly 账号**：`ifly@163.com`（personal org）。所有 deploy / secrets / token 操作前先确认 `flyctl auth whoami` 是这个账号；如果不是，跑 `flyctl auth logout && flyctl auth login` 切回。
 
 ### 2.2 Fly 组织 + token
 
@@ -141,15 +143,41 @@ volume 名 `cloud_runtime_data` 必须跟 `fly.cloud-runtime.toml` 的 `[[mounts
 ### 5.2 设 secrets
 
 ```bash
+# METRICS_TOKEN 随机生成一份，存好（Prometheus scraper 要用）
+METRICS_TOKEN=$(openssl rand -hex 32)
+echo "METRICS_TOKEN=$METRICS_TOKEN"   # 记下来，丢了只能重新生成 + 改 scraper
+
 flyctl secrets set \
   FLY_API_TOKEN=$(cat ~/.fly-machines-token) \
   FLY_APP_NAME=mosaiq-browser-pod \
+  METRICS_TOKEN=$METRICS_TOKEN \
   --app mosaiq-cloud-runtime
 ```
 
+**secret 清单**（`flyctl secrets list -a mosaiq-cloud-runtime` 应该看到这三个）：
+
+| Secret           | 必填 | 说明                                                        |
+| ---------------- | ---- | ----------------------------------------------------------- |
+| `FLY_API_TOKEN`  | ✅   | org-level deploy token，能调 Machines API on browser-pod app |
+| `FLY_APP_NAME`   | ✅   | 一般是 `mosaiq-browser-pod`                                  |
+| `METRICS_TOKEN`  | ✅   | Prometheus scraper 用的 bearer；留空 → /v1/metrics 返 404    |
+| `SEED_API_KEY`   | ❌   | prod **不能**设；env.ts 在 NODE_ENV=production 时拒          |
+
 > Fly 会 restart 还没跑的 machine — 但因为我们还没 deploy，这里 secrets 只是预先写进 staging slot，第一次 deploy 自动注入。
 
-### 5.3 部署
+**调整 rate limit / 其他非 secret 配置**：这些在 `fly.cloud-runtime.toml` 的 `[env]` 里（`RATE_LIMIT_*`、`SESSION_*` 等），改完 `flyctl deploy` 即可，不走 `flyctl secrets set`。
+
+### 5.3 本地 preflight（推荐）
+
+`flyctl deploy` 前在本地把 Docker image 走一遍，避免远端 build 失败浪费 10 分钟：
+
+```powershell
+pwsh scripts/preflight-fly.ps1
+```
+
+脚本会 docker build cloud-runtime → run 一个本地容器 → 打 `/v1/health` / `/v1/metrics` / `POST /v1/sessions` 验证 auth + rate-limit 配置都对，最后打印 deploy checklist。全绿才继续 5.4。
+
+### 5.4 部署
 
 ```bash
 flyctl deploy --config fly.cloud-runtime.toml \
@@ -158,9 +186,10 @@ flyctl deploy --config fly.cloud-runtime.toml \
 
 预期：build (~3-5 min cold) → push → 创建 1 个 machine → mount volume → 启动 → healthcheck 通过 → 出 anycast IP。
 
-### 5.4 Smoke
+### 5.5 Smoke
 
 ```bash
+# 1. 健康检查（包含 DB liveness）
 curl -s https://mosaiq-cloud-runtime.fly.dev/v1/health | jq
 ```
 
@@ -168,6 +197,7 @@ curl -s https://mosaiq-cloud-runtime.fly.dev/v1/health | jq
 ```json
 {
   "ok": true,
+  "db": { "ok": true },
   "pool": { "ready": 10, "busy": 0, "cap": 10 },
   "manager": "fly",
   "version": "0.11.0",
@@ -175,7 +205,28 @@ curl -s https://mosaiq-cloud-runtime.fly.dev/v1/health | jq
 }
 ```
 
-`manager: "fly"` 确认走的是 prod 路径。
+`manager: "fly"` 确认走的是 prod 路径；`db.ok: true` 确认 sqlite 也 alive。
+
+```bash
+# 2. metrics endpoint
+curl -s -H "Authorization: Bearer $METRICS_TOKEN" \
+     https://mosaiq-cloud-runtime.fly.dev/v1/metrics | head -50
+```
+
+期望前几行包含：
+```
+# HELP cloud_runtime_process_cpu_user_seconds_total ...
+# TYPE sessions_created_total counter
+sessions_created_total 0
+# TYPE auth_failures_total counter
+# TYPE rate_limit_denied_total counter
+# TYPE pool_state gauge
+pool_state{state="ready"} 10
+pool_state{state="busy"} 0
+pool_state{state="cap"} 10
+```
+
+没 token → 401，token 错 → 401，没设 `METRICS_TOKEN` env → 404（默认 disabled，prod 必须设）。
 
 ---
 
@@ -308,6 +359,45 @@ flyctl machine list -a mosaiq-browser-pod --json | jq '.[].id' -r | \
   xargs -I {} flyctl machine destroy --force {} -a mosaiq-browser-pod
 ```
 
+### Rate limit observability + 调整
+
+- **观测**：`rate_limit_denied_total{tier="strict|write|read"}` counter（在 `/v1/metrics`）。tier=strict 持续涨 ≈ 客户 SDK 在打 createSession；read 涨多半是 SDK getSession poll 太密。
+- **响应头**：每个成功请求带 `X-RateLimit-Limit` + `X-RateLimit-Remaining`，被拒的请求带 `Retry-After`（秒）。SDK 可以用这个做 backoff。
+- **调整 limit**：改 `fly.cloud-runtime.toml` 里 `RATE_LIMIT_STRICT_CAPACITY` / `RATE_LIMIT_STRICT_REFILL_PER_SEC`（write/read 同理）+ `flyctl deploy`。默认值已经在 toml 里：
+  - strict: capacity=10, refill=1/s  → 60/min 稳态
+  - write : capacity=30, refill=5/s  → 300/min
+  - read  : capacity=100, refill=16/s → 1000/min
+- **per-process scope**：限流是 in-memory，每个 cloud-runtime instance 各自一份。phase 11.4 上多实例时换 Redis / sqlite shared store。
+- **bucket key**：`tier:api_key_id`，不同 key 互不影响（防 dev SDK 拖死 prod）。
+
+### Metrics scraping (Prometheus / Grafana Cloud)
+
+```yaml
+# prometheus.yml（或 Grafana Cloud Hosted Prometheus 的 config）
+scrape_configs:
+  - job_name: mosaiq-cloud-runtime
+    scrape_interval: 30s
+    metrics_path: /v1/metrics
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/mosaiq-metrics-token   # 内容 = METRICS_TOKEN
+    static_configs:
+      - targets: ['mosaiq-cloud-runtime.fly.dev']
+```
+
+**关注的几个指标**：
+
+| 指标                                       | 类型      | 应当观察的趋势                                    |
+| ------------------------------------------ | --------- | ------------------------------------------------- |
+| `sessions_created_total`                   | counter   | rate() 应当 ≈ 业务 createSession 速率              |
+| `sessions_closed_total{reason="expired"}`  | counter   | 持续 > 0 说明 SDK 没 close session，有泄漏        |
+| `auth_failures_total{reason}`              | counter   | 突涨 = 有人在扫 token / SDK 配置错                |
+| `rate_limit_denied_total{tier}`            | counter   | 见上节                                            |
+| `pool_state{state="busy"}/state="cap"`     | gauge     | 接近 1 → 该扩 `FLY_MAX_MACHINES` / 升 Fly plan    |
+| `http_request_duration_seconds`            | histogram | p95 应该 < 500ms（createSession 除外，cold ~5-15s） |
+| `mm_acquire_duration_seconds`              | histogram | p95 > 30s 说明 Fly Machines API / chromium 启动慢 |
+
 ### Rotate secrets
 
 ```bash
@@ -414,19 +504,27 @@ flyctl tokens revoke <token-id>
 
 ## 11. 此 runbook 当前状态
 
-**Deploy-ready，未真实 dry-run。**
+**Deploy-ready，未真实 dry-run（账号 `ifly@163.com` 待跑第一次实际 deploy）。**
 
-phase 11.2 在 dev 机器（无 Fly account）写完，所有制品就绪：
-- `fly.browser-pod.toml`、`fly.cloud-runtime.toml` 配置完整
+phase 11.2 在 dev 机器写完，所有制品就绪：
+- `fly.browser-pod.toml`、`fly.cloud-runtime.toml` 配置完整（含 rate-limit + metrics env knobs）
 - `apps/cloud-runtime/src/admin/create-api-key.ts` 单测 5 个 case 全过
 - `FlyMachineManager`（`apps/cloud-runtime/src/machine/fly.ts`）11 单测 + 1 并发 race regression 测试全过（mocked Fly Machines API）
 - LocalDocker 拓扑同构验证过（GHA `cloud-runtime-e2e.yml` serial + concurrent smoke 全跑）
 - Session expiry reaper（`apps/cloud-runtime/src/jobs/session-expiry.ts`）13 单测全过；防 client crash 后 pool 永久泄漏
+- **prod hardening（本 phase 新加）**：
+  - `/v1/health` 加 `SELECT 1` DB liveness（fail → 503）
+  - CDP proxy ws lifecycle 周期 bump `last_seen_at`（连接时 + 60s 心跳 + close 时各一次）
+  - per-api-key rate limit（token bucket, 3 tier strict/write/read），429 + `Retry-After`
+  - `/v1/metrics` prom-client exposition，独立 `METRICS_TOKEN` bearer auth
+  - 全套 sessions_/auth_/rate_limit_/pool_/http_duration counters/gauges/histograms 已接入业务路径
+- `scripts/preflight-fly.ps1`：deploy 前本地 docker build + smoke 一键脚本
 
 第一次 fly deploy 时这份 runbook 应该 1:1 work。如果某一步打架，**优先怀疑 fly.toml 配置错误**（manager 代码已经经过 mocked + LocalDocker 双重验证），常见点：
 
 - volume name 跟 fly.cloud-runtime.toml `[[mounts]] source` 不一致 → mount 失败
 - `FLY_APP_NAME` secret 拼写错误 → manager 调 Machines API 404
 - `mosaiq-browser-pod` app 还没 deploy 镜像 → 新 machine 拉镜像失败
+- `METRICS_TOKEN` secret 漏设 → `/v1/metrics` 返 404，Prometheus scraper 收不到数据（业务功能不影响）
 
-Cross-region 部署、Postgres replication（取代 sqlite）、admin HTTP endpoint 取代 `flyctl ssh` admin script 等都是 phase 11.3+ 的事。
+Cross-region 部署、Postgres replication（取代 sqlite）、admin HTTP endpoint 取代 `flyctl ssh` admin script、Redis-shared rate limit（多实例时必要）都是 phase 11.3+ 的事。
