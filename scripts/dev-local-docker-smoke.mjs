@@ -40,11 +40,10 @@ const apiKey = process.env.MOSAIQ_API_KEY;
 const projectId = process.env.MOSAIQ_PROJECT_ID ?? 'proj_launchai';
 const requestTimeoutMs = process.env.MOSAIQ_REQUEST_TIMEOUT_MS ?? '90000';
 // MOSAIQ_METRICS_TOKEN: when set, smoke asserts /v1/metrics auth + body shape.
-// When unset, the new verifyProdSurface() step still runs but only asserts the
-// invariants that don't depend on the token (health.db.ok). Empty token means
-// the operator hasn't enabled /v1/metrics in the cloud-runtime env, which is
-// valid (endpoint returns 404 in that mode). Keeps backwards-compat with
-// older .env.cloud files that don't define MOSAIQ_METRICS_TOKEN.
+// When unset, the new verifyMetricsEndpoint() step still runs but only asserts
+// that the endpoint returns 404 (the "disabled by env" mode). The health.db.ok
+// assertion is unconditional and lives inside waitForHealth(). Keeps backwards-
+// compat with older .env.cloud files that don't define MOSAIQ_METRICS_TOKEN.
 const metricsToken = process.env.MOSAIQ_METRICS_TOKEN ?? '';
 
 if (!apiKey) {
