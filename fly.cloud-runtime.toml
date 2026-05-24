@@ -80,16 +80,23 @@ primary_region = "iad"
 
   # ─── Phase 11.3a stopped-machine pool ────────────────────────────────────
   # POOL_TARGET_SIZE 控制是否启用 pool（0 = 关，phase 11.2 cold-only 行为）。
-  # 上线策略（见 docs/PHASE-11.3-MACHINE-POOL.md §11 phased rollout）：
+  #
+  # 上线策略（4 步剧本见 docs/PHASE-11.3-MACHINE-POOL.md §7.1）：
   #   1. 先 deploy POOL_TARGET_SIZE=0 验证 phase 11.2 仍然绿灯（零回归）。
-  #   2. 调到 1：观察 6h，关注 pool_hits / pool_misses / 账单。
-  #   3. 调到 3：稳定后试一周流量。
-  #   4. 看 P50 / P95 是否真的从 ~40s 降到 ~22s；不达预期就回 0 + 调试。
+  #   2. `flyctl secrets set POOL_TARGET_SIZE=1`：观察 24h（secret 优先于
+  #      [env]，不需要 redeploy）。
+  #   3. 命中率 ≥ 80% → secrets set POOL_TARGET_SIZE=3，稳态 72h。
+  #   4. 仅在 > 100 sessions/day 时才考虑 5。
+  #
+  # 观测：`scripts/prod-pool-snapshot.ps1` 每阶段抓 1h / 6h / 24h 快照，
+  # 解析 5 个 pool counter + acquire histogram，本地 diff 算 hit rate +
+  # P50/P95（详见 §7.0）。**不**要求 Prometheus / Grafana 在位。
   #
   # 紧急回滚：`flyctl secrets set POOL_TARGET_SIZE=0 --app mosaiq-cloud-runtime`
-  # 然后 `flyctl machines restart`，pool 立即关闭，acquire 100% 回到 cold path。
+  # 自动重启 + pool 立即关闭，acquire 100% 回到 cold path。
   # （未消耗的 pool entry 会在 cloud-runtime shutdown 时被 destroy；下次启动
   # bootstrap 也会扫描并 evict 任何剩余的 mosaiq_pool=true machine。）
+  # 红线见 §7.2 — acquire >60s / prov_fail >20% / consume_failed 持续涨。
   POOL_TARGET_SIZE = "0"
   POOL_REPLENISH_INTERVAL_MS = "10000"
   POOL_REPLENISH_CONCURRENCY = "2"

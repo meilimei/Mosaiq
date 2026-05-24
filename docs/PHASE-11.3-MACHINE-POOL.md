@@ -327,16 +327,93 @@ pool_provision_duration_seconds    # 从 POST /machines 到 state=stopped 的耗
 
 ## 7. 灰度 + 回滚 plan
 
-### 7.1 prod 灰度
+### 7.0 观测路径（MVP）
 
-1. **Deploy with `POOL_TARGET_SIZE=0`**：代码上线但 pool 关掉。验证 `phase 11.2` 行为零回归（prod smoke 通过）。
-2. **`flyctl secrets set POOL_TARGET_SIZE=1`**：单台 pool entry，观察 metrics + log 24h。
-3. **`POOL_TARGET_SIZE=3`**：稳态。预期 hit rate ≥ 80%（每天 session 创建数 vs pool 补充速率）。
-4. **`POOL_TARGET_SIZE=5`**（如果业务量上去）。
+**不**搭 Prometheus + Grafana 整套基建（我们不是 SaaS at 1000 req/s）。改用 `scripts/prod-pool-snapshot.ps1`：每个阶段前后各抓一次 `/v1/metrics`、解析 5 个 pool counter + acquire histogram、本地 diff 算 hit rate / P50 / P95。够指导 4 步灰度决策。
+
+```powershell
+# 一次性：把 METRICS_TOKEN 放到环境变量（不要 commit）
+$env:METRICS_TOKEN = "<from flyctl secrets list>"
+
+# 抓快照
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "baseline-pool-0"
+
+# 输出 tmp/pool-snapshots/snapshot-<ts>-baseline-pool-0.json
+```
+
+### 7.1 prod 灰度（4 步执行剧本）
+
+**Step 1 — 基线 (POOL_TARGET_SIZE=0)**
+
+```powershell
+# 0a. 跑一波真实业务流量（至少 5-10 个 createSession，可用 prod-smoke-cloud.mjs）
+node scripts/prod-smoke-cloud.mjs
+# 0b. 抓基线快照（应看到 hit_rate=n/a, mean_acquire 反映 cold path ~40s）
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "baseline-pool-0"
+```
+
+**Step 2 — 启用 pool=1（最小风险）**
+
+```bash
+# 设 secret（secret 优先级 > [env] block, 重启自动生效, 不需要 redeploy）
+flyctl secrets set POOL_TARGET_SIZE=1 --app mosaiq-cloud-runtime
+
+# 等 ~30s 让 machine restart + bootstrap reconcile
+sleep 30
+
+# 确认 pool 起来了：应该看到 1 台 mosaiq_pool=true 的 stopped machine
+flyctl machine list --app mosaiq-browser-pod
+```
+
+```powershell
+# 跑业务流量，观察 acquire 是否变快
+node scripts/prod-smoke-cloud.mjs
+node scripts/prod-smoke-cloud.mjs    # 第 2 次应该命中 pool（如果第 1 次消耗后 pool 补到了）
+
+# 抓 1h / 6h / 24h 三个时间点的快照
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "pool-1-h1"
+# ... 6 小时后
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "pool-1-h6"
+# ... 24 小时后
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "pool-1-h24"
+```
+
+**Decision gate (Step 2 → 3)**：
+- `hit_rate_pct` ≥ 80% → 继续 Step 3
+- `prov_fail_rate_pct` < 5% → Fly API 健康
+- `evictions{max_age}` 速率 < 业务量 5x（pool 不在做无用功）
+- 任一不满足 → 留在 1 多观察 / 或回滚到 0 调试
+
+**Step 3 — 扩到 pool=3（稳态）**
+
+```bash
+flyctl secrets set POOL_TARGET_SIZE=3 --app mosaiq-cloud-runtime
+sleep 60   # bootstrap 时间稍长（要补到 3）
+flyctl machine list --app mosaiq-browser-pod   # 应看到 3 台 stopped
+```
+
+```powershell
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "pool-3-h24"
+powershell -File scripts/prod-pool-snapshot.ps1 -Label "pool-3-h72"
+```
+
+**Decision gate (Step 3 → 4)**：仅在持续 hit_rate ≥ 90% 且业务量 > 50 sessions/day 时才扩大。否则 3 是最优。
+
+**Step 4 — pool=5（仅当业务量 > 100 sessions/day）**
+
+```bash
+flyctl secrets set POOL_TARGET_SIZE=5 --app mosaiq-cloud-runtime
+```
 
 ### 7.2 回滚
 
-任何 issue 直接 `flyctl secrets set POOL_TARGET_SIZE=0` —— 不需要重新 deploy 代码。Pool 会停止补充，存量 entry 自然消耗或被 max-age evict。这就是为啥选 composition 而不是改 `FlyMachineManager` 内部行为：pool 完全是 opt-in 包装层。
+任何 issue 直接 `flyctl secrets set POOL_TARGET_SIZE=0 --app mosaiq-cloud-runtime` —— 不需要重新 deploy 代码。Pool 会停止补充，存量 entry 自然消耗或被 max-age evict。这就是为啥选 composition 而不是改 `FlyMachineManager` 内部行为：pool 完全是 opt-in 包装层。
+
+**触发回滚的红线**:
+- 任一 acquire 耗时 > 60s（pool 反而更慢，bug）
+- `prov_fail_rate_pct` > 20%（Fly API 故障，pool 在制造账单不增加价值）
+- `evictions{consume_failed}` 持续增长（pool entry 起不来，warm 路径变 cold + 1 次 destroy 调用）
+- 账单 6h 内超出 cold-only 基线 2x
 
 ### 7.3 紧急孤儿清理
 
@@ -347,6 +424,23 @@ flyctl machine list --app mosaiq-browser-pod --json \
   | jq -r '.[] | select(.state=="stopped") | .id' \
   | xargs -I {} flyctl machine destroy --force --app mosaiq-browser-pod {}
 ```
+
+（实际上 `POOL_BOOTSTRAP_EVICT_FOREIGN=true` 应该已经在每次 cloud-runtime 启动时自动清掉这些。这条命令是兜底。）
+
+### 7.4 快照对比（手工 diff）
+
+PowerShell 没内建 JSON diff，用 `Compare-Object` 处理简单字段：
+
+```powershell
+$base = Get-Content tmp/pool-snapshots/snapshot-*-baseline-pool-0.json | ConvertFrom-Json
+$pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertFrom-Json
+
+# Mean acquire 对比
+"$($base.summary.mean_acquire_sec)s -> $($pool.summary.mean_acquire_sec)s"
+# 比如 "40.2s -> 18.4s" = pool 工作了，砍掉 ~22s
+```
+
+实测数据填到 §11 验收标准下面的 "实测结果" 段。
 
 ---
 
@@ -385,15 +479,32 @@ flyctl machine list --app mosaiq-browser-pod --json \
 
 ## 11. 验收标准
 
-phase 11.3a 上线后须满足：
+### 11.1 代码侧（已完成）
 
-- [ ] 所有 cloud-runtime 单测绿（包括新加的 fly-pool.test.ts）。
-- [ ] `POOL_TARGET_SIZE=0` deploy 后 prod-smoke-cloud.mjs 跟 phase 11.2 完全等价（~40s cold）。
-- [ ] `POOL_TARGET_SIZE=3` deploy 后 prod-smoke-cloud.mjs warm 路径 ≤ 25s（从池 consume）。
-- [ ] `/v1/metrics` 暴露 pool_hits_total / pool_misses_total / pool_size{state}。
-- [ ] `flyctl machine list --app mosaiq-browser-pod` 持续显示 3 台 stopped（看 24h 是否稳态）。
-- [ ] cloud-runtime 重启 30s 内 pool 视图重建（log: `pool: bootstrap reconcile`）。
-- [ ] PHASE-11.3 runbook + memory 更新。
+- [x] 所有 cloud-runtime 单测绿（包括新加的 `fly-pool.test.ts` 24 个 + `routes/metrics.test.ts` 11 个，共 149/149）。
+- [x] `/v1/metrics` 暴露 `machine_pool_hits_total` / `machine_pool_misses_total{reason}` / `machine_pool_provisions_total{outcome}` / `machine_pool_evictions_total{reason}` / `machine_pool_entries{state}`。
+- [x] PHASE-11.3 runbook 编写。
+- [x] `fly.cloud-runtime.toml` POOL 默认值 + 灰度文档 inline。
+- [x] `scripts/prod-pool-snapshot.ps1` 灰度观测工具。
+
+### 11.2 prod 灰度（待执行 — §7.1 剧本）
+
+- [ ] **Step 1 baseline** ：`POOL_TARGET_SIZE=0` 下 prod-smoke 跑通 + 抓基线快照（应 ~40s mean acquire）。
+- [ ] **Step 2 pool=1** ：`flyctl secrets set POOL_TARGET_SIZE=1` 后 24h，hit_rate ≥ 80% 且 prov_fail_rate < 5%。
+- [ ] **Step 3 pool=3** ：扩到 3 后 72h，`flyctl machine list` 持续显示 3 台 stopped（稳态）。
+- [ ] **Step 4 (optional)** ：仅在 business volume > 100 sessions/day 时考虑 pool=5。
+- [ ] cloud-runtime 重启后 30s 内 pool 视图重建（log: `pool bootstrap reconcile done`）。
+
+### 11.3 实测结果（灰度执行时填）
+
+| Step | 时间 | mean acquire | P50 | P95 | hit_rate | prov fail | 决策 |
+|---|---|---|---|---|---|---|---|
+| baseline | TBD | TBD | TBD | TBD | n/a | n/a | → step 2 |
+| pool=1 @ 24h | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| pool=3 @ 24h | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| pool=3 @ 72h | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+
+**预期**: pool=3 稳态下 mean acquire 应从 ~40s 降到 ~22s（warm 路径主导）。如未达到，回 §7.2 红线诊断。
 
 ---
 
