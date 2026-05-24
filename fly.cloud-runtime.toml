@@ -74,6 +74,11 @@ primary_region = "iad"
   # ─── session policy ──────────────────────────────────────────────────────
   SESSION_TTL_DEFAULT_SECONDS = "1800"
   SESSION_TTL_MAX_SECONDS = "7200"
+  # Reaper 周期：每 30s 扫一次 sessions 表，把 expires_at 过期但 status='live'
+  # 的强制 release（防 client crash / 忘 close 导致 pool 泄漏）。30s/1800s ≈
+  # 1.7% 资源 over-allocation 上限，对 Fly machine 计费可接受。详见
+  # apps/cloud-runtime/src/jobs/session-expiry.ts。
+  SESSION_EXPIRY_INTERVAL_MS = "30000"
 
   # ─── public URL (used for cdp_public_url in createSession response) ──────
   PUBLIC_BASE_URL = "https://mosaiq-cloud-runtime.fly.dev"

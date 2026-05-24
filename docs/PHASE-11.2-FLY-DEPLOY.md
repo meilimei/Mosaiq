@@ -260,6 +260,33 @@ flyctl machine list -a mosaiq-browser-pod --json | \
   xargs -I {} flyctl machine destroy --force {} -a mosaiq-browser-pod
 ```
 
+### Session 过期自动清理（reaper job）
+
+控制平面启动时会跑一个内置 reaper：每 `SESSION_EXPIRY_INTERVAL_MS`（默认 30000ms）扫一次 sessions 表，把 `status='live'` 但 `expires_at < now()` 的 row 强制走完整 release（`fly machines destroy` + DB row 标 `closed`，`error_message='expired'`）。
+
+这是 prod 资源池防泄漏的最后一道防线 —— SDK / client 即使 crash 不调 `DELETE /v1/sessions/:id`，pod machine 也会在 TTL 过期 + 一个 reaper tick 之内被回收。
+
+观察 reaper 是否在跑：
+```bash
+flyctl logs -a mosaiq-cloud-runtime | grep -E 'session-expiry'
+# 看到这两类日志：
+#   "session-expiry job started"          — bootstrap 时一次
+#   "session-expiry: reaped expired sessions"  — 每 tick 找到 ≥1 条时
+# 没找到过期 session 的 tick 不打日志（避免噪音），属正常。
+```
+
+手动触发 reap（不需要 —— reaper 自己跑）；如果想 debug 某条 expired session 没被收，sql 直查：
+```bash
+flyctl ssh console -a mosaiq-cloud-runtime
+sqlite3 /data/cloud-runtime.db \
+  "SELECT id, machine_id, status, expires_at FROM sessions \
+   WHERE status IN ('live','requested') AND expires_at < datetime('now') \
+   ORDER BY expires_at LIMIT 20;"
+# reaper 下次 tick 应该全部清掉；如果不清，看 cloud-runtime 日志里 reaper warn。
+```
+
+调小 `SESSION_EXPIRY_INTERVAL_MS` 到 5000 可以让 prod 更激进回收（代价：sqlite 扫表 6× 变频），不建议设 < 1000ms（启动会被 env schema 拒）。
+
 ### 滚动升级 cloud-runtime
 
 普通 deploy 即可：
@@ -392,8 +419,9 @@ flyctl tokens revoke <token-id>
 phase 11.2 在 dev 机器（无 Fly account）写完，所有制品就绪：
 - `fly.browser-pod.toml`、`fly.cloud-runtime.toml` 配置完整
 - `apps/cloud-runtime/src/admin/create-api-key.ts` 单测 5 个 case 全过
-- `FlyMachineManager`（`apps/cloud-runtime/src/machine/fly.ts`）11 单测全过（mocked Fly Machines API）
-- LocalDocker 拓扑同构验证过（GHA `cloud-runtime-e2e.yml` 会跑）
+- `FlyMachineManager`（`apps/cloud-runtime/src/machine/fly.ts`）11 单测 + 1 并发 race regression 测试全过（mocked Fly Machines API）
+- LocalDocker 拓扑同构验证过（GHA `cloud-runtime-e2e.yml` serial + concurrent smoke 全跑）
+- Session expiry reaper（`apps/cloud-runtime/src/jobs/session-expiry.ts`）13 单测全过；防 client crash 后 pool 永久泄漏
 
 第一次 fly deploy 时这份 runbook 应该 1:1 work。如果某一步打架，**优先怀疑 fly.toml 配置错误**（manager 代码已经经过 mocked + LocalDocker 双重验证），常见点：
 
