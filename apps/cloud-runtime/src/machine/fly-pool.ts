@@ -19,6 +19,12 @@
  *   - 实现极简：pool 是一个生产者-消费者队列，不是复杂的对象池
  */
 
+import {
+  machinePoolEvictionsTotal,
+  machinePoolHitsTotal,
+  machinePoolMissesTotal,
+  machinePoolProvisionsTotal,
+} from '../metrics.js';
 import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
 import { FlyApiClient } from './fly-api.js';
@@ -178,6 +184,7 @@ export class FlyPooledMachineManager implements MachineManager {
     // ─── Try pool ─────────────────────────────────────────────────────
     const entry = this.#tryConsumePoolEntry();
     if (!entry) {
+      machinePoolMissesTotal.inc({ reason: 'starved' });
       log.debug({ poolSize: this.#pool.size }, 'pool: starved, falling back to cold');
       return this.#cold.acquire(spec);
     }
@@ -205,12 +212,15 @@ export class FlyPooledMachineManager implements MachineManager {
       });
 
       this.#poolAlive.set(entry.machineId, podOrigin);
+      machinePoolHitsTotal.inc();
       return {
         id: entry.machineId,
         podOrigin,
         cdpInternalUrl: rewriteCdpHost(podResp.cdpUrl, podOrigin),
       };
     } catch (err) {
+      machinePoolMissesTotal.inc({ reason: 'entry_failed' });
+      machinePoolEvictionsTotal.inc({ reason: 'consume_failed' });
       log.warn(
         { machineId: entry.machineId, cause: err instanceof Error ? err.message : String(err) },
         'pool: entry consume failed; destroying + fallback to cold',
@@ -263,6 +273,9 @@ export class FlyPooledMachineManager implements MachineManager {
     );
 
     // 销毁所有 pool entry（state 不管，都不再需要）
+    if (poolIds.length > 0) {
+      machinePoolEvictionsTotal.inc({ reason: 'shutdown' }, poolIds.length);
+    }
     await Promise.allSettled(poolIds.map((id) => this.#api.destroyMachine(id).catch(() => {})));
     this.#pool.clear();
 
@@ -319,6 +332,7 @@ export class FlyPooledMachineManager implements MachineManager {
             'pool bootstrap: destroy stale pool entry failed',
           );
         });
+        machinePoolEvictionsTotal.inc({ reason: 'bootstrap_stale' });
         evicted++;
       } else if (this.#bootstrapEvictForeign) {
         // 不是 pool entry，但 stopped 状态 → 孤儿（可能是上次 deploy 失败的残留）
@@ -328,6 +342,7 @@ export class FlyPooledMachineManager implements MachineManager {
             'pool bootstrap: destroy foreign stopped machine failed',
           );
         });
+        machinePoolEvictionsTotal.inc({ reason: 'bootstrap_foreign' });
         evicted++;
       }
     }
@@ -390,6 +405,7 @@ export class FlyPooledMachineManager implements MachineManager {
           'pool: stale entry destroy failed (will retry on its own tick)',
         );
       });
+      machinePoolEvictionsTotal.inc({ reason: 'max_age' });
       log.info({ machineId: id, ageMs: this.#maxAgeMs }, 'pool: evict stale entry');
     }
 
@@ -446,12 +462,14 @@ export class FlyPooledMachineManager implements MachineManager {
         createdAt: Date.now(),
         state: 'stopped',
       });
+      machinePoolProvisionsTotal.inc({ outcome: 'success' });
       log.info(
         { machineId: created.id, ip: created.private_ip },
         'pool: entry stopped + ready to consume',
       );
     } catch (err) {
       this.#pool.delete(placeholderId);
+      machinePoolProvisionsTotal.inc({ outcome: 'failed' });
       log.warn(
         { cause: err instanceof Error ? err.message : String(err) },
         'pool: provision failed (next tick will retry)',

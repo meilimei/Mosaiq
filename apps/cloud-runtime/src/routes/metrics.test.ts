@@ -56,6 +56,17 @@ class FakeMm implements MachineManager {
   async shutdown(): Promise<void> {}
 }
 
+/**
+ * Phase 11.3a 用：mock pool-introspectable manager。routes/metrics.ts 用
+ * duck-typing（hasInspectPool）判定，所以只要带这个方法就会刷 gauge。
+ */
+class FakePooledMm extends FakeMm {
+  poolCounts = { creating: 1, stopped: 2, consumed: 0, evicting: 0 };
+  inspectPool() {
+    return this.poolCounts;
+  }
+}
+
 beforeEach(async () => {
   process.env.DATABASE_URL = 'sqlite::memory:';
   process.env.SEED_API_KEY = '';
@@ -136,6 +147,28 @@ describe('/v1/metrics', () => {
     expect(text).toMatch(/pool_state\{state="ready"\}\s+3/);
     expect(text).toMatch(/pool_state\{state="busy"\}\s+1/);
     expect(text).toMatch(/pool_state\{state="cap"\}\s+5/);
+  });
+
+  it('Phase 11.3a: pool-introspectable manager → 刷新 machine_pool_entries gauge', async () => {
+    // 替换 FakeMm 成带 inspectPool 的版本
+    setMachineManagerForTesting(new FakePooledMm());
+
+    const app = createApp();
+    const r = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await r.text();
+    // FakePooledMm.inspectPool = { creating: 1, stopped: 2, ... }
+    expect(text).toMatch(/machine_pool_entries\{state="creating"\}\s+1/);
+    expect(text).toMatch(/machine_pool_entries\{state="stopped"\}\s+2/);
+  });
+
+  it('non-pool manager → machine_pool_entries 不被刷（duck-typing 跳过）', async () => {
+    // FakeMm 没有 inspectPool，scrape 时 hasInspectPool() → false，不刷
+    const app = createApp();
+    const r = await app.request('/v1/metrics', { headers: metricsH() });
+    expect(r.status).toBe(200);
+    const text = await r.text();
+    // gauge 没初始化过任何 series → 文本里不应有 machine_pool_entries{...} N
+    expect(text).not.toMatch(/^machine_pool_entries\{/m);
   });
 });
 

@@ -10,8 +10,16 @@
  *     所以无需 fake timers 控制 wall clock。
  */
 
+import type { Counter } from 'prom-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  machinePoolEvictionsTotal,
+  machinePoolHitsTotal,
+  machinePoolMissesTotal,
+  machinePoolProvisionsTotal,
+  resetMetricsForTesting,
+} from '../metrics.js';
 import { ApiError } from '../utils/errors.js';
 import {
   FlyPooledMachineManager,
@@ -925,16 +933,253 @@ describe('FlyPooledMachineManager — shutdown', () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────────
+// Phase 11.3a: pool metrics 断言。
+//
+// 不重复完整的端到端测试 —— 复用上面已经验证好的 fixture 模式，只在关键
+// transition 后断言 counter +1。`resetMetricsForTesting()` 让每个 test 从
+// 0 起，避免 series 污染。
+//
+// 读 counter 值用 prom-client 的 `.get()` API（异步返回 snapshot）。
+// 对 unlabeled counter，values[0].value 即总数；labeled counter 按 label 过滤。
+describe('FlyPooledMachineManager — metrics', () => {
+  beforeEach(() => resetMetricsForTesting());
+  afterEach(() => vi.clearAllMocks());
+
+  /** 读 unlabeled counter 当前值。 */
+  async function counterValue(c: Counter<string>): Promise<number> {
+    const snap = await c.get();
+    return snap.values.reduce((sum, v) => sum + v.value, 0);
+  }
+
+  /** 读 labeled counter 在指定 label set 下的值（找不到 → 0）。 */
+  async function labeledValue(
+    c: Counter<string>,
+    labels: Record<string, string>,
+  ): Promise<number> {
+    const snap = await c.get();
+    const match = snap.values.find((v) =>
+      Object.entries(labels).every(
+        ([k, val]) => (v.labels as Record<string, string | number>)[k] === val,
+      ),
+    );
+    return match?.value ?? 0;
+  }
+
+  it('pool starve → cold fallback increments machine_pool_misses_total{reason=starved}', async () => {
+    const { fetchImpl } = makeStubFetch(coldHappyPathRoutes('mch_cold', POD_IP_1));
+    const mm = manager(fetchImpl);
+
+    expect(await labeledValue(machinePoolMissesTotal, { reason: 'starved' })).toBe(0);
+    await mm.acquire(acquireSpec);
+
+    expect(await labeledValue(machinePoolMissesTotal, { reason: 'starved' })).toBe(1);
+    expect(await counterValue(machinePoolHitsTotal)).toBe(0);
+  });
+
+  it('warm path consume → increments machine_pool_hits_total', async () => {
+    const machineStates = new Map<string, string>([['mch_warm', 'stopped']]);
+    const { fetchImpl } = makeStubFetch([
+      {
+        match: (u, init) =>
+          init?.method === 'POST' && u === `${FLY_BASE}/apps/mosaiq-browser-pod-test/machines`,
+        handler: () =>
+          new Response(
+            JSON.stringify({ id: 'mch_warm', state: 'created', private_ip: POD_IP_1 }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_warm'),
+        handler: () =>
+          new Response(
+            JSON.stringify({
+              id: 'mch_warm',
+              state: machineStates.get('mch_warm') ?? 'stopped',
+              private_ip: POD_IP_1,
+            }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u, init) =>
+          init?.method === 'POST' && u.endsWith('/machines/mch_warm/start'),
+        handler: () => {
+          machineStates.set('mch_warm', 'started');
+          return new Response(null, { status: 200 });
+        },
+      },
+      {
+        match: (u) => u === `http://[${POD_IP_1}]:9222/healthz`,
+        handler: () => new Response('{}', { status: 200 }),
+      },
+      {
+        match: (u) => u === `http://[${POD_IP_1}]:9222/control/start`,
+        handler: () =>
+          new Response(
+            JSON.stringify({
+              cdpUrl: 'ws://0.0.0.0:9223/devtools/browser/warm-uuid',
+              machineId: 'mch_warm',
+            }),
+            { status: 200 },
+          ),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { poolTargetSize: 1 });
+    await mm.tickReplenish();
+    await waitForCondition(() => mm.inspectPool().stopped === 1, 1000);
+
+    expect(await counterValue(machinePoolHitsTotal)).toBe(0);
+    await mm.acquire(acquireSpec);
+
+    expect(await counterValue(machinePoolHitsTotal)).toBe(1);
+    // starved 不该被加（pool 命中）
+    expect(await labeledValue(machinePoolMissesTotal, { reason: 'starved' })).toBe(0);
+  });
+
+  it('successful provision → increments machine_pool_provisions_total{outcome=success}', async () => {
+    const { fetchImpl } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
+        handler: () =>
+          new Response(
+            JSON.stringify({ id: 'mch_p1', state: 'created', private_ip: POD_IP_1 }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_p1'),
+        handler: () =>
+          new Response(
+            JSON.stringify({ id: 'mch_p1', state: 'stopped', private_ip: POD_IP_1 }),
+            { status: 200 },
+          ),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { poolTargetSize: 1 });
+    expect(await labeledValue(machinePoolProvisionsTotal, { outcome: 'success' })).toBe(0);
+
+    await mm.tickReplenish();
+    await waitForCondition(() => mm.inspectPool().stopped === 1, 1000);
+
+    expect(await labeledValue(machinePoolProvisionsTotal, { outcome: 'success' })).toBe(1);
+    expect(await labeledValue(machinePoolProvisionsTotal, { outcome: 'failed' })).toBe(0);
+  });
+
+  it('failed provision → increments machine_pool_provisions_total{outcome=failed}', async () => {
+    const { fetchImpl } = makeStubFetch([
+      // POST /machines fails fast
+      {
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
+        handler: () => new Response('fly broke', { status: 500 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { poolTargetSize: 1 });
+    await mm.tickReplenish();
+    // tickReplenish kicks fire-and-forget; poll until provision settles
+    await waitForCondition(
+      async () =>
+        (await labeledValue(machinePoolProvisionsTotal, { outcome: 'failed' })) >= 1,
+      1000,
+    );
+
+    expect(await labeledValue(machinePoolProvisionsTotal, { outcome: 'failed' })).toBe(1);
+    expect(await labeledValue(machinePoolProvisionsTotal, { outcome: 'success' })).toBe(0);
+  });
+
+  it('bootstrap reconcile → increments evictions{bootstrap_stale} and {bootstrap_foreign}', async () => {
+    const machines = [
+      // pool-marked + image mismatch → bootstrap_stale
+      {
+        id: 'mch_old',
+        state: 'stopped',
+        private_ip: POD_IP_1,
+        config: {
+          metadata: {
+            [POOL_METADATA_KEY]: POOL_METADATA_VALUE,
+            [POOL_IMAGE_TAG_METADATA_KEY]: 'registry.fly.io/mosaiq-browser-pod:OLD',
+          },
+        },
+      },
+      // foreign stopped → bootstrap_foreign
+      { id: 'mch_foreign', state: 'stopped', private_ip: POD_IP_2, config: {} },
+    ];
+    const { fetchImpl } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'GET' && u.endsWith('/machines'),
+        handler: () => new Response(JSON.stringify(machines), { status: 200 }),
+      },
+      {
+        match: (u, init) => init?.method === 'DELETE' && u.includes('/machines/'),
+        handler: () => new Response(null, { status: 200 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { poolTargetSize: 5 });
+    await mm.bootstrap();
+
+    expect(await labeledValue(machinePoolEvictionsTotal, { reason: 'bootstrap_stale' })).toBe(1);
+    expect(await labeledValue(machinePoolEvictionsTotal, { reason: 'bootstrap_foreign' })).toBe(1);
+  });
+
+  it('shutdown with N pool entries → evictions{shutdown} += N', async () => {
+    let createCount = 0;
+    const { fetchImpl } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
+        handler: () => {
+          createCount++;
+          return new Response(
+            JSON.stringify({
+              id: `mch_s_${createCount}`,
+              state: 'created',
+              private_ip: POD_IP_1,
+            }),
+            { status: 200 },
+          );
+        },
+      },
+      {
+        match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_s_'),
+        handler: (u) => {
+          const id = u.split('/').at(-1)!;
+          return new Response(
+            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
+            { status: 200 },
+          );
+        },
+      },
+      {
+        match: (u, init) => init?.method === 'DELETE' && u.includes('/machines/mch_s_'),
+        handler: () => new Response(null, { status: 200 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { poolTargetSize: 2 });
+    await mm.tickReplenish();
+    await waitForCondition(() => mm.inspectPool().stopped >= 2, 1000);
+
+    expect(await labeledValue(machinePoolEvictionsTotal, { reason: 'shutdown' })).toBe(0);
+    await mm.shutdown();
+
+    // shutdown counter +N where N = pool size at shutdown time
+    expect(await labeledValue(machinePoolEvictionsTotal, { reason: 'shutdown' })).toBe(2);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────────────
 
 /** Poll a condition predicate until true or timeout. Used to await async fire-and-forget. */
 async function waitForCondition(
-  predicate: () => boolean,
+  predicate: () => boolean | Promise<boolean>,
   timeoutMs: number,
   pollMs = 5,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await new Promise((r) => setTimeout(r, pollMs));
   }
   throw new Error(`waitForCondition: predicate never became true within ${timeoutMs}ms`);

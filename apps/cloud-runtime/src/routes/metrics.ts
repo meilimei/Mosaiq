@@ -23,10 +23,32 @@
 import { Hono } from 'hono';
 
 import { loadEnv } from '../env.js';
-import { metricsRegistry, poolStateGauge } from '../metrics.js';
+import {
+  machinePoolEntriesGauge,
+  metricsRegistry,
+  poolStateGauge,
+} from '../metrics.js';
 import { getMachineManager } from '../machine/factory.js';
 
 export const metricsRoute = new Hono();
+
+/**
+ * Phase 11.3a 用：detect 当前 machine manager 是不是 FlyPooledMachineManager
+ * （有 inspectPool 方法）。是的话刷新 machine_pool_entries gauge。
+ *
+ * 用 duck-typing 而非 instanceof：避免 routes 层硬依赖 fly-pool 模块（在
+ * dev/static manager 下用不上，不想拉那段代码）。
+ */
+interface PoolIntrospectable {
+  inspectPool(): { creating: number; stopped: number; consumed: number; evicting: number };
+}
+function hasInspectPool(mm: unknown): mm is PoolIntrospectable {
+  return (
+    typeof mm === 'object' &&
+    mm !== null &&
+    typeof (mm as { inspectPool?: unknown }).inspectPool === 'function'
+  );
+}
 
 metricsRoute.get('/', async (c) => {
   const env = loadEnv();
@@ -46,10 +68,19 @@ metricsRoute.get('/', async (c) => {
 
   // pool_state gauge 在 scrape 时按需刷新（避免起背景定时器）
   try {
-    const pool = await getMachineManager().capacity();
-    poolStateGauge.set({ state: 'ready' }, pool.ready);
-    poolStateGauge.set({ state: 'busy' }, pool.busy);
-    poolStateGauge.set({ state: 'cap' }, pool.cap);
+    const mm = getMachineManager();
+    const cap = await mm.capacity();
+    poolStateGauge.set({ state: 'ready' }, cap.ready);
+    poolStateGauge.set({ state: 'busy' }, cap.busy);
+    poolStateGauge.set({ state: 'cap' }, cap.cap);
+
+    // Phase 11.3a：如果是 FlyPooledMachineManager，额外刷 machine_pool_entries gauge。
+    // 拿 creating + stopped 两个有意义的 state；consumed/evicting 是临时态没必要暴露。
+    if (hasInspectPool(mm)) {
+      const counts = mm.inspectPool();
+      machinePoolEntriesGauge.set({ state: 'creating' }, counts.creating);
+      machinePoolEntriesGauge.set({ state: 'stopped' }, counts.stopped);
+    }
   } catch {
     // mm 抛错就别更新 gauge —— 旧值仍可读，scrape 不能因为 mm 故障失败
   }

@@ -22,6 +22,14 @@
  *   http_request_duration_seconds{method,route,status_class} histogram
  *   mm_acquire_duration_seconds       histogram
  *
+ *   ── Phase 11.3a Fly stopped-machine pool ──
+ *   machine_pool_hits_total           counter (consume succeeded → fast path)
+ *   machine_pool_misses_total{reason} counter (reason=starved|entry_failed)
+ *   machine_pool_provisions_total{outcome} counter (outcome=success|failed)
+ *   machine_pool_evictions_total{reason}   counter
+ *     reason=max_age | bootstrap_stale | bootstrap_foreign | shutdown | consume_failed
+ *   machine_pool_entries{state}       gauge (state=creating|stopped) — refreshed at scrape
+ *
  * # 测试支持
  *
  *   `resetMetricsForTesting()` 清所有 series 让 test 之间不污染。
@@ -96,6 +104,52 @@ export const mmAcquireDurationSeconds = new Histogram({
   name: 'mm_acquire_duration_seconds',
   help: 'MachineManager.acquire 耗时（拨 fly machine + 等 chromium 起来）',
   buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 60],
+  registers: [metricsRegistry],
+});
+
+// ─── Phase 11.3a stopped-machine pool ──────────────────────────────────────
+//
+// 这些 counter/gauge 的目的：让 phased rollout（POOL_TARGET_SIZE 0 → 1 → 3）
+// 能基于实测信号决策，而不是猜：
+//   - pool_hits_total / pool_misses_total 比例 → 池实际命中率（要 > 80% 才值得调大）
+//   - pool_provisions_total{outcome=failed} → Fly Machines API 健康度
+//   - pool_evictions_total{max_age} → 池过期速率（调 POOL_MAX_AGE_SECONDS 依据）
+//   - mm_acquire_duration_seconds 已有；通过 hits 比例反推 P50/P95 下降幅度
+//
+// 不加 sessionId / machineId / region 等 label —— series 爆炸；reason / outcome
+// 等枚举字段值有限（≤6），cardinality 安全。
+
+export const machinePoolHitsTotal = new Counter({
+  name: 'machine_pool_hits_total',
+  help: 'phase 11.3a: pool consume 成功次数（acquire 走快路径，命中预热 entry）',
+  registers: [metricsRegistry],
+});
+
+export const machinePoolMissesTotal = new Counter({
+  name: 'machine_pool_misses_total',
+  help: 'phase 11.3a: pool consume 失败 → fallback cold path。reason=starved(池空) | entry_failed(entry 起不来)',
+  labelNames: ['reason'] as const,
+  registers: [metricsRegistry],
+});
+
+export const machinePoolProvisionsTotal = new Counter({
+  name: 'machine_pool_provisions_total',
+  help: 'phase 11.3a: pool entry provision 次数。outcome=success | failed',
+  labelNames: ['outcome'] as const,
+  registers: [metricsRegistry],
+});
+
+export const machinePoolEvictionsTotal = new Counter({
+  name: 'machine_pool_evictions_total',
+  help: 'phase 11.3a: pool entry destroy 次数。reason=max_age | bootstrap_stale | bootstrap_foreign | shutdown | consume_failed',
+  labelNames: ['reason'] as const,
+  registers: [metricsRegistry],
+});
+
+export const machinePoolEntriesGauge = new Gauge({
+  name: 'machine_pool_entries',
+  help: 'phase 11.3a: pool 当前 entry 数（按状态）。state=creating(provision 中) | stopped(ready to consume)',
+  labelNames: ['state'] as const,
   registers: [metricsRegistry],
 });
 
