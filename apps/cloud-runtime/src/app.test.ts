@@ -15,6 +15,7 @@ import { apiKeys, projects } from './db/schema.js';
 import { resetEnvCache } from './env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from './machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './machine/types.js';
+import { resetRateLimitStore } from './middleware/rate-limit.js';
 import { sha256Hex } from './utils/hash.js';
 import { newId } from './utils/ids.js';
 
@@ -68,7 +69,16 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   process.env.PUBLIC_BASE_URL = 'http://localhost:8787';
+  // 测试默认给宽松 rate-limit，避免无关 test 偶然 burst 越界。专门测限流的
+  // 用例自己在 beforeEach 里 override。
+  delete process.env.RATE_LIMIT_STRICT_CAPACITY;
+  delete process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC;
+  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
+  delete process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC;
+  delete process.env.RATE_LIMIT_READ_CAPACITY;
+  delete process.env.RATE_LIMIT_READ_REFILL_PER_SEC;
   resetEnvCache();
+  resetRateLimitStore();
   await ensureSchema();
 
   // 预先 seed 两个 project + 两个 api key
@@ -108,7 +118,7 @@ function authH(token = TEST_API_KEY): HeadersInit {
 }
 
 describe('GET /v1/health', () => {
-  it('200 ok 不需要 auth，回传 pool capacity', async () => {
+  it('200 ok 不需要 auth，回传 pool capacity + db.ok', async () => {
     const app = createApp();
     const resp = await app.request('/v1/health');
     expect(resp.status).toBe(200);
@@ -116,11 +126,69 @@ describe('GET /v1/health', () => {
       ok: boolean;
       version: string;
       machine_manager: string;
+      db: { ok: boolean; error?: string };
       pool: { ready: number; busy: number; cap: number };
     };
     expect(body.ok).toBe(true);
     expect(body.machine_manager).toBe('static');
+    expect(body.db).toEqual({ ok: true });
     expect(body.pool).toEqual({ ready: 1, busy: 0, cap: 1 });
+  });
+
+  it('mm.capacity 抛错 → 503 ok=false 带 mm_error', async () => {
+    // 装一个会在 capacity 上抛的 mm
+    const brokenMm: MachineManager = {
+      kind: 'static',
+      acquire: async () => {
+        throw new Error('not used in this test');
+      },
+      release: async () => {
+        /* */
+      },
+      capacity: async () => {
+        throw new Error('fly api outage');
+      },
+      shutdown: async () => {
+        /* */
+      },
+    };
+    setMachineManagerForTesting(brokenMm);
+
+    const app = createApp();
+    const resp = await app.request('/v1/health');
+    expect(resp.status).toBe(503);
+    const body = (await resp.json()) as {
+      ok: boolean;
+      db: { ok: boolean };
+      pool: unknown;
+      mm_error?: string;
+    };
+    expect(body.ok).toBe(false);
+    expect(body.db.ok).toBe(true); // DB 仍然 ok
+    expect(body.pool).toBeNull();
+    expect(body.mm_error).toContain('fly api outage');
+  });
+
+  it('sqlite 底层句柄已关（journal 损坏 / volume 掉线）→ 503 db.ok=false', async () => {
+    // 模拟"DB 进程在但 IO 全报错"——拿到 cached handle 后直接 close 底层
+    // sqlite，但不清 cached 缓存，让下次 getDb() 仍返回同一个（已 broken）
+    // handle，drizzle.all 会抛 "The database connection is not open"。
+    const handle = await getDb();
+    await handle.close();
+
+    const app = createApp();
+    const resp = await app.request('/v1/health');
+    expect(resp.status).toBe(503);
+    const body = (await resp.json()) as {
+      ok: boolean;
+      db: { ok: boolean; error?: string };
+    };
+    expect(body.ok).toBe(false);
+    expect(body.db.ok).toBe(false);
+    expect(body.db.error).toBeTruthy();
+
+    // afterEach 的 disposeDb 会再 close 一次 + 清缓存；better-sqlite3 close
+    // 是幂等的（已关再 close 不抛）。
   });
 });
 
@@ -338,5 +406,116 @@ describe('/v1/personas', () => {
       }),
     });
     expect(resp.status).toBe(201);
+  });
+});
+
+describe('rate limit middleware', () => {
+  // 配置极小 capacity 让 fire-fast 必中 429。refill 设很慢避免测试期间补齐。
+  beforeEach(() => {
+    process.env.RATE_LIMIT_STRICT_CAPACITY = '2';
+    process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC = '0.01'; // 1 token / 100s
+    process.env.RATE_LIMIT_READ_CAPACITY = '2';
+    process.env.RATE_LIMIT_READ_REFILL_PER_SEC = '0.01';
+    resetEnvCache();
+    resetRateLimitStore();
+  });
+
+  it('connectover read tier: 第 3 次 GET 同 key → 429 + Retry-After header', async () => {
+    const app = createApp();
+    // 先建一个 session 让 GET 能命中（也会消耗 strict bucket，无所谓）
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    const createResp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        persona: { id: 'win11-chrome-us' },
+      }),
+    });
+    expect(createResp.status).toBe(201);
+    const created = (await createResp.json()) as { id: string };
+
+    // 现在打 read tier：capacity=2 → 第 3 次必 429
+    const r1 = await app.request(`/v1/sessions/${created.id}`, { headers: authH() });
+    const r2 = await app.request(`/v1/sessions/${created.id}`, { headers: authH() });
+    const r3 = await app.request(`/v1/sessions/${created.id}`, { headers: authH() });
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r3.status).toBe(429);
+    // Retry-After header 应当在；refill=0.01/s ⇒ ~100s
+    const retryAfter = r3.headers.get('Retry-After');
+    expect(retryAfter).toBeTruthy();
+    expect(Number(retryAfter)).toBeGreaterThanOrEqual(1);
+    const body = (await r3.json()) as { error: { code: string; detail?: { tag?: string } } };
+    expect(body.error.code).toBe('rate.limit_exceeded');
+    expect(body.error.detail?.tag).toBe('read');
+  });
+
+  it('两个 api_key 各自独立桶，同 endpoint 不共享 limit', async () => {
+    const app = createApp();
+    // 先准备两个 session，各属于一个 project
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(OTHER_API_KEY),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    const c1 = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({ project_id: TEST_PROJECT_ID, persona: { id: 'win11-chrome-us' } }),
+    });
+    const c2 = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(OTHER_API_KEY),
+      body: JSON.stringify({ project_id: OTHER_PROJECT_ID, persona: { id: 'win11-chrome-us' } }),
+    });
+    expect(c1.status).toBe(201);
+    expect(c2.status).toBe(201);
+
+    // 把 TEST_API_KEY 的 read bucket 打爆
+    const id1 = ((await c1.json()) as { id: string }).id;
+    await app.request(`/v1/sessions/${id1}`, { headers: authH() });
+    await app.request(`/v1/sessions/${id1}`, { headers: authH() });
+    const denied = await app.request(`/v1/sessions/${id1}`, { headers: authH() });
+    expect(denied.status).toBe(429);
+
+    // OTHER_API_KEY 完全不受影响（独立 bucket）
+    const id2 = ((await c2.json()) as { id: string }).id;
+    const otherOk = await app.request(`/v1/sessions/${id2}`, { headers: authH(OTHER_API_KEY) });
+    expect(otherOk.status).toBe(200);
+  });
+
+  it('正常请求带 X-RateLimit-Limit / X-RateLimit-Remaining 可观察 headers', async () => {
+    const app = createApp();
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    const createResp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        persona: { id: 'win11-chrome-us' },
+      }),
+    });
+    const id = ((await createResp.json()) as { id: string }).id;
+    const r = await app.request(`/v1/sessions/${id}`, { headers: authH() });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('X-RateLimit-Limit')).toBe('2');
+    // Remaining 应当 ≤ capacity-1
+    const rem = Number(r.headers.get('X-RateLimit-Remaining'));
+    expect(rem).toBeGreaterThanOrEqual(0);
+    expect(rem).toBeLessThanOrEqual(1);
   });
 });

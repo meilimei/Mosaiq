@@ -15,6 +15,7 @@ export type ErrorCode =
   | 'request.not_found'
   | 'pool.exhausted'
   | 'pool.pod_unhealthy'
+  | 'rate.limit_exceeded'
   | 'session.not_found'
   | 'session.closed'
   | 'persona.not_found'
@@ -30,6 +31,7 @@ const statusByCode: Record<ErrorCode, number> = {
   'request.not_found': 404,
   'pool.exhausted': 503,
   'pool.pod_unhealthy': 503,
+  'rate.limit_exceeded': 429,
   'session.not_found': 404,
   'session.closed': 410,
   'persona.not_found': 404,
@@ -80,7 +82,7 @@ export function apiErrorBody(err: ApiError): {
  */
 export function handleApiError(err: Error, c: Context): Response {
   if (isApiError(err)) {
-    return c.json(apiErrorBody(err), err.status as 401 | 403 | 404 | 409 | 410 | 422 | 500 | 503);
+    return c.json(apiErrorBody(err), err.status as 401 | 403 | 404 | 409 | 410 | 422 | 429 | 500 | 503);
   }
   // unexpected: 不泄漏 stack 给客户端，只在日志里留下
   console.error('[cloud-runtime] unexpected error:', err);

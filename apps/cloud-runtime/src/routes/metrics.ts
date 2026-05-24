@@ -1,0 +1,59 @@
+/**
+ * GET /v1/metrics —— Prometheus exposition endpoint。
+ *
+ * # 鉴权
+ *
+ * 不复用 `bearerAuth`（API key 表）—— scraper 不应该有创建 session 的权限。
+ * 用独立的 `METRICS_TOKEN` env，留空时整个 endpoint 返 404（disabled）。
+ *
+ * Prometheus scrape config:
+ *   scrape_configs:
+ *     - job_name: mosaiq-cloud-runtime
+ *       authorization:
+ *         credentials: <METRICS_TOKEN>
+ *       static_configs:
+ *         - targets: [mosaiq-cloud-runtime.fly.dev]
+ *
+ * # 为啥放 /v1/metrics 而非 /metrics
+ *
+ * 走同一 Hono app（少配 1 条 server.on(...)），跟其他 /v1/* path 一致，
+ * fly proxy / TLS 一条规则全管。代价是 path 多 3 个字符，可接受。
+ */
+
+import { Hono } from 'hono';
+
+import { loadEnv } from '../env.js';
+import { metricsRegistry, poolStateGauge } from '../metrics.js';
+import { getMachineManager } from '../machine/factory.js';
+
+export const metricsRoute = new Hono();
+
+metricsRoute.get('/', async (c) => {
+  const env = loadEnv();
+  if (!env.METRICS_TOKEN) {
+    // disabled：当作不存在
+    return c.notFound();
+  }
+
+  const authz = c.req.header('Authorization') ?? c.req.header('authorization') ?? '';
+  if (!authz.toLowerCase().startsWith('bearer ')) {
+    return c.text('Unauthorized', 401);
+  }
+  const token = authz.slice(7).trim();
+  if (token !== env.METRICS_TOKEN) {
+    return c.text('Unauthorized', 401);
+  }
+
+  // pool_state gauge 在 scrape 时按需刷新（避免起背景定时器）
+  try {
+    const pool = await getMachineManager().capacity();
+    poolStateGauge.set({ state: 'ready' }, pool.ready);
+    poolStateGauge.set({ state: 'busy' }, pool.busy);
+    poolStateGauge.set({ state: 'cap' }, pool.cap);
+  } catch {
+    // mm 抛错就别更新 gauge —— 旧值仍可读，scrape 不能因为 mm 故障失败
+  }
+
+  const text = await metricsRegistry.metrics();
+  return c.text(text, 200, { 'Content-Type': metricsRegistry.contentType });
+});

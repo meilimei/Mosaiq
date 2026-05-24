@@ -17,6 +17,7 @@ import { getDb } from '../db/client.js';
 import { personas as personasTable } from '../db/schema.js';
 import { audit } from '../middleware/audit.js';
 import { getAuth } from '../middleware/auth.js';
+import { rateLimitTier } from '../middleware/rate-limit.js';
 import { ApiError } from '../utils/errors.js';
 import { parsePersona, type Persona } from '@mosaiq/persona-schema';
 
@@ -24,7 +25,7 @@ export const personasRoute = new Hono();
 
 // ─── POST /v1/personas ─────────────────────────────────────────────────────
 
-personasRoute.post('/', async (c) => {
+personasRoute.post('/', rateLimitTier('write'), async (c) => {
   const auth = getAuth(c);
   const body = await c.req.json().catch(() => null);
   let persona: Persona;
@@ -64,7 +65,7 @@ personasRoute.post('/', async (c) => {
 
 // ─── GET /v1/personas ──────────────────────────────────────────────────────
 
-personasRoute.get('/', async (c) => {
+personasRoute.get('/', rateLimitTier('read'), async (c) => {
   const auth = getAuth(c);
   const handle = await getDb();
   const rows = await handle.drizzle
@@ -90,7 +91,7 @@ personasRoute.get('/', async (c) => {
 
 // ─── GET /v1/personas/:id ──────────────────────────────────────────────────
 
-personasRoute.get('/:id', async (c) => {
+personasRoute.get('/:id', rateLimitTier('read'), async (c) => {
   const auth = getAuth(c);
   const id = c.req.param('id');
   const handle = await getDb();
@@ -129,7 +130,7 @@ personasRoute.get('/:id', async (c) => {
 
 // ─── DELETE /v1/personas/:id ───────────────────────────────────────────────
 
-personasRoute.delete('/:id', async (c) => {
+personasRoute.delete('/:id', rateLimitTier('write'), async (c) => {
   const auth = getAuth(c);
   const id = c.req.param('id');
   const handle = await getDb();

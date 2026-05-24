@@ -15,6 +15,7 @@ import { eq } from 'drizzle-orm';
 
 import { getDb } from '../db/client.js';
 import { apiKeys } from '../db/schema.js';
+import { authFailuresTotal } from '../metrics.js';
 import { ApiError } from '../utils/errors.js';
 import { sha256Hex } from '../utils/hash.js';
 import { getLogger } from '../utils/logger.js';
@@ -29,10 +30,12 @@ const AUTH_KEY = 'mosaiq:auth' as const;
 export const bearerAuth: MiddlewareHandler = async (c, next) => {
   const authz = c.req.header('Authorization') ?? c.req.header('authorization');
   if (!authz || !authz.toLowerCase().startsWith('bearer ')) {
+    authFailuresTotal.inc({ reason: 'missing' });
     throw new ApiError('auth.missing_token', 'missing or malformed Authorization header');
   }
   const token = authz.slice(7).trim();
   if (token.length < 8) {
+    authFailuresTotal.inc({ reason: 'invalid' });
     throw new ApiError('auth.invalid_key', 'token too short');
   }
 
@@ -48,9 +51,11 @@ export const bearerAuth: MiddlewareHandler = async (c, next) => {
 
   const row = rows[0];
   if (!row) {
+    authFailuresTotal.inc({ reason: 'invalid' });
     throw new ApiError('auth.invalid_key', 'unknown API key');
   }
   if (row.revokedAt) {
+    authFailuresTotal.inc({ reason: 'revoked' });
     throw new ApiError('auth.invalid_key', 'API key revoked', { revokedAt: row.revokedAt });
   }
 

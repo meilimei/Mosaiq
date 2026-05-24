@@ -45,6 +45,7 @@ import type { Logger } from 'pino';
 import { auditEvents, sessions as sessionsTable } from '../db/schema.js';
 import type { DbHandle } from '../db/client.js';
 import type { MachineManager } from '../machine/types.js';
+import { sessionsClosedTotal } from '../metrics.js';
 import { newId } from '../utils/ids.js';
 
 /**
@@ -150,6 +151,7 @@ export async function reapExpiredSessions(deps: {
     // 只有在乐观锁实际更新到这一行时才写 audit；如果 update no-op（DELETE
     // 抢先），则 DELETE handler 已经写过 'session.close' 了，不要重复写。
     if (updated.length > 0) {
+      sessionsClosedTotal.inc({ reason: 'expired' });
       await db.drizzle.insert(auditEvents).values({
         id: newId('aud'),
         projectId: row.projectId,

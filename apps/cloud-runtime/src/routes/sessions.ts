@@ -21,6 +21,12 @@ import { loadEnv } from '../env.js';
 import { getMachineManager } from '../machine/factory.js';
 import { audit } from '../middleware/audit.js';
 import { getAuth } from '../middleware/auth.js';
+import { rateLimitTier } from '../middleware/rate-limit.js';
+import {
+  mmAcquireDurationSeconds,
+  sessionsClosedTotal,
+  sessionsCreatedTotal,
+} from '../metrics.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
@@ -105,7 +111,7 @@ function shapeSession(row: typeof sessionsTable.$inferSelect, personaJson: Perso
 
 // ─── POST /v1/sessions ──────────────────────────────────────────────────────
 
-sessionsRoute.post('/', async (c) => {
+sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   const env = loadEnv();
   const auth = getAuth(c);
   const log = getLogger();
@@ -174,6 +180,7 @@ sessionsRoute.post('/', async (c) => {
 
   const mm = getMachineManager();
   let machine: Awaited<ReturnType<typeof mm.acquire>>;
+  const acquireStart = process.hrtime.bigint();
   try {
     machine = await mm.acquire({
       sessionId,
@@ -182,7 +189,10 @@ sessionsRoute.post('/', async (c) => {
       ttlSeconds: ttl,
       ...(viewport ? { viewport } : {}),
     });
+    mmAcquireDurationSeconds.observe(Number(process.hrtime.bigint() - acquireStart) / 1e9);
   } catch (err) {
+    // 失败也记 latency（同样的 series），让 ops 区分快速 fail vs 慢速 fail
+    mmAcquireDurationSeconds.observe(Number(process.hrtime.bigint() - acquireStart) / 1e9);
     audit(c, 'session.create', `session:${sessionId}`, 'errored', {
       cause: err instanceof Error ? err.message : String(err),
     });
@@ -227,12 +237,13 @@ sessionsRoute.post('/', async (c) => {
     throw new ApiError('internal.unknown', 'session row missing post-insert');
   }
 
+  sessionsCreatedTotal.inc();
   return c.json(shapeSession(row, persona, stealth), 201);
 });
 
 // ─── GET /v1/sessions/:id ───────────────────────────────────────────────────
 
-sessionsRoute.get('/:id', async (c) => {
+sessionsRoute.get('/:id', rateLimitTier('read'), async (c) => {
   const auth = getAuth(c);
   const id = c.req.param('id');
   const handle = await getDb();
@@ -272,7 +283,7 @@ sessionsRoute.get('/:id', async (c) => {
 
 // ─── DELETE /v1/sessions/:id ────────────────────────────────────────────────
 
-sessionsRoute.delete('/:id', async (c) => {
+sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
   const auth = getAuth(c);
   const id = c.req.param('id');
   const handle = await getDb();
@@ -298,6 +309,7 @@ sessionsRoute.delete('/:id', async (c) => {
       .update(sessionsTable)
       .set({ status: 'closed', closedAt: new Date().toISOString() })
       .where(eq(sessionsTable.id, id));
+    sessionsClosedTotal.inc({ reason: 'client' });
   }
 
   audit(c, 'session.close', `session:${id}`, 'ok');

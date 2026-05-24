@@ -64,6 +64,39 @@ const EnvSchema = z
      */
     SESSION_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(30_000),
 
+    // ─── Rate limit (token bucket per api_key_id) ───────────────────────────
+    //
+    // 三档配置 —— 严格 / 写 / 读，对应不同 cost 的 endpoint：
+    //
+    //   strict   createSession            （拨 fly machine + 启动 chromium，重）
+    //   write    DELETE / PATCH / persona create
+    //   read     GET                      （只读 sqlite，便宜）
+    //
+    // CAPACITY = bucket 容量 = 最大 burst；REFILL_PER_SEC = 稳态 RPS。
+    // 计算：稳态 = REFILL_PER_SEC * 60 次/分钟。
+    //
+    // 默认值参考：
+    //   strict 1 RPS (60/min) + burst 10  对应单 SDK 启动连开 10 session 然后稳定
+    //   write  5 RPS (300/min) + burst 30 一般写不会爆
+    //   read   16 RPS (≈1000/min) + 100 burst SDK getSession poll 不会被卡
+    //
+    // 运行时调整：改 secrets 然后重启 cloud-runtime 即可，无需 deploy。
+    RATE_LIMIT_STRICT_CAPACITY: z.coerce.number().int().min(1).max(10000).default(10),
+    RATE_LIMIT_STRICT_REFILL_PER_SEC: z.coerce.number().min(0.01).max(1000).default(1),
+    RATE_LIMIT_WRITE_CAPACITY: z.coerce.number().int().min(1).max(10000).default(30),
+    RATE_LIMIT_WRITE_REFILL_PER_SEC: z.coerce.number().min(0.01).max(1000).default(5),
+    RATE_LIMIT_READ_CAPACITY: z.coerce.number().int().min(1).max(10000).default(100),
+    RATE_LIMIT_READ_REFILL_PER_SEC: z.coerce.number().min(0.01).max(1000).default(16),
+
+    // ─── Metrics (prom-client /v1/metrics) ──────────────────────────────────
+    //
+    // METRICS_TOKEN 留空 → /v1/metrics 整个 disabled（return 404）。这是
+    // prod 默认安全姿态：必须显式开启才暴露指标。Prometheus scraper 用
+    // Authorization: Bearer <METRICS_TOKEN> 拉。
+    //
+    // 跟普通 API key 分离：scraper 只看指标，不应该有创建 session 的权限。
+    METRICS_TOKEN: z.string().default(''),
+
     PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
   })
   .superRefine((env, ctx) => {
