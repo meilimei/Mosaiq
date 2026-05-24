@@ -62,4 +62,22 @@ describe('buildChromiumFlags', () => {
     expect(flags).toContain('--window-size=1366,768');
     expect(flags).not.toContain('--window-size=1920,1080');
   });
+
+  it('emits no-dbus / no-desktop container flags (regression: prod chromium hung 18s on dbus)', () => {
+    const flags = buildChromiumFlags(baseInput);
+    // 2026-05-24 prod 部署回归：Fly firecracker / docker-without-dbus 镜像下 chromium
+    // 会在启动期反复尝试连 /run/dbus/system_bus_socket，每次失败累积可达 15s+。
+    // 下面这组 flags 关掉所有触发 dbus 的子系统。详见 persona-flags.ts 注释。
+    expect(flags).toContain('--no-first-run');
+    expect(flags).toContain('--no-default-browser-check');
+    expect(flags).toContain('--disable-background-networking');
+    expect(flags).toContain('--disable-sync');
+    expect(flags).toContain('--disable-default-apps');
+    expect(flags).toContain('--password-store=basic');
+    expect(flags).toContain('--use-mock-keychain');
+    // MediaRouter 走 dbus 探 Cast 设备 —— 必须合并到 --disable-features 里。
+    const disableFeatures = flags.find((f) => f.startsWith('--disable-features='));
+    expect(disableFeatures).toBeDefined();
+    expect(disableFeatures!).toContain('MediaRouter');
+  });
 });

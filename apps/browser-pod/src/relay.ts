@@ -4,7 +4,7 @@
  *
  * 网络拓扑：
  *
- *   cloud-runtime ── TCP ──→ pod:9223 (relay, 0.0.0.0)
+ *   cloud-runtime ── TCP ──→ pod:9223 (relay, :: dual-stack 默认；Fly 6PN 走 IPv6)
  *                                │ pipe
  *                                ▼
  *                            127.0.0.1:9224 (chromium 实际 CDP server)
@@ -25,7 +25,7 @@ import { createConnection, createServer, type Server, type Socket } from 'node:n
 import { getLogger } from './logger.js';
 
 export interface CdpRelayOptions {
-  /** relay 监听的 host —— 容器里通常 '0.0.0.0' 让外网可达。 */
+  /** relay 监听的 host —— 容器里默认 '::'（IPv6 dual-stack，让 Fly 6PN 可达）。 */
   listenHost: string;
   /** relay 监听的 port —— 即 POD_CDP_PORT，cloud-runtime 直连这个。 */
   listenPort: number;

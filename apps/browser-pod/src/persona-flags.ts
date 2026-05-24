@@ -55,7 +55,11 @@ export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
 
     // 反检测基础项（与 SDK launcher.ts 一致）
     '--disable-blink-features=AutomationControlled',
-    '--disable-features=IsolateOrigins,site-per-process',
+    // MediaRouter / Cast 启动时会通过 dbus 探测设备，在没有 dbus 的容器里（Fly
+    // firecracker / 多数 docker 镜像不带 dbus daemon）会卡 14 秒+ 才超时，把
+    // chromium 整体启动时间从 ~3s 拖到 ~18s。2026-05-24 prod 部署踩坑：合并到
+    // 同一个 --disable-features flag 里避免覆盖。
+    '--disable-features=IsolateOrigins,site-per-process,MediaRouter',
 
     // 容器友好（multi-tenant pod 必须开 --no-sandbox 因为 chromium 进程
     // 已经在 gVisor / Firecracker 里被沙箱了，再开内层 setuid sandbox 反而
@@ -63,6 +67,20 @@ export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
+
+    // ─── 无 dbus / 无桌面环境的容器启动优化 ──────────────────────────────────
+    // chromium 在没有 dbus daemon 的环境会反复尝试连 /run/dbus/system_bus_socket，
+    // 每次失败 1-2s，启动期累积可达 15s+。下面这组 flags 关掉所有触发 dbus 的
+    // 后台子系统，把启动时间从 ~18s 降到 ~3s。
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-default-apps',
+    // secret-service 走 dbus 找 gnome-keyring/kwallet，没桌面会 hang。
+    // basic = 全内存假 store，per-session 进程结束就丢，正好符合 pod 模型。
+    '--password-store=basic',
+    '--use-mock-keychain',
 
     // persona 派生
     `--lang=${persona.system.languages[0] ?? 'en-US'}`,

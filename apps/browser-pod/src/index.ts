@@ -3,8 +3,10 @@
  *
  * 启动顺序：
  *   1) loadEnv()
- *   2) 起 hono on POD_CONTROL_PORT (0.0.0.0)
- *   3) 起 CDP TCP relay on POD_CDP_PORT (0.0.0.0) → 127.0.0.1:POD_CDP_INTERNAL_PORT
+ *   2) 起 hono on POD_CONTROL_HOST:POD_CONTROL_PORT（默认 ::, IPv6 dual-stack）
+ *   3) 起 CDP TCP relay on POD_CDP_HOST:POD_CDP_PORT → 127.0.0.1:POD_CDP_INTERNAL_PORT
+ *      默认 也是 '::'，因为 Fly 机器间的 6PN 是 IPv6-only；cloud-runtime
+ *      走 `http://[fdaa:77:...]:9223` 连过来。详见 env.ts POD_CONTROL_HOST 注释。
  *      relay 在 chromium 启动之前就 listen 没问题 —— chromium 还没起时新连接会进
  *      relay 然后 upstream dial 失败立刻 destroy clientSock，cloud-runtime 看到
  *      ECONNRESET 触发重试；chromium ready 后 relay 一切如常。这避免 race window：
@@ -35,7 +37,7 @@ async function bootstrap() {
   let relay: CdpRelay | null = null;
   try {
     relay = await startCdpRelay({
-      listenHost: '0.0.0.0',
+      listenHost: env.POD_CDP_HOST,
       listenPort: env.POD_CDP_PORT,
       targetHost: '127.0.0.1',
       targetPort: env.POD_CDP_INTERNAL_PORT,

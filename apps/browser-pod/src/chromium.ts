@@ -50,8 +50,39 @@ export interface ChromiumSpawnInput {
 }
 
 const VERSION_POLL_INTERVAL_MS = 200;
+/** 捕获 chromium stderr/stdout 最后多少字节以备诊断（spawn 失败时随 error 一起报）。 */
+const STD_TAIL_BYTES = 16 * 1024;
 
 let current: { proc: ChildProcess; info: RunningChromium; cleanupTimer: NodeJS.Timeout | null } | null = null;
+
+/**
+ * Ring buffer式捕获 child process 输出。只保留最后的 STD_TAIL_BYTES，
+ * 不增长无限（chromium 生命周期同步，正常 ~30s，但 verbose 错误场景下可以几 MB）。
+ */
+class TailBuffer {
+  private chunks: string[] = [];
+  private size = 0;
+  append(chunk: Buffer): void {
+    const text = chunk.toString('utf8');
+    this.chunks.push(text);
+    this.size += text.length;
+    // 超过 2x 上限后 trim（避免每次 append 都走 trim）
+    if (this.size > STD_TAIL_BYTES * 2) this.trim();
+  }
+  private trim(): void {
+    while (this.size > STD_TAIL_BYTES && this.chunks.length > 1) {
+      const head = this.chunks.shift()!;
+      this.size -= head.length;
+    }
+  }
+  toString(): string {
+    this.trim();
+    const joined = this.chunks.join('');
+    return joined.length > STD_TAIL_BYTES
+      ? joined.slice(joined.length - STD_TAIL_BYTES)
+      : joined;
+  }
+}
 
 /** 解析 chromium 可执行路径。优先 env 覆盖，回退 playwright-core 默认。 */
 export function resolveChromiumExecutable(): string {
@@ -138,7 +169,25 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     'spawning chromium',
   );
 
-  const proc = spawn(exe, flags, { stdio: ['ignore', 'pipe', 'pipe'] });
+  // 关掉 chromium 对 dbus 的所有探测。Playwright base 镜像不含 dbus daemon，
+  // chromium 默认会反复尝试连 system bus（/run/dbus/system_bus_socket）和 session
+  // bus，每次失败有 1-5s 的内部 timeout，累积启动期可达 15s+。设这两个 env 让
+  // libdbus 直接当成 "无 bus"，所有探测立即失败而不重试。也覆盖 host 父进程可能
+  // 有的 dbus address，避免误连到一个 host 上无效的 bus address。
+  //
+  // value 'disabled:' 是 libdbus 内部约定（src/dbus-transport.c parse_address），
+  // 见到这个 transport name 就直接 return 不发起连接。空字符串也有同样效果但语义
+  // 不如 'disabled:' 清晰。详见 freedesktop dbus-daemon(1) ADDRESSES 段。
+  const chromiumEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    DBUS_SYSTEM_BUS_ADDRESS: 'disabled:',
+    DBUS_SESSION_BUS_ADDRESS: 'disabled:',
+  };
+  const proc = spawn(exe, flags, { stdio: ['ignore', 'pipe', 'pipe'], env: chromiumEnv });
+  // 捕获 stderr / stdout 到 ring buffer，供 spawn 失败时诊断（比如4 只丢 debug log
+  // 会被 prod LOG_LEVEL=info 吃掉，踩过坑）。
+  const stderrTail = new TailBuffer();
+  const stdoutTail = new TailBuffer();
   proc.on('error', (err) => {
     log.error({ err }, 'chromium process error');
   });
@@ -152,8 +201,12 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     }
   });
   proc.stderr?.on('data', (chunk: Buffer) => {
+    stderrTail.append(chunk);
     const text = chunk.toString('utf8').trim();
     if (text) log.debug({ chromiumStderr: text.slice(0, 500) }, 'chromium stderr');
+  });
+  proc.stdout?.on('data', (chunk: Buffer) => {
+    stdoutTail.append(chunk);
   });
 
   let internalCdpUrl: string;
@@ -164,8 +217,32 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
       env.POD_CHROMIUM_BOOT_TIMEOUT_MS,
     );
   } catch (err) {
+    // 抢救诊断：把 chromium stderr / stdout 以 error 级输出，并拼进抛出的
+    // error 的 detail 里（在 cloud-runtime/api 响应里可见）。Prod 现场看到
+    // `pod returned 500 / chromium /json/version did not become ready` 时靠这里
+    // 定位到 chromium 自己说了什么。
+    const stderrSnap = stderrTail.toString();
+    const stdoutSnap = stdoutTail.toString();
+    log.error(
+      {
+        machineId: input.machineId,
+        chromiumExe: exe,
+        chromiumFlags: flags,
+        chromiumStderr: stderrSnap,
+        chromiumStdout: stdoutSnap,
+      },
+      'chromium spawn failed; captured stderr/stdout below',
+    );
     proc.kill('SIGKILL');
-    throw err;
+    // Re-throw with diagnostic suffix — 控制平面会把这个 message 拼到
+    // /v1/sessions 响应 detail.body 里，使诊断无需 ssh 进机器。
+    const baseMsg = err instanceof Error ? err.message : String(err);
+    const tail = stderrSnap.trim().slice(-800);
+    throw new Error(
+      tail
+        ? `${baseMsg} | chromium stderr (last 800B): ${tail}`
+        : `${baseMsg} | chromium stderr was empty`,
+    );
   }
 
   // chromium 自报的 webSocketDebuggerUrl 形如 ws://127.0.0.1:<INTERNAL>/devtools/browser/<uuid>。
