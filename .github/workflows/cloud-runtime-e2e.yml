@@ -101,21 +101,30 @@ jobs:
           docker compose version
           docker info | head -20
 
-      # Generate a fresh .env.cloud with a random SEED_API_KEY for this run.
-      # Same shape as .env.cloud.example; docker compose picks it up via the
-      # ${SEED_API_KEY:-...} fallback inside docker-compose.local-docker.yml.
+      # Generate a fresh .env.cloud with a random SEED_API_KEY + METRICS_TOKEN
+      # for this run. Same shape as .env.cloud.example; docker compose picks
+      # them up via ${VAR:-default} fallbacks in docker-compose.local-docker.yml.
+      #
+      # METRICS_TOKEN is what dev-local-docker-smoke.mjs uses to assert the
+      # /v1/metrics prod-hardening regression gate (phase 11.2). Each run gets
+      # a fresh value so a leak in one log doesn't grant scrape access to a
+      # later run (defense-in-depth; tokens are step-scoped already).
       - name: Prepare .env.cloud
         id: env
         run: |
           set -euo pipefail
           SEED_API_KEY="msq_sk_dev_ci_$(openssl rand -hex 12)"
+          METRICS_TOKEN="msq_metrics_ci_$(openssl rand -hex 12)"
           cat > .env.cloud <<EOF
           SEED_PROJECT_ID=proj_launchai
           SEED_API_KEY=$SEED_API_KEY
+          MOSAIQ_METRICS_TOKEN=$METRICS_TOKEN
           EOF
           echo "::add-mask::$SEED_API_KEY"
+          echo "::add-mask::$METRICS_TOKEN"
           echo "seed_api_key=$SEED_API_KEY" >> "$GITHUB_OUTPUT"
-          echo ".env.cloud written (SEED_API_KEY masked above)"
+          echo "metrics_token=$METRICS_TOKEN" >> "$GITHUB_OUTPUT"
+          echo ".env.cloud written (SEED_API_KEY + METRICS_TOKEN masked above)"
 
       # `docker compose up --build -d` builds:
       #   - browser-pod-image service (multi-stage, ~5min cold, includes
@@ -128,11 +137,12 @@ jobs:
       # actually ready immediately).
       - name: docker compose up
         env:
-          # docker compose picks these up via ${SEED_API_KEY:-default} expansion
-          # in docker-compose.local-docker.yml. Could also use --env-file .env.cloud
+          # docker compose picks these up via ${VAR:-default} expansion in
+          # docker-compose.local-docker.yml. Could also use --env-file .env.cloud
           # but env vars override .env.cloud, which is what we want for CI.
           SEED_API_KEY: ${{ steps.env.outputs.seed_api_key }}
           SEED_PROJECT_ID: proj_launchai
+          MOSAIQ_METRICS_TOKEN: ${{ steps.env.outputs.metrics_token }}
         run: |
           set -euo pipefail
           docker compose -f docker-compose.local-docker.yml up --build -d
@@ -183,6 +193,9 @@ jobs:
           MOSAIQ_API_URL: http://127.0.0.1:8787
           MOSAIQ_API_KEY: ${{ steps.env.outputs.seed_api_key }}
           MOSAIQ_PROJECT_ID: proj_launchai
+          # Enables the /v1/metrics prod-hardening regression gate inside
+          # dev-local-docker-smoke.mjs (asserts 401 unauth + 200 + body shape).
+          MOSAIQ_METRICS_TOKEN: ${{ steps.env.outputs.metrics_token }}
         run: node scripts/dev-local-docker-smoke.mjs
 
       # On failure (or always — `if: always()`), dump compose state + each
