@@ -33,6 +33,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Lightweight guardrail against the "silent disable" class of CI bugs:
+  # a workflow file that fails to parse as YAML is silently dropped by
+  # GitHub Actions -- no email, no failed check, no badge red, the
+  # workflow just stops appearing in the runs list. A regression-test
+  # workflow that doesn't run is functionally worse than no workflow at
+  # all because everyone assumes coverage exists.
+  #
+  # Historical precedent: commit a5f4499 (phase 11.2 prod-hardening CI
+  # gate) corrupted .github/workflows/cloud-runtime-e2e.yml via an
+  # edit-tool footgun on GitHub Actions templating syntax. The broken
+  # workflow shipped to main and silently stopped running for ~10 min
+  # before discovery. This job catches that class of bug in <5s on every
+  # PR before merge.
+  #
+  # actionlint catches more (unknown action versions, expression-syntax
+  # errors) and could be added later; yaml.safe_load is the minimum
+  # viable gate against silent-disable specifically.
+  workflow-yaml-lint:
+    name: workflow YAML lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Python + PyYAML ship on ubuntu-latest runners by default; no
+      # apt-get / pip needed. If a future runner image drops PyYAML we
+      # can pin `pip install pyyaml` here.
+      - name: Validate all .github/workflows/*.yml parse
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import glob, sys, yaml
+          files = sorted(glob.glob('.github/workflows/*.yml'))
+          if not files:
+              sys.exit('no workflow files found -- working dir wrong?')
+          print(f'validating {len(files)} workflow file(s)')
+          failed = []
+          for f in files:
+              try:
+                  with open(f, encoding='utf-8') as fh:
+                      yaml.safe_load(fh)
+                  print(f'  OK   {f}')
+              except Exception as e:
+                  print(f'  FAIL {f}: {e}')
+                  failed.append(f)
+          if failed:
+              sys.exit(f'\n{len(failed)} workflow file(s) failed YAML parse: {failed}')
+          PY
+
   test:
     name: typecheck + test + drift check
     runs-on: ubuntu-latest
