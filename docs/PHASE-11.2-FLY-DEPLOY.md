@@ -431,42 +431,93 @@ flyctl tokens revoke <old-token-id>
 | `dist/admin/list-api-keys.js` | 列出 project 的所有 key（仅 metadata，绝不含 plaintext / hash）| ❌ 永远不会 |
 | `dist/admin/revoke-api-key.js` | 按 `apk_*` id 吊销，写 `revoked_at = ISO`（中间件 `auth.ts:57` 立刻拒绝）| n/a |
 
-#### 推荐流程（不让 plaintext 进 chat / shell history / process list）
+#### 推荐流程（已在 2026-05-25 真机演练验证 — dryrun key 跑通五个断言）
 
-```bash
-# 1) 在你的本地受信终端预生成 plaintext，写进 1Password / vault。
+**两个 gotcha 必看**：
+- `flyctl ssh -C "VAR=val cmd"` **不行** — flyctl 直接 `exec()` 命令而不经过 shell，`MOSAIQ_NEW_API_KEY=...` 会被当成可执行文件名。**必须**用 `sh -c '...'` 包一层。
+- Plaintext **会**短暂出现在你本机 `flyctl` 进程的 argv（PowerShell 把 `$plaintext` 展开后再传给 flyctl）。这在你**自己的受信本机**上是可接受的（不进 chat、不进 git、不跨网络明文）；如果你不放心，用下面的 §"严格模式"通过 stdin 注入。
+
+```powershell
+# 1) 本地受信终端预生成 plaintext。用 CSPRNG，不用 Get-Random（不是 CSPRNG）。
 #    ↓ 不要在共享屏 / chat 里跑这条
-$plaintext = 'msq_sk_live_' + (-join (1..22 | %{ '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'[(Get-Random -Max 62)] }))
-# 立刻保存到 1Password，再继续
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$bytes = New-Object byte[] 22
+$rng.GetBytes($bytes)
+$alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'  # 去掉 0/O/1/l/I 易混淆字符
+$body = -join ($bytes | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+$plaintext = "msq_sk_live_$body"
+# 立刻存进 1Password / Bitwarden，再继续下一步
 
-# 2) 注入容器（plaintext 仅经 stdin 走环境变量；不出现在 argv）
-$env:MOSAIQ_NEW_API_KEY = $plaintext
+# 2) 注入容器（用 sh -c 包一层；plaintext 会短暂在你本机 argv 内）
 flyctl ssh console -a mosaiq-cloud-runtime `
-  -C "MOSAIQ_NEW_API_KEY=$env:MOSAIQ_NEW_API_KEY MOSAIQ_QUIET=1 node dist/admin/create-api-key.js proj_launchai"
-# 输出 { status: 'created', apiKeyId, prefix, note: '--quiet: plaintext omitted' }
-# 不会回显 plaintext。
+  -C "sh -c 'MOSAIQ_NEW_API_KEY=$plaintext MOSAIQ_QUIET=1 node /app/dist/admin/create-api-key.js proj_launchai'"
+# 输出（实测）：
+# {
+#   "status": "created",
+#   "projectId": "proj_launchai",
+#   "apiKeyId": "apk_xxxxxxxxxxxxxxxxxxxxxx",
+#   "prefix": "msq_sk_live_<first 20 chars>",
+#   "note": "--quiet: plaintext omitted from stdout (caller-supplied; not echoed)"
+# }
+# 关键：JSON 里**没有** plaintext 字段，也没有 warning 字段（区别于默认模式）。
 
-# 3) LaunchAI / 客户端切到新 key 后，按 prefix / id 找到旧 key 并吊销
-flyctl ssh console -a mosaiq-cloud-runtime `
-  -C 'node dist/admin/list-api-keys.js proj_launchai'
-# 输出 [{ apiKeyId: 'apk_OLD...', prefix: 'msq_sk_live_LEAKED..', revokedAt: null, ... }, { apiKeyId: 'apk_NEW...', prefix: 'msq_sk_live_<new prefix>', ... }]
+# 3) 验证新 key 能用（auth-only check，不创建 session，零成本）
+$resp = Invoke-WebRequest `
+  -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/sessions?project_id=proj_launchai' `
+  -Headers @{ Authorization = "Bearer $plaintext" } -UseBasicParsing
+$resp.StatusCode  # 期望 200
+# (如果要跑完整 e2e 含 session create，用 scripts/prod-smoke-cloud.mjs，但会真起一台 Fly machine)
 
+# 4) 客户端 / LaunchAI 把 MOSAIQ_API_KEY 切到新 plaintext，确认线上业务正常后，列旧 key
 flyctl ssh console -a mosaiq-cloud-runtime `
-  -C 'node dist/admin/revoke-api-key.js apk_OLD_xxxxxxxxxxxxxxxxxxxxxx'
-# { status: 'revoked', apiKeyId, prefix, revokedAt: '...' }
-# 验证：旧 key 立刻 401 auth.invalid_key（`auth.ts:57` 检查 row.revokedAt）
+  -C 'node /app/dist/admin/list-api-keys.js proj_launchai'
+
+# 5) 吊销旧 key（每个泄漏的 id 都跑一次）
+flyctl ssh console -a mosaiq-cloud-runtime `
+  -C 'node /app/dist/admin/revoke-api-key.js apk_OLD_xxxxxxxxxxxxxxxxxxxxxx'
+# { status: 'revoked', apiKeyId, prefix, revokedAt: 'ISO ...' }
+
+# 6) 验证旧 key 立刻 401（auth 中间件 src/middleware/auth.ts:57 读 revokedAt）
+try {
+  Invoke-WebRequest -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/sessions?project_id=proj_launchai' `
+    -Headers @{ Authorization = 'Bearer msq_sk_live_OLD_LEAKED_KEY' } -UseBasicParsing
+} catch {
+  $_.Exception.Response.StatusCode.value__  # 期望 401
+  $_.ErrorDetails.Message  # 期望 {"error":{"code":"auth.invalid_key","message":"API key revoked","detail":{"revokedAt":"..."}}}
+}
+
+# 7) 抹掉本地 plaintext 变量
+Remove-Variable plaintext
 ```
+
+#### 严格模式（plaintext 绝对不进 argv — 适合极端审计需求）
+
+走 interactive ssh + `read -rs`（echo suppressed，stdin only）：
+
+```powershell
+# 生成 plaintext（同上 §1），然后：
+flyctl ssh console -a mosaiq-cloud-runtime
+# 进入容器 bash 后，手动输入：
+#   read -rs MOSAIQ_NEW_API_KEY   <-- 粘贴 plaintext，回车，无回显
+#   export MOSAIQ_NEW_API_KEY
+#   MOSAIQ_QUIET=1 node /app/dist/admin/create-api-key.js proj_launchai
+#   unset MOSAIQ_NEW_API_KEY
+#   history -c  # 清掉这个 session 的 bash history（虽然 read -rs 本来就不进 history）
+#   exit
+```
+
+代价：6 步纯手动，typo 风险高。常规 rotate 用上面的"推荐流程"即可，sh -c 路径已在 prod 跑通且 plaintext 暴露面只在你本机。
 
 #### 紧急吊销（已经泄漏，先封后补）
 
 如果你发现 plaintext 已经进 chat / log / git，**先吊销，再换**：
 
-```bash
+```powershell
 # 1) 拿 id（按 prefix 对照——prefix 是日志可见前缀，本身不敏感）
-flyctl ssh console -a mosaiq-cloud-runtime -C 'node dist/admin/list-api-keys.js proj_launchai'
+flyctl ssh console -a mosaiq-cloud-runtime -C 'node /app/dist/admin/list-api-keys.js proj_launchai'
 
-# 2) 立刻 revoke
-flyctl ssh console -a mosaiq-cloud-runtime -C 'node dist/admin/revoke-api-key.js apk_LEAKED_xxxxxxxxxxxxx'
+# 2) 立刻 revoke（每个泄漏 id 跑一次；幂等，再 revoke 一遍返 already_revoked + 不改时间戳）
+flyctl ssh console -a mosaiq-cloud-runtime -C 'node /app/dist/admin/revoke-api-key.js apk_LEAKED_xxxxxxxxxxxxx'
 
 # 3) 走上面"推荐流程"建替换 key
 ```
