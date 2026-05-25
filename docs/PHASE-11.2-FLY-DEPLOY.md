@@ -477,6 +477,59 @@ flyctl ssh console -a mosaiq-cloud-runtime -C 'node dist/admin/revoke-api-key.js
 
 ## 9. Troubleshooting
 
+### `flyctl deploy --local-only` 卡在 `dialing registry-1.docker.io:443`
+
+China 网络下 `docker.io` 经常无法直连，本地 Docker Desktop 拉不到 `node:20.18-bookworm-slim` base 镜像，build 在 stage `#2 [internal] load metadata for ...` 直接失败：
+
+```
+ERROR: failed to do request: Head "https://registry-1.docker.io/v2/library/node/manifests/20.18-bookworm-slim":
+  dialing registry-1.docker.io:443 ... A connection attempt failed because the connected party
+  did not properly respond after a period of time
+```
+
+**临时方案**：直接用 Fly remote builder（Fly 自家 depot 服务器在 us-east，拉 docker.io 没问题）：
+
+```powershell
+flyctl deploy --remote-only `
+  --config fly.cloud-runtime.toml `
+  --dockerfile apps/cloud-runtime/Dockerfile `
+  --app mosaiq-cloud-runtime
+```
+
+**长期方案**：给 Docker Desktop 配 registry mirror（settings → docker engine → `registry-mirrors: ["https://docker.mirrors.ustc.edu.cn"]`），或者拉一个企业 proxy。`.dockerignore`（commit `df5447d`）已经把 host node_modules / dist / .git 全部排除，上传基本只剩源码 + lockfile + patches，国内上传到 fly depot 也是可接受速度。
+
+### PowerShell 把 `flyctl` 成功也报成 "exit 1"
+
+`flyctl deploy` / `flyctl ssh console -C` 完成后 PowerShell 经常输出：
+
+```
+flyctl :
+所在位置 行:1 字符: 1
+    + CategoryInfo : NotSpecified: (...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+```
+
+并把 exit code 报成 1，**即使命令本身成功**。这是 PS 5.1 把 native command 写到 stderr 的任何行（包括 flyctl 的 banner + spinner）当成 `RemoteException` 包装的行为，跟 `$ErrorActionPreference = 'Stop'` 互相加成。
+
+**判断方法**：看实际 stdout 末尾的成功标志，**不**信 `$LASTEXITCODE`：
+- `flyctl deploy` 真正完成时 stdout 最后会有 `Visit your newly deployed app at https://...`
+- `flyctl ssh -C` 完成时 stdout 倒数第二行是命令输出，最后一行的 `Error: The handle is invalid.` 是 fly 退出时恢复 Windows console handle 的副作用，不是真错误
+- 终极证据：单独跑 `flyctl status -a <app>` 看 machine state + checks，看到 `started` + `1/1 passing` 就是真成功
+
+**永久缓解**：在 deploy 脚本里把 `flyctl` 输出 `2>&1` 合并到 stdout，再用关键字判定，**不**靠 exit code。
+
+### `flyctl ssh console -C` 输出乱码刷屏 `Connecting to ... 猓?`
+
+PS 5.1 在中文 Windows codepage 下把 fly 的 UTF-8 spinner 字符（`⡿ ⣟ ⣯ ⣷ ⣾ ⣽ ⣻ ⢿`）解码成乱码。只是显示问题，不影响命令执行 — 等到出现 `Connecting to fdaa:... complete` 那行之后才是真正的命令 stdout。
+
+### Image build 慢（better-sqlite3 编译两遍）
+
+观察到 build stage + deploy stage 各编译一次 better-sqlite3，每次 ~70s。`node:20.18-bookworm-slim` 是 debian glibc，better-sqlite3 12.x 应该有 prebuilt 但 npm registry 没返回。**不影响功能**，build 总时长仍在 3-4 min 内，pnpm-store cache 在第二次 build 时会复用。如果想优化：
+
+- 切到 `node:20-alpine` 并接受 musl 重编代价（不推荐 — alpine 上 better-sqlite3 prebuilt 更稀有）
+- 切到 base image 含预装 better-sqlite3 的 fork（维护成本高）
+- 给 pnpm install 加 `--prefer-offline` + cache hit 后跳过 install gypi（已经在做）
+
 ### `pool.exhausted` from createSession
 
 `FLY_MAX_MACHINES=10` 在 fly.cloud-runtime.toml [env]。dev 给 10，prod 想给更多就改这个值 + `flyctl deploy`。Fly org-level concurrent-machine 上限也可能在 ~25 起，需要升级 Fly plan。
