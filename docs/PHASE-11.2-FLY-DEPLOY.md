@@ -431,9 +431,40 @@ flyctl tokens revoke <old-token-id>
 | `dist/admin/list-api-keys.js` | 列出 project 的所有 key（仅 metadata，绝不含 plaintext / hash）| ❌ 永远不会 |
 | `dist/admin/revoke-api-key.js` | 按 `apk_*` id 吊销，写 `revoked_at = ISO`（中间件 `auth.ts:57` 立刻拒绝）| n/a |
 
-#### 推荐流程（已在 2026-05-25 真机演练验证 — dryrun key 跑通五个断言）
+#### 推荐流程（用 `scripts/rotate-api-key.ps1`，已在 2026-05-25 真机演练验证）
 
-**两个 gotcha 必看**：
+最简单的方式 — 直接跑封装脚本：
+
+```powershell
+# 1) 先 dry-run 看一下要做什么（不动 prod 任何状态）
+powershell -File scripts/rotate-api-key.ps1 `
+  -ProjectId proj_launchai `
+  -RevokeIds apk_OLD_1,apk_OLD_2 `
+  -DryRun
+
+# 2) 真跑（会停在两个确认点：plaintext 存进 vault 后按 y；客户端切完后按 y）
+powershell -File scripts/rotate-api-key.ps1 `
+  -ProjectId proj_launchai `
+  -RevokeIds apk_OLD_1,apk_OLD_2
+```
+
+脚本自动做这些事（顺序）：
+1. preflight 检查（flyctl on PATH、`/v1/health` 200）
+2. 本地 CSPRNG 生成新 plaintext，自动复制进剪贴板，弹"存进 1Password 了吗"提示
+3. 用 `sh -c` 包装 `flyctl ssh -C` 调 `create-api-key.js --quiet`（plaintext 经环境变量注入，不进 stdout）
+4. 解析响应里的 `apiKeyId / prefix`，校验**没有** `plaintext` 字段（防 admin 脚本回归）
+5. 用新 key 打 `/v1/sessions?project_id=...`，期望 HTTP 200（auth-only 探活，零成本，不起 Fly machine）
+6. 弹"客户端切完了吗"提示
+7. 按 `-RevokeIds` 一个一个 revoke，逐个打印 `revoked / already_revoked / not_found`
+8. 清掉本地 `$plaintext` + 剪贴板
+
+退出码：`0` 全成功 / `3` 用户在确认点拒绝 / `4` 部分 revoke 失败（如 `not_found`）/ `1` 其他错误 / `2` 参数错误。
+
+紧急吊销（已知泄漏，还没准备好换 key）：`-SkipNewKey` 跳过 step 2-6，只跑 revoke。
+
+#### 推荐流程（手工版本，备查）
+
+如果你要手动复刻脚本里发生的事（debug、审计、或者 PowerShell 不在手），看下面的纯命令版。**两个 gotcha 必看**：
 - `flyctl ssh -C "VAR=val cmd"` **不行** — flyctl 直接 `exec()` 命令而不经过 shell，`MOSAIQ_NEW_API_KEY=...` 会被当成可执行文件名。**必须**用 `sh -c '...'` 包一层。
 - Plaintext **会**短暂出现在你本机 `flyctl` 进程的 argv（PowerShell 把 `$plaintext` 展开后再传给 flyctl）。这在你**自己的受信本机**上是可接受的（不进 chat、不进 git、不跨网络明文）；如果你不放心，用下面的 §"严格模式"通过 stdin 注入。
 
