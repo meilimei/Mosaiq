@@ -123,18 +123,39 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<CreateApiK
   };
 }
 
-// CLI 入口 — 直接 `node dist/admin/create-api-key.js <projectId> [plaintext] [projectName]`
+// CLI 入口 — 直接 `node dist/admin/create-api-key.js <projectId> [plaintext] [projectName] [--quiet]`
+//
+// `--quiet` (or `MOSAIQ_QUIET=1`) suppresses the plaintext echo on
+// status=created. Only valid when the operator pre-supplied plaintext
+// (positional or `MOSAIQ_NEW_API_KEY`) — otherwise we'd silently destroy
+// the only copy of a freshly-generated key. The script hard-errors in
+// that footgun case so it's caught before disposing the DB.
 if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
-  const projectId = process.argv[2] ?? process.env.MOSAIQ_PROJECT_ID;
-  const plaintext = process.argv[3] ?? process.env.MOSAIQ_NEW_API_KEY;
-  const projectName = process.argv[4] ?? process.env.MOSAIQ_PROJECT_NAME;
+  const allArgs = process.argv.slice(2);
+  const flags = new Set(allArgs.filter((a) => a.startsWith('--')));
+  const positional = allArgs.filter((a) => !a.startsWith('--'));
+
+  const projectId = positional[0] ?? process.env.MOSAIQ_PROJECT_ID;
+  const plaintext = positional[1] ?? process.env.MOSAIQ_NEW_API_KEY;
+  const projectName = positional[2] ?? process.env.MOSAIQ_PROJECT_NAME;
+  const quiet = flags.has('--quiet') || process.env.MOSAIQ_QUIET === '1';
 
   if (!projectId) {
     console.error(
-      'usage: node admin/create-api-key.js <projectId> [<plaintextKey>] [<projectName>]',
+      'usage: node admin/create-api-key.js <projectId> [<plaintextKey>] [<projectName>] [--quiet]',
     );
     console.error(
-      '   or: MOSAIQ_PROJECT_ID=... [MOSAIQ_NEW_API_KEY=...] [MOSAIQ_PROJECT_NAME=...] node ...',
+      '   or: MOSAIQ_PROJECT_ID=... [MOSAIQ_NEW_API_KEY=...] [MOSAIQ_PROJECT_NAME=...] [MOSAIQ_QUIET=1] node ...',
+    );
+    process.exit(2);
+  }
+
+  if (quiet && !plaintext) {
+    console.error(
+      '[admin/create-api-key] --quiet requires a caller-supplied plaintext (positional arg or MOSAIQ_NEW_API_KEY).',
+    );
+    console.error(
+      '  Without plaintext, a fresh key would be generated and silently discarded — refusing to do that.',
     );
     process.exit(2);
   }
@@ -142,20 +163,20 @@ if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
   try {
     const result = await createApiKey({ projectId, plaintext, projectName });
     if (result.status === 'created') {
-      console.log(
-        JSON.stringify(
-          {
-            status: 'created',
-            projectId: result.projectId,
-            apiKeyId: result.apiKeyId,
-            prefix: result.prefix,
-            plaintext: result.plaintext,
-            warning: 'STORE THE PLAINTEXT NOW — IT IS NOT RECOVERABLE',
-          },
-          null,
-          2,
-        ),
-      );
+      const payload: Record<string, unknown> = {
+        status: 'created',
+        projectId: result.projectId,
+        apiKeyId: result.apiKeyId,
+        prefix: result.prefix,
+      };
+      if (quiet) {
+        payload.note =
+          '--quiet: plaintext omitted from stdout (caller-supplied; not echoed)';
+      } else {
+        payload.plaintext = result.plaintext;
+        payload.warning = 'STORE THE PLAINTEXT NOW — IT IS NOT RECOVERABLE';
+      }
+      console.log(JSON.stringify(payload, null, 2));
     } else {
       console.log(
         JSON.stringify(

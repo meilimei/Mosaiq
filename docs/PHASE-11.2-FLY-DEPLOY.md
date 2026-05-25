@@ -265,6 +265,8 @@ flyctl ssh console -a mosaiq-cloud-runtime \
 
 幂等：同一 plaintext 跑第二次返回 `status: "exists"`、不输出 plaintext。
 
+> **零泄漏推荐**：常规 bootstrap / rotate **务必** 走 `--quiet` 模式，让 admin 脚本完全不回显 plaintext（caller 必须经 `MOSAIQ_NEW_API_KEY` 预供给）。配套工具：`dist/admin/list-api-keys.js`（仅 metadata，绝不含 plaintext / hash）和 `dist/admin/revoke-api-key.js`（按 `apk_*` id 吊销）。完整零泄漏剧本见 §8 → "Rotate API key（业务级，零泄漏流程）"。
+
 ---
 
 ## 7. 端到端验证（SDK e2e smoke）
@@ -418,19 +420,58 @@ flyctl tokens list
 flyctl tokens revoke <old-token-id>
 ```
 
-### Rotate API key（业务级）
+### Rotate API key（业务级，零泄漏流程）
+
+旧的 stop-gap（直接 SQL UPDATE）已被 phase 11.3 的 admin 工具替换。完整工具链：
+
+| 工具 | 作用 | 是否输出 plaintext |
+| --- | --- | --- |
+| `dist/admin/create-api-key.js`（默认）| 建 key + echo plaintext | ✅ stdout 一次 |
+| `dist/admin/create-api-key.js --quiet` | 建 key，**不**回显 plaintext（要求 caller 预生成）| ❌ |
+| `dist/admin/list-api-keys.js` | 列出 project 的所有 key（仅 metadata，绝不含 plaintext / hash）| ❌ 永远不会 |
+| `dist/admin/revoke-api-key.js` | 按 `apk_*` id 吊销，写 `revoked_at = ISO`（中间件 `auth.ts:57` 立刻拒绝）| n/a |
+
+#### 推荐流程（不让 plaintext 进 chat / shell history / process list）
 
 ```bash
-# 建新 key
-flyctl ssh console -a mosaiq-cloud-runtime \
-  -C 'node dist/admin/create-api-key.js proj_launchai'
+# 1) 在你的本地受信终端预生成 plaintext，写进 1Password / vault。
+#    ↓ 不要在共享屏 / chat 里跑这条
+$plaintext = 'msq_sk_live_' + (-join (1..22 | %{ '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'[(Get-Random -Max 62)] }))
+# 立刻保存到 1Password，再继续
 
-# 把新 plaintext 给 LaunchAI / 客户端，等他们切完，再吊销旧 key
-# (revoke 工具是 phase 11.3 的事；现在的 stop-gap：
-#   flyctl ssh console -a mosaiq-cloud-runtime
-#   sqlite3 /data/cloud-runtime.db "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP WHERE id = 'apk_xxx';"
-# )
+# 2) 注入容器（plaintext 仅经 stdin 走环境变量；不出现在 argv）
+$env:MOSAIQ_NEW_API_KEY = $plaintext
+flyctl ssh console -a mosaiq-cloud-runtime `
+  -C "MOSAIQ_NEW_API_KEY=$env:MOSAIQ_NEW_API_KEY MOSAIQ_QUIET=1 node dist/admin/create-api-key.js proj_launchai"
+# 输出 { status: 'created', apiKeyId, prefix, note: '--quiet: plaintext omitted' }
+# 不会回显 plaintext。
+
+# 3) LaunchAI / 客户端切到新 key 后，按 prefix / id 找到旧 key 并吊销
+flyctl ssh console -a mosaiq-cloud-runtime `
+  -C 'node dist/admin/list-api-keys.js proj_launchai'
+# 输出 [{ apiKeyId: 'apk_OLD...', prefix: 'msq_sk_live_LEAKED..', revokedAt: null, ... }, { apiKeyId: 'apk_NEW...', prefix: 'msq_sk_live_<new prefix>', ... }]
+
+flyctl ssh console -a mosaiq-cloud-runtime `
+  -C 'node dist/admin/revoke-api-key.js apk_OLD_xxxxxxxxxxxxxxxxxxxxxx'
+# { status: 'revoked', apiKeyId, prefix, revokedAt: '...' }
+# 验证：旧 key 立刻 401 auth.invalid_key（`auth.ts:57` 检查 row.revokedAt）
 ```
+
+#### 紧急吊销（已经泄漏，先封后补）
+
+如果你发现 plaintext 已经进 chat / log / git，**先吊销，再换**：
+
+```bash
+# 1) 拿 id（按 prefix 对照——prefix 是日志可见前缀，本身不敏感）
+flyctl ssh console -a mosaiq-cloud-runtime -C 'node dist/admin/list-api-keys.js proj_launchai'
+
+# 2) 立刻 revoke
+flyctl ssh console -a mosaiq-cloud-runtime -C 'node dist/admin/revoke-api-key.js apk_LEAKED_xxxxxxxxxxxxx'
+
+# 3) 走上面"推荐流程"建替换 key
+```
+
+吊销是逻辑删除（保留 row + key_hash），所以可审计。**真物理 delete** 仅在 §9 灾难恢复 `rm /data/cloud-runtime.db` 才会发生。
 
 ---
 
