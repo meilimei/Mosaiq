@@ -439,21 +439,23 @@ flyctl tokens revoke <old-token-id>
 # 1) 先 dry-run 看一下要做什么（不动 prod 任何状态）
 powershell -File scripts/rotate-api-key.ps1 `
   -ProjectId proj_launchai `
-  -RevokeIds apk_OLD_1,apk_OLD_2 `
+  -RevokeIds apk_OLD_1 apk_OLD_2 `
   -DryRun
 
 # 2) 真跑（会停在两个确认点：plaintext 存进 vault 后按 y；客户端切完后按 y）
 powershell -File scripts/rotate-api-key.ps1 `
   -ProjectId proj_launchai `
-  -RevokeIds apk_OLD_1,apk_OLD_2
+  -RevokeIds apk_OLD_1 apk_OLD_2
 ```
+
+> ⚠️ **多 id 用空格分隔，不要用逗号**。`powershell -File` 以 cmd argv 方式传参，`-RevokeIds apk_A,apk_B` 会被当作**单个**带逗号的字符串而不是 2 元素数组（2026-05-25 真机踩过坑，导致两个 leaked key 都没被吊销）。脚本现在做了 defensive split 兼容逗号写法，但**空格分隔**才是 PS 推荐的传 `string[]` 方式。
 
 脚本自动做这些事（顺序）：
 1. preflight 检查（flyctl on PATH、`/v1/health` 200）
 2. 本地 CSPRNG 生成新 plaintext，自动复制进剪贴板，弹"存进 1Password 了吗"提示
 3. 用 `sh -c` 包装 `flyctl ssh -C` 调 `create-api-key.js --quiet`（plaintext 经环境变量注入，不进 stdout）
 4. 解析响应里的 `apiKeyId / prefix`，校验**没有** `plaintext` 字段（防 admin 脚本回归）
-5. 用新 key 打 `/v1/sessions?project_id=...`，期望 HTTP 200（auth-only 探活，零成本，不起 Fly machine）
+5. 用新 key 打 `/v1/personas`，期望 HTTP 200（auth-only 探活，零成本，不起 Fly machine）
 6. 弹"客户端切完了吗"提示
 7. 按 `-RevokeIds` 一个一个 revoke，逐个打印 `revoked / already_revoked / not_found`
 8. 清掉本地 `$plaintext` + 剪贴板

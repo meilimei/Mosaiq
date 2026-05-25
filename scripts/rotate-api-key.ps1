@@ -83,6 +83,36 @@ if ($SkipNewKey -and -not $RevokeIds) {
   exit 2
 }
 
+# ---- defensive normalization of -RevokeIds ---------------------------------
+# Gotcha: `powershell -File script.ps1 -RevokeIds apk_A,apk_B` passes the args
+# as raw cmd-style strings (NOT PS-native), so `apk_A,apk_B` arrives as a single
+# string element containing the comma -- not as a 2-element string[]. PS only
+# treats `,` as the array operator when the invocation goes through PS parser
+# directly (e.g., dot-sourced or `&` invocation). The 2026-05-25 prod rotation
+# hit this -- the script tried to revoke a literal id `apk_A,apk_B` and got
+# `not_found`, leaving both leaked keys active.
+#
+# Fix: split any element on comma, trim whitespace, drop empties. Idempotent
+# for already-correct array input (the per-element split is a no-op when there
+# is no comma).
+if ($RevokeIds.Count -gt 0) {
+  $RevokeIds = @(
+    $RevokeIds |
+      ForEach-Object { $_ -split ',' } |
+      ForEach-Object { $_.Trim() } |
+      Where-Object { $_ -ne '' }
+  )
+  # Sanity: every id should look like apk_*. If any element fails the shape
+  # check, bail before we hand garbage to revoke-api-key.js.
+  foreach ($id in $RevokeIds) {
+    if ($id -notmatch '^apk_[A-Za-z0-9_]+$') {
+      Write-Host "[ERR] -RevokeIds element '$id' does not look like an apk_* id." -ForegroundColor Red
+      Write-Host '      Expected form: apk_<22-char-base58>. Pass each id either space-separated or comma-separated.'
+      exit 2
+    }
+  }
+}
+
 # flyctl on PATH?
 try {
   $null = Get-Command flyctl -ErrorAction Stop
