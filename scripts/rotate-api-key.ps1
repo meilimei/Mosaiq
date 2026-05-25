@@ -60,7 +60,13 @@ param(
   [string]   $BaseUrl        = 'https://mosaiq-cloud-runtime.fly.dev',
   [switch]   $SkipNewKey,
   [switch]   $SkipClipboard,
-  [switch]   $DryRun
+  [switch]   $DryRun,
+
+  # CAUTION: -NonInteractive skips the two human safety gates (vault-storage
+  # confirmation + client-cutover confirmation). Use for CI / automated tests
+  # only, never for an interactive operator running an actual rotation. Pairs
+  # well with $env:MOSAIQ_TEST_PLAINTEXT for full hands-off e2e tests.
+  [switch]   $NonInteractive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,9 +78,8 @@ function Write-Step {
   Write-Host $Msg
 }
 
-if (-not $SkipNewKey -and -not $RevokeIds -and -not $DryRun) {
-  Write-Host '[ERR] At least one of -RevokeIds or -SkipNewKey must be specified.' -ForegroundColor Red
-  Write-Host '      Bare rotation with nothing to revoke = use admin/create-api-key.js directly.'
+if ($SkipNewKey -and -not $RevokeIds) {
+  Write-Host '[ERR] -SkipNewKey with no -RevokeIds = nothing to do.' -ForegroundColor Red
   exit 2
 }
 
@@ -211,6 +216,10 @@ function Read-OperatorConfirmation {
     Write-Step 'prompt' "DRY-RUN: would prompt -- $Prompt (auto-confirming)" 'Yellow'
     return $true
   }
+  if ($NonInteractive) {
+    Write-Step 'prompt' "NON-INTERACTIVE: $Prompt -> auto-y (safety gate bypassed)" 'Yellow'
+    return $true
+  }
   $resp = Read-Host -Prompt "$Prompt [y/N]"
   return ($resp -eq 'y' -or $resp -eq 'Y')
 }
@@ -222,8 +231,15 @@ $newApiKeyId = $null
 $newPrefix = $null
 
 if (-not $SkipNewKey) {
-  $newPlaintext = New-CsprngPlaintext
-  Write-Step 'generate' "new plaintext generated (length=$($newPlaintext.Length), prefix=$($newPlaintext.Substring(0,20)))"
+  if ($NonInteractive -and $env:MOSAIQ_TEST_PLAINTEXT) {
+    # E2E test override: caller pre-supplied a synthetic plaintext. We do NOT
+    # honor this in interactive mode -- forces real operators to use CSPRNG.
+    $newPlaintext = $env:MOSAIQ_TEST_PLAINTEXT
+    Write-Step 'generate' "USING MOSAIQ_TEST_PLAINTEXT override (length=$($newPlaintext.Length), prefix=$($newPlaintext.Substring(0,[Math]::Min(20, $newPlaintext.Length))))" 'Yellow'
+  } else {
+    $newPlaintext = New-CsprngPlaintext
+    Write-Step 'generate' "new plaintext generated (length=$($newPlaintext.Length), prefix=$($newPlaintext.Substring(0,20)))"
+  }
 
   # Stash in clipboard for the operator (unless they asked us not to / dry-run).
   if (-not $SkipClipboard -and -not $DryRun) {
@@ -277,11 +293,15 @@ if (-not $SkipNewKey) {
   }
 
   # ---- auth probe new key ------------------------------------------------
+  # Probe GET /v1/personas: cheapest auth-protected endpoint that doesn't spawn
+  # a Fly machine. Returns 200 with {items:[...]} if auth + project scope OK,
+  # 401 if key bad/revoked. Uses auth.projectId from the middleware -- no need
+  # to pass project as query param.
   if (-not $DryRun) {
-    Write-Step 'probe' "auth-probing new key against $BaseUrl/v1/sessions?project_id=$ProjectId"
+    Write-Step 'probe' "auth-probing new key against $BaseUrl/v1/personas"
     try {
       $probe = Invoke-WebRequest `
-        -Uri "$BaseUrl/v1/sessions?project_id=$ProjectId" `
+        -Uri "$BaseUrl/v1/personas" `
         -Headers @{ Authorization = "Bearer $newPlaintext" } `
         -UseBasicParsing `
         -TimeoutSec 15
@@ -290,7 +310,7 @@ if (-not $SkipNewKey) {
         Write-Host $probe.Content
         exit 1
       }
-      Write-Step 'probe' "OK HTTP 200 -- new key works"
+      Write-Step 'probe' "OK HTTP 200 -- new key authenticates"
     } catch {
       $code = $null
       try { $code = $_.Exception.Response.StatusCode.value__ } catch { }

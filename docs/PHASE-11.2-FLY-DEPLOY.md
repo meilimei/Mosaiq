@@ -493,8 +493,10 @@ flyctl ssh console -a mosaiq-cloud-runtime `
 # 关键：JSON 里**没有** plaintext 字段，也没有 warning 字段（区别于默认模式）。
 
 # 3) 验证新 key 能用（auth-only check，不创建 session，零成本）
+#    用 GET /v1/personas（最便宜的 auth-protected 端点；返回 {items:[...]}）。
+#    注意：GET /v1/sessions 不存在（只有 /v1/sessions/:id），所以**不要**用 sessions 列表当 probe。
 $resp = Invoke-WebRequest `
-  -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/sessions?project_id=proj_launchai' `
+  -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/personas' `
   -Headers @{ Authorization = "Bearer $plaintext" } -UseBasicParsing
 $resp.StatusCode  # 期望 200
 # (如果要跑完整 e2e 含 session create，用 scripts/prod-smoke-cloud.mjs，但会真起一台 Fly machine)
@@ -510,7 +512,7 @@ flyctl ssh console -a mosaiq-cloud-runtime `
 
 # 6) 验证旧 key 立刻 401（auth 中间件 src/middleware/auth.ts:57 读 revokedAt）
 try {
-  Invoke-WebRequest -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/sessions?project_id=proj_launchai' `
+  Invoke-WebRequest -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/personas' `
     -Headers @{ Authorization = 'Bearer msq_sk_live_OLD_LEAKED_KEY' } -UseBasicParsing
 } catch {
   $_.Exception.Response.StatusCode.value__  # 期望 401
