@@ -498,7 +498,7 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 
 ### 11.1 代码侧（已完成）
 
-- [x] 所有 cloud-runtime 单测绿（包括新加的 `fly-pool.test.ts` 24 个 + `routes/metrics.test.ts` 11 个，共 149/149）。
+- [x] 所有 cloud-runtime 单测绿（149/149 in phase 11.3a 落地时；之后 phase 11.3 admin tooling 又加了 `revoke-api-key.test.ts` + `list-api-keys.test.ts` 共 8 个 case，当前基线 157/157）。
 - [x] `/v1/metrics` 暴露 `machine_pool_hits_total` / `machine_pool_misses_total{reason}` / `machine_pool_provisions_total{outcome}` / `machine_pool_evictions_total{reason}` / `machine_pool_entries{state}`。
 - [x] PHASE-11.3 runbook 编写。
 - [x] `fly.cloud-runtime.toml` POOL 默认值 + 灰度文档 inline。
@@ -533,12 +533,18 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 - 设计稿"~3s warm"假设是 keep-machines-started 模式（更贵），phase 11.3a 明确选择了 keep-stopped（成本优先），所以 3s 路径不适用。
 - 不影响"显著优于 cold-only"这个核心论点。
 
-### 11.4 灰度过程中暴露的问题（已记录，未阻断 rollout）
+### 11.4 灰度过程中暴露的问题（已全部消化）
 
-1. **`flyctl secrets set` 不会重新打包镜像**——只重启现有镜像。如果代码尚未部署过含 pool 实现的版本，单纯 set `POOL_TARGET_SIZE=1` 后 factory log 永远不会出现 `machine-manager: fly + pool (phase 11.3a)`，pool 也不会启动。**runbook §7.1 需要在 Step 2 加一条 pre-flight 检查**：`flyctl image show -a mosaiq-cloud-runtime` 看 deployment tag 是否包含 phase 11.3a 提交，没有则先 `flyctl deploy`。
-2. **`mm_acquire_duration_seconds` histogram 最高 bucket 是 60s**——当实测 acquire 突破 60s（如我们的 62s 冷样本），P50/P95 都会卡在 `+Inf` 或 60s bucket 上界，看上去像"P50=60s"。mean 仍可用。**建议**：apps/cloud-runtime/src/metrics.ts 加 90、120 两个 bucket（cost: 2 个额外 counter series per histogram，可忽略）。已经在 backlog。
-3. **`prod-pool-snapshot.ps1` PS 5.1 `Join-Path` 限制**——已经在 `af2fbdb` 修掉，用 `[System.IO.Path]::Combine` 取代多段 Join-Path。无回归风险。
-4. **API key + METRICS_TOKEN 轮换流程**——`scripts/rotate-cloud-runtime-secrets.ps1` 工作良好；流程上要提醒 ops：admin create-api-key 在 ssh console 里跑会把 plaintext 打到 stdout，**chat 历史 / shared screen 里捕获到的 plaintext 应当视为已泄漏**，建议在记录后立即 `flyctl ssh` revoke 旧 key 再发新 key（或者跑两次 admin create-api-key 让第一次的 plaintext 失效）。
+1. ✅ **`flyctl secrets set` 不会重新打包镜像** —— 已在 §7.1 Step 2 顶部加 pre-flight 检查（commit `79dca52`）：先 `flyctl image show -a mosaiq-cloud-runtime` 看 deployment tag，太旧就先 `flyctl deploy` 再改 secret。
+2. ✅ **`mm_acquire_duration_seconds` histogram 最高 bucket 是 60s** —— 已在 commit `aa16029` 加宽到 `[..., 30, 40, 50, 60, 75, 90, 120]`（参见 `apps/cloud-runtime/src/metrics.ts:113`）。warm 35s 现在落在 30/40 bucket 之间能区分细粒度，cold 62s 落在 75/90 bucket 不再卡 `+Inf`。
+3. ✅ **`prod-pool-snapshot.ps1` PS 5.1 `Join-Path` 限制** —— 已在 `af2fbdb` 用 `[System.IO.Path]::Combine` 修掉，无回归风险。
+4. ✅ **API key 轮换中 plaintext 泄漏面** —— 已在 phase 11.3 admin tooling 全面解决：
+   - `apps/cloud-runtime/src/admin/create-api-key.ts` 加 `--quiet` 模式（plaintext 由 caller 经 env var 注入，admin 脚本绝不回显）
+   - `apps/cloud-runtime/src/admin/revoke-api-key.ts` + `list-api-keys.ts` 配套 CLI
+   - `scripts/rotate-api-key.ps1` 把 7 步操作浓缩成单条命令（CSPRNG 生成 → 剪贴板 → `sh -c` 注入 → auth probe → 客户端切换 → revoke 旧 key → 清场）
+   - 完整 playbook + footgun 见 `docs/PHASE-11.2-FLY-DEPLOY.md` §8。
+   - 旧的"在 ssh console 里跑 admin create-api-key 让 plaintext 打到 stdout"路径已废弃；2026-05-25 真机演练验证新路径 5 个断言全过。
+5. ⚠️ **METRICS_TOKEN 轮换** —— 仍走 `flyctl secrets set METRICS_TOKEN=<new>` 一次性操作（会触发 cloud-runtime 重启 ~10s）。无专用脚本（也不需要——它不像 API key 那样有数据库行 + 多 caller 切换的复杂度）。如果哪天需要 zero-downtime metrics scrape，再考虑加 dual-token 支持。
 
 ---
 
