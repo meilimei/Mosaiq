@@ -354,14 +354,31 @@ powershell -File scripts/prod-pool-snapshot.ps1 -Label "baseline-pool-0"
 
 **Step 2 — 启用 pool=1（最小风险）**
 
+**⚠️ Pre-flight：确认 prod 镜像已经含 phase 11.3a 代码**。`flyctl secrets set` 只重启现有镜像，不会重新 build。如果上次 deploy 早于 phase 11.3a 实现（commit `99846db` 之前），单纯改 secret 不会启用 pool。
+
 ```bash
-# 设 secret（secret 优先级 > [env] block, 重启自动生效, 不需要 redeploy）
+# 看 deployment tag：要么 tag 时间晚于 11.3a 实现，要么先 redeploy
+flyctl image show -a mosaiq-cloud-runtime
+
+# 如果镜像太旧（或没把握），先 deploy 一次再继续：
+flyctl deploy --config fly.cloud-runtime.toml --dockerfile apps/cloud-runtime/Dockerfile
+```
+
+```bash
+# 设 secret（secret 优先级 > [env] block, 重启自动生效）
 flyctl secrets set POOL_TARGET_SIZE=1 --app mosaiq-cloud-runtime
 
 # 等 ~30s 让 machine restart + bootstrap reconcile
 sleep 30
 
-# 确认 pool 起来了：应该看到 1 台 mosaiq_pool=true 的 stopped machine
+# 验证 pool 已激活（必看，否则后面所有指标都是假的）：
+# 1) cloud-runtime 日志里应当出现：
+#    "machine-manager: fly + pool (phase 11.3a)"
+#    "pool bootstrap reconcile done" (kept=0, evicted=0 是干净状态)
+#    "pool: entry stopped + ready to consume" (~70s 后)
+flyctl logs -a mosaiq-cloud-runtime --no-tail | Select-String "machine-manager:|pool bootstrap|pool: entry"
+
+# 2) Fly 应该看到 1 台 mosaiq_pool=true 的 stopped machine
 flyctl machine list --app mosaiq-browser-pod
 ```
 
@@ -487,24 +504,41 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 - [x] `fly.cloud-runtime.toml` POOL 默认值 + 灰度文档 inline。
 - [x] `scripts/prod-pool-snapshot.ps1` 灰度观测工具。
 
-### 11.2 prod 灰度（待执行 — §7.1 剧本）
+### 11.2 prod 灰度（§7.1 剧本执行状态）
 
-- [ ] **Step 1 baseline** ：`POOL_TARGET_SIZE=0` 下 prod-smoke 跑通 + 抓基线快照（应 ~40s mean acquire）。
-- [ ] **Step 2 pool=1** ：`flyctl secrets set POOL_TARGET_SIZE=1` 后 24h，hit_rate ≥ 80% 且 prov_fail_rate < 5%。
+- [x] **Step 1 baseline** ：`POOL_TARGET_SIZE=0` 下 prod-smoke 跑通 + 抓基线快照。**实测 mean acquire = 62s（n=1）**，远高于设计稿预期的 ~40s。
+- [x] **Step 2 pool=1（启动 + 初步验证）** ：`flyctl secrets set POOL_TARGET_SIZE=1` + `flyctl deploy` 后，跑 2 个 smoke。**mean acquire = 34.95s, hit_rate = 100% (2/2), prov_fail = 0% (0/3)**。pool bootstrap reconcile 干净（kept=0, evicted=0），replenish 在 consume 后 ~70s 内补回 stopped 状态。详见 §11.4。
+- [ ] **Step 2 续 — 24h 稳态观测** ：每 4h `prod-pool-snapshot.ps1`，验证 hit_rate ≥ 80% 在真实业务流量下保持，pool 不漂（evictions/sec ≈ 0）。
 - [ ] **Step 3 pool=3** ：扩到 3 后 72h，`flyctl machine list` 持续显示 3 台 stopped（稳态）。
 - [ ] **Step 4 (optional)** ：仅在 business volume > 100 sessions/day 时考虑 pool=5。
-- [ ] cloud-runtime 重启后 30s 内 pool 视图重建（log: `pool bootstrap reconcile done`）。
+- [x] cloud-runtime 重启后 30s 内 pool 视图重建（log: `pool bootstrap reconcile done`）—— 实测 boot→reconcile=0.2s，reconcile→first entry stopped=71s。
 
-### 11.3 实测结果（灰度执行时填）
+### 11.3 实测结果
 
-| Step | 时间 | mean acquire | P50 | P95 | hit_rate | prov fail | 决策 |
-|---|---|---|---|---|---|---|---|
-| baseline | TBD | TBD | TBD | TBD | n/a | n/a | → step 2 |
-| pool=1 @ 24h | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| pool=3 @ 24h | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| pool=3 @ 72h | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Step | 时间 (UTC) | n | mean acquire | P50 | P95 | hit_rate | prov fail | 决策 |
+|---|---|---|---|---|---|---|---|---|
+| baseline (pool=0) | 2026-05-24 23:04 | 1 | 62.06s | ∞ (>60) | ∞ (>60) | n/a | n/a | client `fetch failed`（>Fly proxy 60s timeout）→ 立即推进 step 2 |
+| pool=1 初始 | 2026-05-24 23:47 + 2026-05-25 04:40 | 2 | 34.95s (33.9-36.4) | ≤60 (bucket cap) | ≤60 (bucket cap) | 100% | 0% (0/3 provs) | 健康，继续 24h 观测 |
+| pool=1 @ 24h | TBD | — | — | — | — | — | — | TBD |
+| pool=3 @ 24h | TBD | — | — | — | — | — | — | TBD |
+| pool=3 @ 72h | TBD | — | — | — | — | — | — | TBD |
 
-**预期**: pool=3 稳态下 mean acquire 应从 ~40s 降到 ~22s（warm 路径主导）。如未达到，回 §7.2 红线诊断。
+**结果亮点**：
+- Cold→warm 节省 ~27s（**42% latency reduction**），单样本对比一致。
+- 解决了一个未在设计稿预测到的 **副作用**：cold path 62s 高于 Fly edge proxy ~60s idle timeout，导致客户端必现 `TypeError: fetch failed`（即使 server 端 session 创建成功）。pool=1 warm 路径 35s 落在 proxy 预算内，行为从"server 成功但 client 报错"恢复到"正常 201"。
+- Replenish loop 在 consume 后 ~70s 内补回（首次 bootstrap 也是 71s）。意味着 pool=1 只适合 inter-arrival > 70s 的稀疏流量；高并发突发流量需要 pool >= burst size 才能保住命中率。
+
+**实测 vs 设计预期**：
+- 实测 warm: **35s** vs 设计稿"~22s start"目标。差距来自 Fly machine `stopped→started` (2-5s) + browser-pod chrome 冷启动 + control-plane 握手，比初版估计更长。
+- 设计稿"~3s warm"假设是 keep-machines-started 模式（更贵），phase 11.3a 明确选择了 keep-stopped（成本优先），所以 3s 路径不适用。
+- 不影响"显著优于 cold-only"这个核心论点。
+
+### 11.4 灰度过程中暴露的问题（已记录，未阻断 rollout）
+
+1. **`flyctl secrets set` 不会重新打包镜像**——只重启现有镜像。如果代码尚未部署过含 pool 实现的版本，单纯 set `POOL_TARGET_SIZE=1` 后 factory log 永远不会出现 `machine-manager: fly + pool (phase 11.3a)`，pool 也不会启动。**runbook §7.1 需要在 Step 2 加一条 pre-flight 检查**：`flyctl image show -a mosaiq-cloud-runtime` 看 deployment tag 是否包含 phase 11.3a 提交，没有则先 `flyctl deploy`。
+2. **`mm_acquire_duration_seconds` histogram 最高 bucket 是 60s**——当实测 acquire 突破 60s（如我们的 62s 冷样本），P50/P95 都会卡在 `+Inf` 或 60s bucket 上界，看上去像"P50=60s"。mean 仍可用。**建议**：apps/cloud-runtime/src/metrics.ts 加 90、120 两个 bucket（cost: 2 个额外 counter series per histogram，可忽略）。已经在 backlog。
+3. **`prod-pool-snapshot.ps1` PS 5.1 `Join-Path` 限制**——已经在 `af2fbdb` 修掉，用 `[System.IO.Path]::Combine` 取代多段 Join-Path。无回归风险。
+4. **API key + METRICS_TOKEN 轮换流程**——`scripts/rotate-cloud-runtime-secrets.ps1` 工作良好；流程上要提醒 ops：admin create-api-key 在 ssh console 里跑会把 plaintext 打到 stdout，**chat 历史 / shared screen 里捕获到的 plaintext 应当视为已泄漏**，建议在记录后立即 `flyctl ssh` revoke 旧 key 再发新 key（或者跑两次 admin create-api-key 让第一次的 plaintext 失效）。
 
 ---
 
