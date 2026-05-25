@@ -103,7 +103,14 @@ export const httpRequestDurationSeconds = new Histogram({
 export const mmAcquireDurationSeconds = new Histogram({
   name: 'mm_acquire_duration_seconds',
   help: 'MachineManager.acquire 耗时（拨 fly machine + 等 chromium 起来）',
-  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 60],
+  // bucket 选择反映 phase 11.3a 灰度实测：
+  //   - cold path (POOL_TARGET_SIZE=0): mean ~60s（首次部署 + image pull 后），上界
+  //     必须放到 90s 才能让 P95 不挂在 +Inf。
+  //   - warm path (pool consume): mean ~35s（Fly stopped→started + chrome boot），需
+  //     要 40/50 这种细粒度 bucket 才能区分"warm 35s vs warm 45s"。
+  //   - 120s 是 POOL_PROVISION_TIMEOUT_MS 的对照线——超过这线必定是 cold timeout，
+  //     不应混进 warm 分布。
+  buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 40, 50, 60, 75, 90, 120],
   registers: [metricsRegistry],
 });
 

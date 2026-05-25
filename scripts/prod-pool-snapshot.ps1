@@ -215,7 +215,8 @@ if ($acquireBkt.Count -gt 0 -and $acqCountVal -gt 0) {
   Write-Host ("  P95 (bucket upper bound)                {0}s" -f $p95)
   Write-Host ''
   Write-Host '  decision hint:' -ForegroundColor DarkGray
-  Write-Host '    cold-only baseline P50 ~ 40s. Target with pool ~ 22s (start) or ~3s (warm)'
+  Write-Host '    prod 实测 baseline (pool=0) mean ~62s, pool=1 warm mean ~35s.'
+  Write-Host '    红线: mean acquire > 60s + hit_rate < 50% + prov_fail > 20% → 回滚 POOL_TARGET_SIZE=0'
 }
 
 # ---- save snapshot ---------------------------------------------------------
