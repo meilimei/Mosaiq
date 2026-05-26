@@ -92,20 +92,67 @@ function publicCdpUrl(sessionId: string): string {
   return `${wsBase}/v1/sessions/${sessionId}/cdp`;
 }
 
-/** 把 DB 行 + persona JSON 拼成 API 响应形状。 */
-function shapeSession(row: typeof sessionsTable.$inferSelect, personaJson: Persona, stealth: StealthOpts) {
+/**
+ * 把 DB 行 + persona JSON 拼成 API 响应形状。
+ *
+ * **Phase 11.4 native superset**：返回同时含
+ *   - Mosaiq native 字段（snake_case，现有 caller：prod-smoke-cloud.mjs、CLI、桌面端）
+ *   - Browserbase SDK 兼容字段（camelCase，供 @browserbasehq/sdk 以及 Stagehand 读取）
+ *
+ * `persona` 在 GET 路径会是 null（v0.11 phase 11.1 简化：不在 GET 重拉
+ * 完整 Persona）。POST 创建路径传完整 Persona。
+ *
+ * 详细字段映射见 `docs/PHASE-11.4-STAGEHAND-COMPAT.md` §4。
+ */
+function shapeSession(
+  row: typeof sessionsTable.$inferSelect,
+  personaJson: Persona | null,
+  stealth: StealthOpts,
+) {
+  let userMetadataParsed: Record<string, unknown> = {};
+  try {
+    if (row.userMetadata) {
+      const parsed = JSON.parse(row.userMetadata) as unknown;
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        userMetadataParsed = parsed as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // 解析失败 → 空对象，不报错 响应。
+  }
+  const updatedAt = row.lastSeenAt ?? row.openedAt;
+
   return {
+    // ── Mosaiq native shape (snake_case) ──
     id: row.id,
     project_id: row.projectId,
+    persona_id: row.personaId,
     status: row.status,
     cdp_url: row.cdpPublicUrl,
     persona: personaJson,
     stealth,
     expires_at: row.expiresAt,
     last_seen_at: row.lastSeenAt,
+    opened_at: row.openedAt,
+    closed_at: row.closedAt,
     live_view_url: null,
     created_at: row.openedAt,
     client_label: row.clientLabel ?? null,
+
+    // ── Browserbase SDK compat (camelCase, phase 11.4) ──
+    createdAt: row.openedAt,
+    updatedAt,
+    projectId: row.projectId,
+    startedAt: row.openedAt,
+    expiresAt: row.expiresAt,
+    endedAt: row.closedAt,
+    proxyBytes: 0,
+    keepAlive: false,
+    connectUrl: row.cdpPublicUrl,
+    seleniumRemoteUrl: null as string | null,
+    signingKey: null as string | null,
+    contextId: null as string | null,
+    userMetadata: userMetadataParsed,
   };
 }
 
@@ -264,21 +311,10 @@ sessionsRoute.get('/:id', rateLimitTier('read'), async (c) => {
   })();
 
   // persona JSON 不存在 sessions 表里，从 personas 取或 metadata 不返回完整 persona
-  // —— 这是 v0.11 phase 11.1 的简化：GET 时只返回 stealth + ids。
-  // 完整 persona 仅在 POST 创建时一次返回（client 自己缓存）。
-  return c.json({
-    id: row.id,
-    project_id: row.projectId,
-    status: row.status,
-    cdp_url: row.cdpPublicUrl,
-    persona_id: row.personaId,
-    stealth: meta.stealth,
-    expires_at: row.expiresAt,
-    last_seen_at: row.lastSeenAt,
-    opened_at: row.openedAt,
-    closed_at: row.closedAt,
-    client_label: row.clientLabel ?? null,
-  });
+  // —— 这是 v0.11 phase 11.1 的简化：GET 时只返回 stealth + ids。完整 persona 仅在
+  // POST 创建时一次返回（client 自己缓存）。Phase 11.4 后 GET 也走 shapeSession，
+  // BB-compat 字段同步输出，persona=null。
+  return c.json(shapeSession(row, null, meta.stealth));
 });
 
 // ─── DELETE /v1/sessions/:id ────────────────────────────────────────────────

@@ -88,6 +88,11 @@ export const sessions = sqliteTable(
     errorMessage: text('error_message'),
     /** JSON: { stealth: {...}, viewport: {...}, persona: {...} } */
     metadataJson: text('metadata_json').notNull().default('{}'),
+    /**
+     * Phase 11.4: 客户透传的 metadata（Browserbase compat 的 `userMetadata`）。
+     * JSON 文本，应用层 JSON.parse；DEFAULT '{}' 让旧行迁移时不破。
+     */
+    userMetadata: text('user_metadata').notNull().default('{}'),
   },
   (t) => ({
     projectIdx: index('sessions_project_idx').on(t.projectId, t.openedAt),

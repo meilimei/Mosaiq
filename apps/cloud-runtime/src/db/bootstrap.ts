@@ -49,7 +49,8 @@ const STATEMENTS: string[] = [
     client_addr TEXT,
     client_label TEXT,
     error_message TEXT,
-    metadata_json TEXT NOT NULL DEFAULT '{}'
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    user_metadata TEXT NOT NULL DEFAULT '{}'
   )`,
   `CREATE INDEX IF NOT EXISTS sessions_project_idx ON sessions (project_id, opened_at)`,
   `CREATE INDEX IF NOT EXISTS sessions_status_idx ON sessions (status)`,
@@ -95,11 +96,41 @@ const STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action)`,
 ];
 
+/**
+ * Phase 11.4: 轻量"列添加"迁移。给已存在的 prod DB 补上 phase 11.4 之前
+ * 没有的列。SQLite 的 `ALTER TABLE ADD COLUMN` 不幂等（重跑报 duplicate
+ * column name），所以先 PRAGMA 查列，缺了才 ALTER。
+ *
+ * 等 phase 11.5 引入 drizzle-kit 后这块换成正经 migrations。
+ */
+const COLUMN_ADDITIONS: ReadonlyArray<{
+  table: string;
+  column: string;
+  alterSql: string;
+}> = [
+  {
+    table: 'sessions',
+    column: 'user_metadata',
+    alterSql: `ALTER TABLE sessions ADD COLUMN user_metadata TEXT NOT NULL DEFAULT '{}'`,
+  },
+];
+
 export async function ensureSchema(): Promise<void> {
   const handle = await getDb();
   const log = getLogger();
   for (const stmt of STATEMENTS) {
     handle.drizzle.run(sql.raw(stmt));
   }
+
+  for (const { table, column, alterSql } of COLUMN_ADDITIONS) {
+    const cols = handle.drizzle.all(
+      sql.raw(`PRAGMA table_info(${table})`),
+    ) as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === column)) {
+      handle.drizzle.run(sql.raw(alterSql));
+      log.info({ table, column }, 'schema migrated: column added');
+    }
+  }
+
   log.info({ tables: 6 }, 'schema ensured');
 }

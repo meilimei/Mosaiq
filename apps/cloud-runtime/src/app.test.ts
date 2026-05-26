@@ -577,3 +577,78 @@ describe('rate limit middleware', () => {
     expect(rem).toBeLessThanOrEqual(1);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 11.4 commit 2: /v1/sessions response superset (Browserbase SDK 兼容)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Browserbase compat — response shape (phase 11.4)', () => {
+  async function createOne(): Promise<Record<string, unknown>> {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    return (await resp.json()) as Record<string, unknown>;
+  }
+
+  it('POST response 同时含 native 和 BB 字段；connectUrl 与 cdp_url 同值', async () => {
+    const body = await createOne();
+    // native (snake_case) 字段保留
+    expect(body['id']).toMatch(/^ses_/);
+    expect(body['cdp_url']).toMatch(/\/v1\/sessions\/ses_.+\/cdp$/);
+    expect(body['project_id']).toBe(TEST_PROJECT_ID);
+    expect(body['created_at']).toBeTypeOf('string');
+    // BB (camelCase) 字段同时输出
+    expect(body['connectUrl']).toBe(body['cdp_url']);
+    expect(body['projectId']).toBe(body['project_id']);
+    expect(body['createdAt']).toBe(body['created_at']);
+    expect(body['expiresAt']).toBe(body['expires_at']);
+  });
+
+  it('POST response 时间字段为 ISO 8601 字符串', async () => {
+    const body = await createOne();
+    const isoLike = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+    expect(body['createdAt']).toMatch(isoLike);
+    expect(body['updatedAt']).toMatch(isoLike);
+    expect(body['startedAt']).toMatch(isoLike);
+    expect(body['expiresAt']).toMatch(isoLike);
+    expect(new Date(body['createdAt'] as string).toString()).not.toBe('Invalid Date');
+  });
+
+  it('POST response BB stub 字段值正确（11.4a 不实现的字段）', async () => {
+    const body = await createOne();
+    expect(body['seleniumRemoteUrl']).toBeNull();
+    expect(body['signingKey']).toBeNull();
+    expect(body['contextId']).toBeNull();
+    expect(body['endedAt']).toBeNull();
+    expect(body['proxyBytes']).toBe(0);
+    expect(body['keepAlive']).toBe(false);
+  });
+
+  it('POST response userMetadata 默认为 {}（请求未传时）', async () => {
+    const body = await createOne();
+    expect(body['userMetadata']).toEqual({});
+  });
+
+  it('GET /v1/sessions/:id 也返回 BB-compat 字段（refactor 通过 shapeSession 单一来源）', async () => {
+    const created = await createOne();
+    const id = created['id'] as string;
+    const app = createApp();
+    const r = await app.request(`/v1/sessions/${id}`, { headers: authH() });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as Record<string, unknown>;
+    expect(body['connectUrl']).toBe(created['cdp_url']);
+    expect(body['createdAt']).toBe(created['createdAt']);
+    expect(body['projectId']).toBe(TEST_PROJECT_ID);
+    expect(body['proxyBytes']).toBe(0);
+    expect(body['keepAlive']).toBe(false);
+    // GET 路径下 persona 是 null（v0.11 phase 11.1 简化决定保留）
+    expect(body['persona']).toBeNull();
+  });
+});
