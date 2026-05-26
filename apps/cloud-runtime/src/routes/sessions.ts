@@ -74,13 +74,58 @@ const PersonaInputSchema = z
     }
   });
 
+/**
+ * Browserbase `browserSettings` 子结构 —— 我们只挑出 `viewport`（与原生同形），
+ * 其他字段（fingerprint / blockAds / solveCaptchas / ...）一律收集到 unsupportedFields
+ * 并 warn-log。passthrough 让未知 key 不被 strip 掉，方便后续记录。
+ */
+const BrowserSettingsSchema = z
+  .object({
+    viewport: ViewportSchema.optional(),
+  })
+  .passthrough();
+
+/**
+ * Phase 11.4 commit 3：CreateSessionSchema 升级为 native(snake_case) ∪ BB(camelCase) 超集。
+ *
+ * - `project_id` / `projectId` 任一可选；handler 校验「两者同存且不一致」时 400。
+ *   两者都缺 → 默认使用 auth.projectId（BB SDK 不带 project_id 走 X-BB-API-Key 路径）。
+ * - `persona` 变成 schema 层 optional —— 缺失时 handler 抛 `request.invalid`，commit 4
+ *   会接上默认 seeded persona 让此路径不再报错。
+ * - BB-only 字段：用 `.optional()` 接住，handler 把出现的字段名 push 进 unsupportedFields[]。
+ */
 const CreateSessionSchema = z.object({
-  project_id: z.string().min(1),
-  persona: PersonaInputSchema,
+  // ── Mosaiq native (snake_case) ──
+  project_id: z.string().min(1).optional(),
+  persona: PersonaInputSchema.optional(),
   stealth: StealthInputSchema,
   lifecycle: LifecycleSchema,
   viewport: ViewportSchema.optional(),
   client_label: z.string().max(128).optional(),
+
+  // ── Browserbase compat (camelCase) ──
+  /** 与 project_id 同义；两者同时给且不一致 → 400 */
+  projectId: z.string().min(1).optional(),
+  /** 用户自定义元数据，原样落库 row.userMetadata 列；shapeSession 回显 */
+  userMetadata: z.record(z.unknown()).optional(),
+  /** browserSettings.viewport → 等价 native viewport；其他子字段忽略并 warn */
+  browserSettings: BrowserSettingsSchema.optional(),
+
+  // ── Browserbase 字段，我们暂不实现，收到就 warn-and-ignore ──
+  /** TTL 我们已通过 SESSION_TTL_MAX_SECONDS 强制封顶，keepAlive=true 不改变这个语义 */
+  keepAlive: z.boolean().optional(),
+  /** 录像（M9 milestone） */
+  recording: z.unknown().optional(),
+  /** 远端 logging（M9 milestone） */
+  logging: z.unknown().optional(),
+  /** BYOP 代理（独立 phase） */
+  proxies: z.unknown().optional(),
+  /** Browserbase Chrome extension 安装（不在 v0.11 范围） */
+  extensionId: z.string().optional(),
+  /** 区域路由，单 region 部署不需要 */
+  region: z.string().optional(),
+  /** 时区 —— Mosaiq 把时区放在 persona.metadata 里，与 BB 模型不同 */
+  timezone: z.string().optional(),
 });
 
 type StealthOpts = z.infer<typeof StealthInputSchema>;
@@ -173,12 +218,54 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   }
   const req = parsed.data;
 
-  if (req.project_id !== auth.projectId) {
-    audit(c, 'session.create', `project:${req.project_id}`, 'denied');
+  // ── Phase 11.4 commit 3: BB-shape 兼容。先 reconcile project id ──
+  // 接受 native(project_id) 或 BB(projectId)；两者同时给且不一致 → 400。
+  if (req.project_id && req.projectId && req.project_id !== req.projectId) {
+    audit(c, 'session.create', 'project:?', 'denied');
+    throw new ApiError(
+      'request.invalid',
+      'project_id (snake_case) and projectId (camelCase) were both supplied with different values',
+    );
+  }
+  const requestedProjectId = req.project_id ?? req.projectId;
+  if (requestedProjectId && requestedProjectId !== auth.projectId) {
+    audit(c, 'session.create', `project:${requestedProjectId}`, 'denied');
     throw new ApiError('auth.project_mismatch', 'API key does not belong to this project');
   }
+  // 没给 project id 时，从 auth 推断（BB SDK 默认行为）。
 
-  // 解析 persona —— 从 inline JSON 或 DB 加载
+  // 收集所有「我们暂不实现」的 BB 字段，落到 response.unsupportedFields[] 与 warn 日志。
+  const unsupportedFields: string[] = [];
+  if (req.keepAlive !== undefined) unsupportedFields.push('keepAlive');
+  if (req.recording !== undefined) unsupportedFields.push('recording');
+  if (req.logging !== undefined) unsupportedFields.push('logging');
+  if (req.proxies !== undefined) unsupportedFields.push('proxies');
+  if (req.extensionId !== undefined) unsupportedFields.push('extensionId');
+  if (req.region !== undefined) unsupportedFields.push('region');
+  if (req.timezone !== undefined) unsupportedFields.push('timezone');
+  if (req.browserSettings) {
+    // browserSettings.viewport 会被 honor，其他子字段全归到 unsupported。
+    for (const key of Object.keys(req.browserSettings)) {
+      if (key !== 'viewport') unsupportedFields.push(`browserSettings.${key}`);
+    }
+  }
+  if (unsupportedFields.length > 0) {
+    log.warn(
+      { projectId: auth.projectId, unsupportedFields },
+      'BB-compat: ignoring unsupported request fields',
+    );
+  }
+
+  // 解析 persona —— 从 inline JSON 或 DB 加载。BB-shape 通常不带 persona；
+  // commit 4 会引入默认 seeded persona 兜底，此处先报 422 引导调用方升级或显式传 persona。
+  if (!req.persona) {
+    audit(c, 'session.create', 'persona:?', 'errored');
+    throw new ApiError(
+      'request.invalid',
+      'persona is required (Browserbase-style empty body will use a default seeded persona once phase 11.4 commit 4 lands; for now pass persona: {id} or persona: {inline})',
+      { field: 'persona' },
+    );
+  }
   let persona: Persona;
   let personaIdForRow: string | null = null;
   if (req.persona.inline !== undefined) {
@@ -223,7 +310,8 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
 
   const sessionId = newId('ses');
   const stealth: StealthOpts = req.stealth;
-  const viewport = req.viewport;
+  // viewport 优先级：native viewport > BB browserSettings.viewport（同形）。
+  const viewport = req.viewport ?? req.browserSettings?.viewport;
 
   const mm = getMachineManager();
   let machine: Awaited<ReturnType<typeof mm.acquire>>;
@@ -265,6 +353,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? c.req.header('x-real-ip') ?? null,
     clientLabel: req.client_label ?? null,
     metadataJson: JSON.stringify({ stealth, viewport }),
+    userMetadata: req.userMetadata ? JSON.stringify(req.userMetadata) : '{}',
   });
 
   log.info(
@@ -285,7 +374,12 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   }
 
   sessionsCreatedTotal.inc();
-  return c.json(shapeSession(row, persona, stealth), 201);
+  const responseBody = shapeSession(row, persona, stealth);
+  // BB-compat 标记：仅当本请求确实带了暂不实现字段时附 unsupportedFields[]
+  return c.json(
+    unsupportedFields.length > 0 ? { ...responseBody, unsupportedFields } : responseBody,
+    201,
+  );
 });
 
 // ─── GET /v1/sessions/:id ───────────────────────────────────────────────────
@@ -352,16 +446,5 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
   return c.body(null, 204);
 });
 
-// ─── Browserbase compat route stubs (phase 11.3) ────────────────────────────
-sessionsRoute.post('/browserbase-compat', (c) => {
-  return c.json(
-    {
-      error: {
-        code: 'request.not_found',
-        message:
-          'Browserbase-compat route is reserved for v0.13 phase 11.3. v0.11 仅暴露原生 @mosaiq/cloud-sdk API.',
-      },
-    },
-    501,
-  );
-});
+// 注：phase 11.4 之后，Browserbase 兼容直接由 /v1/sessions 自身承载（dual-shape
+// request body + native superset response）。原占位 /browserbase-compat 501 stub 已删除。

@@ -652,3 +652,183 @@ describe('Browserbase compat — response shape (phase 11.4)', () => {
     expect(body['persona']).toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 11.4 commit 3: /v1/sessions 接受 Browserbase-shape 请求体
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Browserbase compat — request body (phase 11.4)', () => {
+  it('接受 BB camelCase projectId（无 snake_case project_id）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as Record<string, unknown>;
+    expect(body['project_id']).toBe(TEST_PROJECT_ID);
+    expect(body['projectId']).toBe(TEST_PROJECT_ID);
+  });
+
+  it('完全省略 project id（BB SDK 默认）→ 用 auth.projectId', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as Record<string, unknown>;
+    expect(body['project_id']).toBe(TEST_PROJECT_ID);
+  });
+
+  it('project_id 与 projectId 同存且不一致 → 422 request.invalid', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        projectId: OTHER_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(422);
+    const err = (await resp.json()) as { error: { code: string; message: string } };
+    expect(err.error.code).toBe('request.invalid');
+    expect(err.error.message).toMatch(/both supplied with different values/i);
+  });
+
+  it('userMetadata 落库并在 POST + GET 响应中回显', async () => {
+    const app = createApp();
+    const meta = { run: 'unit', n: 42, tags: ['a', 'b'] };
+    const createResp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        userMetadata: meta,
+      }),
+    });
+    expect(createResp.status).toBe(201);
+    const created = (await createResp.json()) as { id: string; userMetadata: unknown };
+    expect(created.userMetadata).toEqual(meta);
+
+    const getResp = await app.request(`/v1/sessions/${created.id}`, { headers: authH() });
+    expect(getResp.status).toBe(200);
+    const fetched = (await getResp.json()) as { userMetadata: unknown };
+    expect(fetched.userMetadata).toEqual(meta);
+  });
+
+  it('browserSettings.viewport 被 honor（无 native viewport 时）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        browserSettings: { viewport: { width: 1366, height: 768 } },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    expect(fakeMm.acquired).toHaveLength(1);
+    expect(fakeMm.acquired[0]!.viewport).toEqual({ width: 1366, height: 768 });
+  });
+
+  it('native viewport 优先级高于 browserSettings.viewport（同时给时）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        viewport: { width: 1920, height: 1080 },
+        browserSettings: { viewport: { width: 1366, height: 768 } },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    expect(fakeMm.acquired[0]!.viewport).toEqual({ width: 1920, height: 1080 });
+  });
+
+  it('暂不实现的 BB 字段 → 200 + response.unsupportedFields[]', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        recording: { enabled: true },
+        proxies: [{ type: 'browserbase' }],
+        extensionId: 'ext_xxx',
+        region: 'us-east-1',
+        timezone: 'America/New_York',
+        browserSettings: {
+          viewport: { width: 1366, height: 768 },
+          fingerprint: { devices: ['desktop'] },
+          blockAds: true,
+        },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as { unsupportedFields: string[] };
+    // 至少包含我们枚举出的几个；顺序以收集顺序为准。
+    expect(body.unsupportedFields).toEqual(
+      expect.arrayContaining([
+        'keepAlive',
+        'recording',
+        'proxies',
+        'extensionId',
+        'region',
+        'timezone',
+        'browserSettings.fingerprint',
+        'browserSettings.blockAds',
+      ]),
+    );
+    // viewport 不应出现在 unsupportedFields（它被 honor 了）
+    expect(body.unsupportedFields).not.toContain('browserSettings.viewport');
+  });
+
+  it('persona 完全省略 → 422 request.invalid（commit 4 之前尚未默认 seed）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+      }),
+    });
+    expect(resp.status).toBe(422);
+    const err = (await resp.json()) as {
+      error: { code: string; message: string; detail?: { field?: string } };
+    };
+    expect(err.error.code).toBe('request.invalid');
+    expect(err.error.detail?.field).toBe('persona');
+    expect(err.error.message).toMatch(/persona is required/i);
+  });
+
+  it('无 BB 字段时响应不带 unsupportedFields key（cleanliness check）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as Record<string, unknown>;
+    expect(Object.prototype.hasOwnProperty.call(body, 'unsupportedFields')).toBe(false);
+  });
+});
