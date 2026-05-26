@@ -212,6 +212,64 @@ describe('auth middleware', () => {
     const body = (await resp.json()) as { error: { code: string } };
     expect(body.error.code).toBe('auth.invalid_key');
   });
+
+  // ── Phase 11.4 commit 1: Browserbase SDK 兼容（X-BB-API-Key header）──
+
+  it('X-BB-API-Key 单 header → auth 通过（404 来自 handler 不是 401）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions/ses_nonexistent', {
+      headers: { 'X-BB-API-Key': TEST_API_KEY },
+    });
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('session.not_found');
+  });
+
+  it('x-bb-api-key 大小写不敏感（小写 header 名）→ auth 通过', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions/ses_nonexistent', {
+      headers: { 'x-bb-api-key': TEST_API_KEY },
+    });
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('session.not_found');
+  });
+
+  it('两个 header 都传且值一致 → auth 通过（容忍重复）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions/ses_nonexistent', {
+      headers: {
+        'X-BB-API-Key': TEST_API_KEY,
+        authorization: `Bearer ${TEST_API_KEY}`,
+      },
+    });
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('session.not_found');
+  });
+
+  it('两个 header 都传但值不一致 → 400 auth.dual_header', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions/ses_nonexistent', {
+      headers: {
+        'X-BB-API-Key': TEST_API_KEY,
+        authorization: `Bearer ${OTHER_API_KEY}`,
+      },
+    });
+    expect(resp.status).toBe(400);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('auth.dual_header');
+  });
+
+  it('X-BB-API-Key 是未知 key → 401 invalid_key', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions/ses_nonexistent', {
+      headers: { 'X-BB-API-Key': 'msq_sk_test_wrong_xxxxxxxxxxxxxx' },
+    });
+    expect(resp.status).toBe(401);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('auth.invalid_key');
+  });
 });
 
 describe('POST /v1/sessions', () => {

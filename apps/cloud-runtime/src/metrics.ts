@@ -16,7 +16,7 @@
  *
  *   sessions_created_total            counter
  *   sessions_closed_total{reason}     counter (reason=client|expired|error)
- *   auth_failures_total{reason}       counter (reason=missing|invalid|revoked)
+ *   auth_failures_total{reason}       counter (reason=missing|invalid|revoked|dual_header)
  *   rate_limit_denied_total{tier}     counter (tier=strict|write|read)
  *   pool_state{state}                 gauge   (state=ready|busy|cap)
  *   http_request_duration_seconds{method,route,status_class} histogram
@@ -66,7 +66,7 @@ export const sessionsClosedTotal = new Counter({
 
 export const authFailuresTotal = new Counter({
   name: 'auth_failures_total',
-  help: 'auth 拒绝次数。reason=missing|invalid|revoked',
+  help: 'auth 拒绝次数。reason=missing|invalid|revoked|dual_header',
   labelNames: ['reason'] as const,
   registers: [metricsRegistry],
 });

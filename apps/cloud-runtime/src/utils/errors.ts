@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'auth.invalid_key'
   | 'auth.project_mismatch'
   | 'auth.missing_token'
+  | 'auth.dual_header'
   | 'request.invalid'
   | 'request.not_found'
   | 'pool.exhausted'
@@ -27,6 +28,7 @@ const statusByCode: Record<ErrorCode, number> = {
   'auth.invalid_key': 401,
   'auth.project_mismatch': 403,
   'auth.missing_token': 401,
+  'auth.dual_header': 400,
   'request.invalid': 422,
   'request.not_found': 404,
   'pool.exhausted': 503,
@@ -82,7 +84,10 @@ export function apiErrorBody(err: ApiError): {
  */
 export function handleApiError(err: Error, c: Context): Response {
   if (isApiError(err)) {
-    return c.json(apiErrorBody(err), err.status as 401 | 403 | 404 | 409 | 410 | 422 | 429 | 500 | 503);
+    return c.json(
+      apiErrorBody(err),
+      err.status as 400 | 401 | 403 | 404 | 409 | 410 | 422 | 429 | 500 | 503,
+    );
   }
   // unexpected: 不泄漏 stack 给客户端，只在日志里留下
   console.error('[cloud-runtime] unexpected error:', err);
