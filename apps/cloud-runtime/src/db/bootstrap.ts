@@ -9,6 +9,7 @@
 
 import { sql } from 'drizzle-orm';
 
+import { DEFAULT_PERSONAS } from '../seed/default-personas.js';
 import { getLogger } from '../utils/logger.js';
 import { getDb } from './client.js';
 
@@ -133,4 +134,38 @@ export async function ensureSchema(): Promise<void> {
   }
 
   log.info({ tables: 6 }, 'schema ensured');
+}
+
+/**
+ * Phase 11.4 commit 4a: idempotently seed the default persona pool so that
+ * `bb.sessions.create({})` (Stagehand SDK's empty-body pattern) can fall back
+ * to a hardcoded persona instead of returning 422.
+ *
+ * Semantics: if there is **any** `source='seed' AND project_id IS NULL` row
+ * already, do nothing (operator may have curated their own set). Otherwise,
+ * insert all entries from `DEFAULT_PERSONAS` in a single pass.
+ *
+ * Kept separate from `ensureSchema()` so existing tests don't get seeded
+ * personas unless they opt in by calling this explicitly. Production startup
+ * (`src/index.ts`) calls both in sequence.
+ */
+export async function ensureDefaultPersonas(): Promise<void> {
+  const handle = await getDb();
+  const log = getLogger();
+
+  const rows = handle.drizzle.all(
+    sql`SELECT COUNT(*) AS n FROM personas WHERE source = 'seed' AND project_id IS NULL`,
+  ) as Array<{ n: number }>;
+  const existing = rows[0]?.n ?? 0;
+  if (existing > 0) {
+    log.info({ existing }, 'default personas already seeded; skipping');
+    return;
+  }
+
+  for (const seed of DEFAULT_PERSONAS) {
+    handle.drizzle.run(
+      sql`INSERT INTO personas (id, project_id, source, persona_json) VALUES (${seed.dbId}, NULL, 'seed', ${JSON.stringify(seed.persona)})`,
+    );
+  }
+  log.info({ seeded: DEFAULT_PERSONAS.length }, 'default personas seeded');
 }

@@ -19,7 +19,7 @@ import { createServer, type RequestListener } from 'node:http';
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app.js';
-import { ensureSchema } from './db/bootstrap.js';
+import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
 import { seedDevAuth } from './db/seed.js';
 import { disposeDb, getDb } from './db/client.js';
 import { loadEnv } from './env.js';
@@ -33,6 +33,7 @@ async function bootstrap() {
   const log = getLogger();
 
   await ensureSchema();
+  await ensureDefaultPersonas();
   const seed = await seedDevAuth();
   log.info({ seed }, 'db ready');
 

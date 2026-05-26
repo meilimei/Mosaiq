@@ -27,6 +27,7 @@ import {
   sessionsClosedTotal,
   sessionsCreatedTotal,
 } from '../metrics.js';
+import { pickDefaultPersonaDbId } from '../seed/default-personas.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
@@ -256,21 +257,16 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     );
   }
 
-  // 解析 persona —— 从 inline JSON 或 DB 加载。BB-shape 通常不带 persona；
-  // commit 4 会引入默认 seeded persona 兜底，此处先报 422 引导调用方升级或显式传 persona。
-  if (!req.persona) {
-    audit(c, 'session.create', 'persona:?', 'errored');
-    throw new ApiError(
-      'request.invalid',
-      'persona is required (Browserbase-style empty body will use a default seeded persona once phase 11.4 commit 4 lands; for now pass persona: {id} or persona: {inline})',
-      { field: 'persona' },
-    );
-  }
+  // 解析 persona —— 三个分支：inline JSON / 指定 DB id / 完全省略（commit 4a：默认 seed 池）。
+  // BB-shape `bb.sessions.create({})` 走第三分支：随机抽一个 default seeded persona，
+  // 然后跌进 id-lookup 通道。若 seed 被 operator 误删，下面 404 会用清晰的 default id
+  // 提示需要重 seed。
+  const personaInput = req.persona ?? { id: pickDefaultPersonaDbId() };
   let persona: Persona;
   let personaIdForRow: string | null = null;
-  if (req.persona.inline !== undefined) {
+  if (personaInput.inline !== undefined) {
     try {
-      persona = parsePersona(req.persona.inline);
+      persona = parsePersona(personaInput.inline);
     } catch (err) {
       audit(c, 'session.create', 'persona:inline', 'errored');
       throw new ApiError(
@@ -279,7 +275,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       );
     }
   } else {
-    const personaId = req.persona.id as string;
+    const personaId = personaInput.id as string;
     const handle = await getDb();
     const rows = await handle.drizzle
       .select({ personaJson: personasTable.personaJson })

@@ -7,9 +7,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { sql } from 'drizzle-orm';
 
 import { createApp } from './app.js';
-import { ensureSchema } from './db/bootstrap.js';
+import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
 import { disposeDb, getDb } from './db/client.js';
 import { apiKeys, projects } from './db/schema.js';
 import { resetEnvCache } from './env.js';
@@ -799,7 +800,9 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
     expect(body.unsupportedFields).not.toContain('browserSettings.viewport');
   });
 
-  it('persona 完全省略 → 422 request.invalid（commit 4 之前尚未默认 seed）', async () => {
+  it('persona 完全省略 + 默认 seed 未植入 → 404 persona.not_found（命中清晰 default id）', async () => {
+    // 没调 ensureDefaultPersonas，所以 personas 表里没有 seed 行。
+    // 处理器仍然会随机挑一个 default id 走 DB lookup，应当得到 404 + 该 id。
     const app = createApp();
     const resp = await app.request('/v1/sessions', {
       method: 'POST',
@@ -808,13 +811,10 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
         projectId: TEST_PROJECT_ID,
       }),
     });
-    expect(resp.status).toBe(422);
-    const err = (await resp.json()) as {
-      error: { code: string; message: string; detail?: { field?: string } };
-    };
-    expect(err.error.code).toBe('request.invalid');
-    expect(err.error.detail?.field).toBe('persona');
-    expect(err.error.message).toMatch(/persona is required/i);
+    expect(resp.status).toBe(404);
+    const err = (await resp.json()) as { error: { code: string; message: string } };
+    expect(err.error.code).toBe('persona.not_found');
+    expect(err.error.message).toMatch(/pers_default_/);
   });
 
   it('无 BB 字段时响应不带 unsupportedFields key（cleanliness check）', async () => {
@@ -830,5 +830,115 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
     expect(resp.status).toBe(201);
     const body = (await resp.json()) as Record<string, unknown>;
     expect(Object.prototype.hasOwnProperty.call(body, 'unsupportedFields')).toBe(false);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 11.4 commit 4a: 默认 persona seed 池（让 Stagehand bb.sessions.create({}) 绿）
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('Browserbase compat — default persona seed (phase 11.4 commit 4a)', () => {
+  beforeEach(async () => {
+    // 这个 describe 下的所有用例都需要预先植入默认 persona；其他 describe 不用。
+    await ensureDefaultPersonas();
+  });
+
+  it('empty body (BB-shape `{}`) → 201，赋予默认 seed persona', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({}),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as {
+      persona_id: string;
+      persona: { metadata: { id: string; tags: string[] } };
+      project_id: string;
+    };
+    expect(body.persona_id).toMatch(/^pers_default_/);
+    expect(body.project_id).toBe(TEST_PROJECT_ID);
+    expect(body.persona.metadata.tags).toEqual(
+      expect.arrayContaining(['default', 'seed']),
+    );
+  });
+
+  it('BB-shape 仅带 projectId（无 persona） → 201，默认 seed persona', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({ projectId: TEST_PROJECT_ID }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as { persona_id: string };
+    expect(body.persona_id).toMatch(/^pers_default_/);
+  });
+
+  it('默认 persona pool 包含 4 条 seed-source 行（与 DEFAULT_PERSONAS 等长）', async () => {
+    const handle = await getDb();
+    const rows = handle.drizzle.all(
+      sql`SELECT id FROM personas WHERE source = 'seed' AND project_id IS NULL ORDER BY id`,
+    ) as Array<{ id: string }>;
+    expect(rows.map((r) => r.id)).toEqual([
+      'pers_default_macos_sonoma_chrome_us',
+      'pers_default_ubuntu_2204_chrome_us',
+      'pers_default_win10_chrome_us',
+      'pers_default_win11_chrome_us',
+    ]);
+  });
+
+  it('ensureDefaultPersonas 幂等：调两次仍然是 4 行（不重复插）', async () => {
+    // beforeEach 已结束一次，再手动调一次。
+    await ensureDefaultPersonas();
+    const handle = await getDb();
+    const rows = handle.drizzle.all(
+      sql`SELECT COUNT(*) AS n FROM personas WHERE source = 'seed' AND project_id IS NULL`,
+    ) as Array<{ n: number }>;
+    expect(rows[0]!.n).toBe(4);
+  });
+
+  it('连跑 8 次 empty body：persona_id 始终在 4 个 default id 范围内', async () => {
+    const app = createApp();
+    const seen = new Set<string>();
+    const allowed = new Set([
+      'pers_default_win11_chrome_us',
+      'pers_default_win10_chrome_us',
+      'pers_default_macos_sonoma_chrome_us',
+      'pers_default_ubuntu_2204_chrome_us',
+    ]);
+    for (let i = 0; i < 8; i++) {
+      const r = await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({}),
+      });
+      expect(r.status).toBe(201);
+      const body = (await r.json()) as { persona_id: string };
+      expect(allowed.has(body.persona_id)).toBe(true);
+      seen.add(body.persona_id);
+    }
+    // 不断言「一定见到多个」避免 Math.random 物极必反带来的偏发 flake；
+    // 只需验证「没出允许集」。
+    expect(seen.size).toBeGreaterThan(0);
+  });
+
+  it('default persona 同时能被 native `persona: {id}` 显式引用', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        persona: { id: 'pers_default_win11_chrome_us' },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as {
+      persona_id: string;
+      persona: { metadata: { id: string } };
+    };
+    expect(body.persona_id).toBe('pers_default_win11_chrome_us');
+    expect(body.persona.metadata.id).toBe('win11-chrome-us-default');
   });
 });
