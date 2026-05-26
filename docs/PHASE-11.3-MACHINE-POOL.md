@@ -508,9 +508,9 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 
 - [x] **Step 1 baseline** ：`POOL_TARGET_SIZE=0` 下 prod-smoke 跑通 + 抓基线快照。**实测 mean acquire = 62s（n=1）**，远高于设计稿预期的 ~40s。
 - [x] **Step 2 pool=1（启动 + 初步验证）** ：`flyctl secrets set POOL_TARGET_SIZE=1` + `flyctl deploy` 后，跑 2 个 smoke。**mean acquire = 34.95s, hit_rate = 100% (2/2), prov_fail = 0% (0/3)**。pool bootstrap reconcile 干净（kept=0, evicted=0），replenish 在 consume 后 ~70s 内补回 stopped 状态。详见 §11.4。
-- [ ] **Step 2 续 — 24h 稳态观测** ：每 4h `prod-pool-snapshot.ps1`，验证 hit_rate ≥ 80% 在真实业务流量下保持，pool 不漂（evictions/sec ≈ 0）。
-- [ ] **Step 3 pool=3** ：扩到 3 后 72h，`flyctl machine list` 持续显示 3 台 stopped（稳态）。
-- [ ] **Step 4 (optional)** ：仅在 business volume > 100 sessions/day 时考虑 pool=5。
+- [-] **Step 2 续 — 24h 稳态观测** —— **PARKED 2026-05-26**：~25h 后 baseline snapshot 显示 0 traffic（`hit_rate=n/a`, `mm_acquire_count=0`）。decision gate `hit_rate ≥ 80%` 需要 acquire 样本，无 traffic 不可达。重启条件：业务量 ≥5 sessions/day 持续 3 天后重跑。详见 §11.4 item 6。
+- [-] **Step 3 pool=3** —— **PARKED 2026-05-26**：gate 是"持续 hit_rate ≥ 90% AND 业务量 > 50 sessions/day"。先解 demand 侧（phase 11.4 Stagehand 兼容）再回头看。
+- [-] **Step 4 (optional)** —— **PARKED 同上**：gate 是 > 100 sessions/day。
 - [x] cloud-runtime 重启后 30s 内 pool 视图重建（log: `pool bootstrap reconcile done`）—— 实测 boot→reconcile=0.2s，reconcile→first entry stopped=71s。
 
 ### 11.3 实测结果
@@ -546,6 +546,7 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
    - 旧的"在 ssh console 里跑 admin create-api-key 让 plaintext 打到 stdout"路径已废弃；2026-05-25 真机演练验证新路径 5 个断言全过。
 5. ⚠️ **METRICS_TOKEN 轮换** —— 仍走 `flyctl secrets set METRICS_TOKEN=<new>` 一次性操作（会触发 cloud-runtime 重启 ~10s）。无专用脚本（也不需要——它不像 API key 那样有数据库行 + 多 caller 切换的复杂度）。如果哪天需要 zero-downtime metrics scrape，再考虑加 dual-token 支持。
    - **token 值丢失恢复**：先抓再 rotate 能保住累计计数器。`prod-pool-snapshot.ps1 -FromFile <body>` 可以解析 out-of-band 抓回的 /v1/metrics 文本；脚本头部 usage 有 SSH-scrape 配方（`flyctl ssh -C "sh -c 'echo <base64-of-node-http-script> | base64 -d | node'"`，因为 cloud-runtime 镜像里没 curl/wget 但有 base64 + node）。2026-05-26 实测过：admin tooling 部署后忘记保存新值 → SSH-scrape 拿到 25h 计数器（结果 0 traffic）→ 安心 rotate。
+6. 🎯 **灰度卡在 demand 而非 infra**（2026-05-26 战略复盘）—— phase 11.3a 设计目标已达成：pool=1 实测 **35s warm acquire / 100% hit_rate (n=2) / 0% prov_fail / bootstrap reconcile 干净**。但 §11.3 表里 24h/72h/pool=3 行的 decision gate 全是 traffic-based（hit_rate ≥ 80%, ≥50 sessions/day, ≥100 sessions/day），实测 25h 0 traffic → 都不可达。瓶颈已从 infra 迁到 demand：再多观测 1 周仍是 0/0，decision 永远不会 fire。结论：**phase 11.3a 视为"代码 + 初步灰度 done，扩展决策 parked"**，下一步走 phase 11.4 = Stagehand SDK 兼容（PRD §1.1c/§2.2 GTM 核心钩子），让真用户带 demand 进来。pool 调参等 demand 起来再回头。
 
 ---
 
