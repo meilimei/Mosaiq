@@ -93,6 +93,23 @@ export const sessions = sqliteTable(
      * JSON 文本，应用层 JSON.parse；DEFAULT '{}' 让旧行迁移时不破。
      */
     userMetadata: text('user_metadata').notNull().default('{}'),
+    /**
+     * Phase 11.4 commit 4c: per-session signing key (`sks_<22 chars>`)。
+     *
+     * Browserbase SDK 的 Stagehand 调用模式是 `chromium.connectOverCDP(session.connectUrl)`
+     * 不带任何 header。Playwright 的 connectOverCDP 默认不携带 auth，因此 connectUrl
+     * 必须**自己**带凭据。我们模仿 BB 的方案：每个 session 在 create 时生成一次
+     * 高熵 signing key，存这一列；session 创建响应里既作为 BB 兼容字段
+     * `signingKey` 暴露，又内嵌进 connectUrl 的 `?token=` 查询串。
+     *
+     * cdp WS 代理（src/cdp/proxy.ts）认证时，先按 `?token=` 匹配该列；命中则
+     * **仅**授权访问该 session（与 API key 的全 project 范围互斥），符合
+     * "凭据最小作用域"原则。session 关闭后 signing key 随之失效。
+     *
+     * Nullable：让 11.4 之前已存在的 prod 行迁移时不破；那些行的 connectUrl
+     * 仍然只能通过 Bearer header 接入。新建的 session 一律必须有该字段。
+     */
+    signingKey: text('signing_key'),
   },
   (t) => ({
     projectIdx: index('sessions_project_idx').on(t.projectId, t.openedAt),

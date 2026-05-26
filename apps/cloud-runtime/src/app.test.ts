@@ -295,7 +295,11 @@ describe('POST /v1/sessions', () => {
     };
     expect(body.id).toMatch(/^ses_/);
     expect(body.project_id).toBe(TEST_PROJECT_ID);
-    expect(body.cdp_url).toBe(`ws://localhost:8787/v1/sessions/${body.id}/cdp`);
+    // Phase 11.4 commit 4c: cdp_url 现在带 ?token=<sks_...> 让 Playwright
+    // chromium.connectOverCDP(url) 不传 header 也能 auth (Stagehand SDK 模式)。
+    expect(body.cdp_url).toMatch(
+      new RegExp(`^ws://localhost:8787/v1/sessions/${body.id}/cdp\\?token=sks_[A-Za-z0-9_-]{22}$`),
+    );
     expect(body.persona.metadata.id).toBe('win11-chrome-us');
     expect(body.stealth).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
     expect(body.status).toBe('live');
@@ -602,7 +606,8 @@ describe('Browserbase compat — response shape (phase 11.4)', () => {
     const body = await createOne();
     // native (snake_case) 字段保留
     expect(body['id']).toMatch(/^ses_/);
-    expect(body['cdp_url']).toMatch(/\/v1\/sessions\/ses_.+\/cdp$/);
+    // Phase 11.4 commit 4c: cdp_url 内嵌 session signing key (?token=sks_...)
+    expect(body['cdp_url']).toMatch(/\/v1\/sessions\/ses_.+\/cdp\?token=sks_[A-Za-z0-9_-]{22}$/);
     expect(body['project_id']).toBe(TEST_PROJECT_ID);
     expect(body['created_at']).toBeTypeOf('string');
     // BB (camelCase) 字段同时输出
@@ -625,11 +630,19 @@ describe('Browserbase compat — response shape (phase 11.4)', () => {
   it('POST response BB stub 字段值正确（11.4a 不实现的字段）', async () => {
     const body = await createOne();
     expect(body['seleniumRemoteUrl']).toBeNull();
-    expect(body['signingKey']).toBeNull();
     expect(body['contextId']).toBeNull();
     expect(body['endedAt']).toBeNull();
     expect(body['proxyBytes']).toBe(0);
     expect(body['keepAlive']).toBe(false);
+  });
+
+  it('POST response signingKey 是 sks_... 且与 connectUrl 中的 ?token= 完全一致 (phase 11.4 commit 4c)', async () => {
+    const body = await createOne();
+    const signingKey = body['signingKey'];
+    expect(signingKey).toMatch(/^sks_[A-Za-z0-9_-]{22}$/);
+    const connectUrl = body['connectUrl'] as string;
+    const url = new URL(connectUrl);
+    expect(url.searchParams.get('token')).toBe(signingKey);
   });
 
   it('POST response userMetadata 默认为 {}（请求未传时）', async () => {
@@ -649,6 +662,8 @@ describe('Browserbase compat — response shape (phase 11.4)', () => {
     expect(body['projectId']).toBe(TEST_PROJECT_ID);
     expect(body['proxyBytes']).toBe(0);
     expect(body['keepAlive']).toBe(false);
+    // signing key 在 GET 路径与 POST 一致 (commit 4c)
+    expect(body['signingKey']).toBe(created['signingKey']);
     // GET 路径下 persona 是 null（v0.11 phase 11.1 简化决定保留）
     expect(body['persona']).toBeNull();
   });

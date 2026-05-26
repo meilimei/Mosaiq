@@ -51,7 +51,8 @@ const STATEMENTS: string[] = [
     client_label TEXT,
     error_message TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
-    user_metadata TEXT NOT NULL DEFAULT '{}'
+    user_metadata TEXT NOT NULL DEFAULT '{}',
+    signing_key TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS sessions_project_idx ON sessions (project_id, opened_at)`,
   `CREATE INDEX IF NOT EXISTS sessions_status_idx ON sessions (status)`,
@@ -113,6 +114,14 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     table: 'sessions',
     column: 'user_metadata',
     alterSql: `ALTER TABLE sessions ADD COLUMN user_metadata TEXT NOT NULL DEFAULT '{}'`,
+  },
+  {
+    // Phase 11.4 commit 4c: per-session signing key for connectUrl ?token=
+    // auth (Stagehand SDK compat). Nullable — pre-existing live sessions in
+    // prod won't have one and can keep using Bearer-header auth.
+    table: 'sessions',
+    column: 'signing_key',
+    alterSql: `ALTER TABLE sessions ADD COLUMN signing_key TEXT`,
   },
 ];
 

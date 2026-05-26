@@ -11,7 +11,7 @@ const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz';
 const generate22 = customAlphabet(alphabet, 22);
 const generate8 = customAlphabet(alphabet, 8);
 
-export type IdPrefix = 'proj' | 'apk' | 'ses' | 'mch' | 'pers' | 'evt' | 'aud';
+export type IdPrefix = 'proj' | 'apk' | 'ses' | 'mch' | 'pers' | 'evt' | 'aud' | 'sks';
 
 export function newId(prefix: IdPrefix): string {
   return `${prefix}_${generate22()}`;

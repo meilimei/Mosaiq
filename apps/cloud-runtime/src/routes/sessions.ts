@@ -139,6 +139,18 @@ function publicCdpUrl(sessionId: string): string {
 }
 
 /**
+ * Phase 11.4 commit 4c: 把 session 的 signing key 内嵌进 cdp URL 的 `?token=`
+ * 查询串。Stagehand 调 `chromium.connectOverCDP(session.connectUrl)` 不传
+ * header，所以 URL 必须自己带凭据；signing key 是 session 范围的最小凭据，
+ * 比 API key 安全。row.signingKey 为 null（11.4 之前的旧 prod 行）时退回
+ * 不带 token，调用方仍可用 Bearer header。
+ */
+function cdpUrlWithToken(baseCdpUrl: string, signingKey: string | null): string {
+  if (!signingKey) return baseCdpUrl;
+  return `${baseCdpUrl}?token=${encodeURIComponent(signingKey)}`;
+}
+
+/**
  * 把 DB 行 + persona JSON 拼成 API 响应形状。
  *
  * **Phase 11.4 native superset**：返回同时含
@@ -167,6 +179,7 @@ function shapeSession(
     // 解析失败 → 空对象，不报错 响应。
   }
   const updatedAt = row.lastSeenAt ?? row.openedAt;
+  const cdpUrl = cdpUrlWithToken(row.cdpPublicUrl, row.signingKey);
 
   return {
     // ── Mosaiq native shape (snake_case) ──
@@ -174,7 +187,7 @@ function shapeSession(
     project_id: row.projectId,
     persona_id: row.personaId,
     status: row.status,
-    cdp_url: row.cdpPublicUrl,
+    cdp_url: cdpUrl,
     persona: personaJson,
     stealth,
     expires_at: row.expiresAt,
@@ -194,9 +207,9 @@ function shapeSession(
     endedAt: row.closedAt,
     proxyBytes: 0,
     keepAlive: false,
-    connectUrl: row.cdpPublicUrl,
+    connectUrl: cdpUrl,
     seleniumRemoteUrl: null as string | null,
-    signingKey: null as string | null,
+    signingKey: row.signingKey,
     contextId: null as string | null,
     userMetadata: userMetadataParsed,
   };
@@ -305,6 +318,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   );
 
   const sessionId = newId('ses');
+  const signingKey = newId('sks');
   const stealth: StealthOpts = req.stealth;
   // viewport 优先级：native viewport > BB browserSettings.viewport（同形）。
   const viewport = req.viewport ?? req.browserSettings?.viewport;
@@ -350,6 +364,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     clientLabel: req.client_label ?? null,
     metadataJson: JSON.stringify({ stealth, viewport }),
     userMetadata: req.userMetadata ? JSON.stringify(req.userMetadata) : '{}',
+    signingKey,
   });
 
   log.info(

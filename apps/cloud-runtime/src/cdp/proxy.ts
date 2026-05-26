@@ -15,10 +15,15 @@
  *   - 任一端 close → 另一端 close（带相同 code 尽量）
  *   - 周期性心跳用 ws 自带 ping/pong（每 30s）
  *
- * 鉴权：
- *   - 优先从 Authorization: Bearer ... header 读（Playwright 的 connectOverCDP
- *     支持 `headers` 参数）
- *   - 兜底从 URL `?token=` 读（浏览器 WS API 不支持自定义 header）
+ * 鉴权 (phase 11.4 commit 4c)：按优先级三叉 fallback
+ *   1. Authorization: Bearer <api_key>             # native SDK / Playwright connectOverCDP({ headers })
+ *   2. URL `?token=<session.signing_key>`          # Stagehand 路径（session-scoped）
+ *   3. URL `?token=<api_key>`                      # 浏览器 WS API、legacy CLI
+ *
+ * 路径 2 在 phase 11.4 commit 4c 加入，是使 Stagehand 零配置调
+ * `chromium.connectOverCDP(session.connectUrl)` 能连上的关键：Playwright
+ * 默认不携 header，connectUrl 必须自带凭据。signing key 是 session 范围的
+ * 最小凭据（只能接本 session），泄露后的蔓延屁股小于 API key。
  */
 
 import type { IncomingMessage } from 'node:http';
@@ -35,7 +40,11 @@ import { apiKeys } from '../db/schema.js';
 import { getLogger } from '../utils/logger.js';
 
 interface ProxyAuth {
+  /** 使用了哪种凭据：API key (full project scope) 或 session signing key (session scope)。 */
+  scope: 'api_key' | 'session_key';
+  /** API key id 或 合成错 'sks:<sessionId>' 评调 audit。 */
   apiKeyId: string;
+  /** 该 session 所属 project（两种路径都能拿到）。 */
   projectId: string;
 }
 
@@ -54,7 +63,18 @@ export function createCdpProxy() {
   const wss = new WebSocketServer({ noServer: true });
   const log = getLogger();
 
-  async function authenticate(req: IncomingMessage): Promise<ProxyAuth | null> {
+  /**
+   * 鉴权。调用时传入已查到的 session 行，让我们能在没额外 DB query
+   * 的情况下识别 session-scoped signing key。
+   *
+   * 优先级：Bearer header > ?token= as session signing key > ?token= as api key plaintext.
+   * “session signing key” 必须与 URL :id 对上的那个 session 的 row.signingKey 严格相等，
+   * 防止 “拿 session A 的 signing key 去连 session B”。
+   */
+  async function authenticate(
+    req: IncomingMessage,
+    sessionRow: { id: string; projectId: string; signingKey: string | null },
+  ): Promise<ProxyAuth | null> {
     const headerToken = (() => {
       const v = req.headers['authorization'];
       if (typeof v === 'string' && v.toLowerCase().startsWith('bearer ')) {
@@ -64,6 +84,30 @@ export function createCdpProxy() {
     })();
     const url = new URL(req.url ?? '/', 'http://localhost');
     const queryToken = url.searchParams.get('token');
+
+    // 路径 2：query token 与 session.signing_key 严格相等。仅 ?token= 路线，
+    // header 路径永远走 api_key 语义（全项父 scope）。常量时间比较避免 timing。
+    if (queryToken && sessionRow.signingKey) {
+      const a = Buffer.from(queryToken);
+      const b = Buffer.from(sessionRow.signingKey);
+      if (a.length === b.length) {
+        // crypto.timingSafeEqual 不能跨长度，用 length 预检后调用。
+        try {
+          const { timingSafeEqual } = await import('node:crypto');
+          if (timingSafeEqual(a, b)) {
+            return {
+              scope: 'session_key',
+              apiKeyId: `sks:${sessionRow.id}`,
+              projectId: sessionRow.projectId,
+            };
+          }
+        } catch {
+          /* fall through to api_key path */
+        }
+      }
+    }
+
+    // 路径 1 / 3：api_key plaintext（从header或query token取）。
     const token = headerToken ?? queryToken;
     if (!token) return null;
 
@@ -75,7 +119,7 @@ export function createCdpProxy() {
       .limit(1);
     const row = rows[0];
     if (!row || row.revokedAt) return null;
-    return { apiKeyId: row.id, projectId: row.projectId };
+    return { scope: 'api_key', apiKeyId: row.id, projectId: row.projectId };
   }
 
   async function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
@@ -89,13 +133,7 @@ export function createCdpProxy() {
     }
     const sessionId = m[1] as string;
 
-    const auth = await authenticate(req).catch(() => null);
-    if (!auth) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-      socket.destroy();
-      return;
-    }
-
+    // session row 必须在 auth 之前拿到。signing key 路径需要比对 row.signingKey。
     const handle = await getDb();
     const rows = await handle.drizzle
       .select()
@@ -108,7 +146,17 @@ export function createCdpProxy() {
       socket.destroy();
       return;
     }
-    if (row.projectId !== auth.projectId) {
+
+    const auth = await authenticate(req, row).catch(() => null);
+    if (!auth) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // session_key 路径 隐含了 project 隔离（token 与 row.signingKey 严等且 row 就是
+    // 该 session），跳过 projectId 对账。api_key 路径仍需验证。
+    if (auth.scope === 'api_key' && row.projectId !== auth.projectId) {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
