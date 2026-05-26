@@ -545,6 +545,7 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
    - 完整 playbook + footgun 见 `docs/PHASE-11.2-FLY-DEPLOY.md` §8。
    - 旧的"在 ssh console 里跑 admin create-api-key 让 plaintext 打到 stdout"路径已废弃；2026-05-25 真机演练验证新路径 5 个断言全过。
 5. ⚠️ **METRICS_TOKEN 轮换** —— 仍走 `flyctl secrets set METRICS_TOKEN=<new>` 一次性操作（会触发 cloud-runtime 重启 ~10s）。无专用脚本（也不需要——它不像 API key 那样有数据库行 + 多 caller 切换的复杂度）。如果哪天需要 zero-downtime metrics scrape，再考虑加 dual-token 支持。
+   - **token 值丢失恢复**：先抓再 rotate 能保住累计计数器。`prod-pool-snapshot.ps1 -FromFile <body>` 可以解析 out-of-band 抓回的 /v1/metrics 文本；脚本头部 usage 有 SSH-scrape 配方（`flyctl ssh -C "sh -c 'echo <base64-of-node-http-script> | base64 -d | node'"`，因为 cloud-runtime 镜像里没 curl/wget 但有 base64 + node）。2026-05-26 实测过：admin tooling 部署后忘记保存新值 → SSH-scrape 拿到 25h 计数器（结果 0 traffic）→ 安心 rotate。
 
 ---
 

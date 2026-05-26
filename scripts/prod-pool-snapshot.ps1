@@ -16,6 +16,11 @@
 #   powershell -File scripts/prod-pool-snapshot.ps1 -Label "before-pool-1"
 #   powershell -File scripts/prod-pool-snapshot.ps1 -Host "staging.fly.dev"
 #
+#   # parse from a previously-saved /v1/metrics body (e.g. scraped via
+#   # `flyctl ssh -C` when METRICS_TOKEN is lost or you want to preserve
+#   # counters across a token rotation):
+#   powershell -File scripts/prod-pool-snapshot.ps1 -FromFile tmp/pool-snapshots/raw.prom.txt -Label "preserved"
+#
 # # Decision criteria (recap)
 #
 #   - Hit rate >= 80%  -> bump POOL_TARGET_SIZE up
@@ -32,47 +37,62 @@ param(
   [string] $TargetHost = 'mosaiq-cloud-runtime.fly.dev',
   [string] $Label      = '',
   [string] $Token      = $env:METRICS_TOKEN,
-  [switch] $NoSave     # diagnostic: print only, do not write JSON
+  [string] $FromFile   = '',   # parse this Prometheus body file instead of fetching
+  [switch] $NoSave             # diagnostic: print only, do not write JSON
 )
 
 $ErrorActionPreference = 'Stop'
 
-# ---- preflight -------------------------------------------------------------
-if ([string]::IsNullOrWhiteSpace($Token)) {
-  Write-Host '[ERR] METRICS_TOKEN not set. Either:' -ForegroundColor Red
-  Write-Host '       $env:METRICS_TOKEN = "..."'
-  Write-Host '       or pass -Token <value>'
-  Write-Host ''
-  Write-Host '     Retrieve from prod:'
-  Write-Host '       flyctl secrets list --app mosaiq-cloud-runtime'
-  Write-Host '     (token value is not viewable; if lost, rotate via `flyctl secrets set`)'
-  exit 2
+# ---- input: file or fetch --------------------------------------------------
+$ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
+
+if ($FromFile) {
+  if (-not (Test-Path $FromFile)) {
+    Write-Host "[ERR] -FromFile not found: $FromFile" -ForegroundColor Red
+    exit 2
+  }
+  Write-Host "[snapshot] reading body from $FromFile" -ForegroundColor Cyan
+  $body = Get-Content -Raw -Path $FromFile
+  if ([string]::IsNullOrWhiteSpace($body)) {
+    Write-Host "[ERR] -FromFile is empty" -ForegroundColor Red
+    exit 1
+  }
+} else {
+  if ([string]::IsNullOrWhiteSpace($Token)) {
+    Write-Host '[ERR] METRICS_TOKEN not set. Either:' -ForegroundColor Red
+    Write-Host '       $env:METRICS_TOKEN = "..."'
+    Write-Host '       or pass -Token <value>'
+    Write-Host '       or pass -FromFile <prom-body>'
+    Write-Host ''
+    Write-Host '     Retrieve from prod:'
+    Write-Host '       flyctl secrets list --app mosaiq-cloud-runtime'
+    Write-Host '     (token value is not viewable; if lost, rotate via `flyctl secrets set`)'
+    exit 2
+  }
+
+  $baseUrl = "https://$TargetHost"
+  $url     = "$baseUrl/v1/metrics"
+
+  Write-Host "[snapshot] scraping $url" -ForegroundColor Cyan
+
+  try {
+    $resp = Invoke-WebRequest -Uri $url `
+      -Headers @{ Authorization = "Bearer $Token" } `
+      -UseBasicParsing `
+      -TimeoutSec 30
+  } catch {
+    Write-Host "[ERR] fetch failed: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+  }
+
+  if ($resp.StatusCode -ne 200) {
+    Write-Host "[ERR] HTTP $($resp.StatusCode) (expected 200)" -ForegroundColor Red
+    Write-Host $resp.Content
+    exit 1
+  }
+
+  $body = $resp.Content
 }
-
-$baseUrl = "https://$TargetHost"
-$url     = "$baseUrl/v1/metrics"
-
-Write-Host "[snapshot] scraping $url" -ForegroundColor Cyan
-
-# ---- fetch -----------------------------------------------------------------
-try {
-  $resp = Invoke-WebRequest -Uri $url `
-    -Headers @{ Authorization = "Bearer $Token" } `
-    -UseBasicParsing `
-    -TimeoutSec 30
-} catch {
-  Write-Host "[ERR] fetch failed: $($_.Exception.Message)" -ForegroundColor Red
-  exit 1
-}
-
-if ($resp.StatusCode -ne 200) {
-  Write-Host "[ERR] HTTP $($resp.StatusCode) (expected 200)" -ForegroundColor Red
-  Write-Host $resp.Content
-  exit 1
-}
-
-$body = $resp.Content
-$ts   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH-mm-ssZ")
 
 # ---- parse -----------------------------------------------------------------
 # Prometheus exposition format: ignore lines starting with `#`, each metric
