@@ -29,11 +29,14 @@
     "ci-compare-baseline": "node scripts/ci-compare-baseline.mjs",
     "refresh-baseline": "tsx scripts/refresh-baseline.mts",
     "test:refresh-baseline": "tsx scripts/refresh-baseline.test.mts",
+    "smoke:stagehand-compat": "node scripts/stagehand-compat-smoke.mjs",
     "clean": "pnpm -r run clean && rimraf node_modules"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@browserbasehq/sdk": "^2.6.0",
     "@changesets/cli": "^2.31.0",
+    "playwright-core": "1.59.1",
     "rimraf": "^6.0.1",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
