@@ -33,7 +33,7 @@ import { FlyMachineManager } from './fly.js';
 import type { FlyMachineManagerOptions } from './fly.js';
 import { callPodStart, callPodStop, rewriteCdpHost, waitForPodReady } from './pod-control.js';
 import type { FetchLike } from './pod-control.js';
-import type { AcquireSpec, AcquiredMachine, MachineManager } from './types.js';
+import type { AcquireSpec, AcquiredMachine, MachineManager, ReleaseOptions } from './types.js';
 
 /** Pool entry 在 fly metadata 上的 marker —— bootstrap reconcile 用。 */
 export const POOL_METADATA_KEY = 'mosaiq_pool';
@@ -235,8 +235,23 @@ export class FlyPooledMachineManager implements MachineManager {
     }
   }
 
-  async release(machineId: string): Promise<void> {
+  async release(machineId: string, opts?: ReleaseOptions): Promise<void> {
     if (this.#poolAlive.has(machineId)) {
+      // Phase 11.5: hold=true 保留 pool-acquired pod。跟 cold path 一样跳过
+      // callPodStop + destroyMachine，但 #poolAlive 维持该 machineId 的 entry。
+      // 这台 machine **不**回 #pool（pool entry single-use 不变；它已被 consume），
+      // 仅以"held"状态留存到下次 release(id, {hold: false}) 真正销毁。
+      // Pool 后台 loop 会在 tickReplenish 时按 #pool 实际 stopped 数量补新 entry，
+      // 与 hold 状态独立。
+      if (opts?.hold === true) {
+        const podOrigin = this.#poolAlive.get(machineId)!;
+        getLogger().debug(
+          { machineId, podOrigin },
+          'release(hold=true): pool-acquired fly machine retained',
+        );
+        return;
+      }
+
       const podOrigin = this.#poolAlive.get(machineId)!;
       // best-effort 让 pod 干净停 chromium
       await callPodStop({ podOrigin, machineId, fetchImpl: this.#fetchImpl });
@@ -249,8 +264,8 @@ export class FlyPooledMachineManager implements MachineManager {
       });
       return;
     }
-    // 不在 poolAlive 里 → cold delegate 负责
-    await this.#cold.release(machineId);
+    // 不在 poolAlive 里 → cold delegate 负责（带 opts 透传，cold 也支持 hold=true）
+    await this.#cold.release(machineId, opts);
   }
 
   async capacity(): Promise<{ ready: number; busy: number; cap: number }> {

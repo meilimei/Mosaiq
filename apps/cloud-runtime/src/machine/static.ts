@@ -18,7 +18,7 @@
 import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
 import { callPodStart, callPodStop, rewriteCdpHost, POD_START_DEFAULT_TIMEOUT_MS } from './pod-control.js';
-import type { AcquireSpec, AcquiredMachine, MachineManager } from './types.js';
+import type { AcquireSpec, AcquiredMachine, MachineManager, ReleaseOptions } from './types.js';
 
 // 维持 phase 11.1 已发布的公共 API 形状（既有单测 import 这几个 type）。
 export {
@@ -96,11 +96,22 @@ export class StaticPoolMachineManager implements MachineManager {
     };
   }
 
-  async release(machineId: string): Promise<void> {
+  async release(machineId: string, opts?: ReleaseOptions): Promise<void> {
     const log = getLogger();
     const podOrigin = this.#machineToPod.get(machineId);
     if (!podOrigin) {
       log.debug({ machineId }, 'release: machine unknown, idempotent skip');
+      return;
+    }
+
+    // Phase 11.5: hold=true 保留 pod —— 不调 /control/stop，不把 slot 释放回池。
+    // pod 内 chromium 进程继续跑，--user-data-dir 不动；下一次 reconnect 直接拨号
+    // 同 podOrigin。容量计数维持 busy，反映 pod 仍被该 session 占用。
+    if (opts?.hold === true) {
+      log.debug(
+        { machineId, podOrigin },
+        'release(hold=true): static pod retained, slot stays busy',
+      );
       return;
     }
 

@@ -253,6 +253,61 @@ describe('FlyMachineManager — happy path', () => {
     expect(stopCount).toBe(1);
   });
 
+  it('release(id, {hold: true}) 保留 machine —— 不调 /control/stop 也不 DELETE (phase 11.5)', async () => {
+    const { fetchImpl, calls } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
+        handler: () =>
+          new Response(
+            JSON.stringify({ id: 'mch_keep_me', state: 'started', private_ip: POD_IP }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_keep_me'),
+        handler: () =>
+          new Response(
+            JSON.stringify({ id: 'mch_keep_me', state: 'started', private_ip: POD_IP }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u) => u.endsWith('/healthz'),
+        handler: () => new Response('{}', { status: 200 }),
+      },
+      {
+        match: (u) => u.endsWith('/control/start'),
+        handler: () =>
+          new Response(
+            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'mch_keep_me' }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u) => u.endsWith('/control/stop'),
+        handler: () => new Response(null, { status: 204 }),
+      },
+      {
+        match: (u, init) => init?.method === 'DELETE' && u.includes('/machines/'),
+        handler: () => new Response(null, { status: 200 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl);
+    const m = await mm.acquire(acquireSpec);
+    await mm.release(m.id, { hold: true });
+
+    expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(false);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+    expect((await mm.capacity()).busy).toBe(1);
+
+    // 后续 release(id) 真正 destroy
+    await mm.release(m.id);
+    expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(true);
+    expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('mch_keep_me'))).toBe(true);
+    expect((await mm.capacity()).busy).toBe(0);
+  });
+
   it('release: DELETE 404 视为成功（machine 已被销毁）', async () => {
     const { fetchImpl } = makeStubFetch([
       {

@@ -558,6 +558,95 @@ describe('FlyPooledMachineManager — release routing', () => {
     expect(mm.inspectPoolAlive()).toEqual([]);
   });
 
+  it('release(id, {hold: true}) of pool-acquired: skip stop+destroy, poolAlive keeps entry (phase 11.5)', async () => {
+    const states = new Map<string, string>([['mch_pool_hold', 'stopped']]);
+    const { fetchImpl, calls } = makeStubFetch([
+      {
+        match: (u, init) => {
+          if (init?.method !== 'POST') return false;
+          if (u !== `${FLY_BASE}/apps/mosaiq-browser-pod-test/machines`) return false;
+          const body = init.body ? JSON.parse(String(init.body)) : {};
+          return body.skip_launch === true;
+        },
+        handler: () =>
+          new Response(
+            JSON.stringify({ id: 'mch_pool_hold', state: 'created', private_ip: POD_IP_1 }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_pool_hold'),
+        handler: () =>
+          new Response(
+            JSON.stringify({
+              id: 'mch_pool_hold',
+              state: states.get('mch_pool_hold') ?? 'stopped',
+              private_ip: POD_IP_1,
+            }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u, init) =>
+          init?.method === 'POST' &&
+          u.startsWith(FLY_BASE) &&
+          u.endsWith('/start') &&
+          u.includes('/machines/'),
+        handler: () => {
+          states.set('mch_pool_hold', 'started');
+          return new Response(null, { status: 200 });
+        },
+      },
+      {
+        match: (u) => u.endsWith('/healthz'),
+        handler: () => new Response('{}', { status: 200 }),
+      },
+      {
+        match: (u) => u.endsWith('/control/start'),
+        handler: () =>
+          new Response(
+            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'mch_pool_hold' }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u) => u.endsWith('/control/stop'),
+        handler: () => new Response(null, { status: 204 }),
+      },
+      {
+        match: (u, init) =>
+          init?.method === 'DELETE' && u.includes('/machines/mch_pool_hold'),
+        handler: () => new Response(null, { status: 200 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl, { poolTargetSize: 1 });
+    await mm.tickReplenish();
+    await waitForCondition(() => mm.inspectPool().stopped === 1, 1000);
+
+    const m = await mm.acquire(acquireSpec);
+    expect(m.id).toBe('mch_pool_hold');
+    expect(mm.inspectPoolAlive()).toEqual(['mch_pool_hold']);
+
+    await mm.release(m.id, { hold: true });
+
+    // /control/stop + DELETE must NOT have been called
+    expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(false);
+    expect(
+      calls.some((c) => c.method === 'DELETE' && c.url.includes('/machines/mch_pool_hold')),
+    ).toBe(false);
+    // poolAlive 仍含 hold 的 machineId（capacity 反映 busy）
+    expect(mm.inspectPoolAlive()).toEqual(['mch_pool_hold']);
+
+    // 后续 release(id) (hold=false) 真正销毁
+    await mm.release(m.id);
+    expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(true);
+    expect(
+      calls.some((c) => c.method === 'DELETE' && c.url.includes('/machines/mch_pool_hold')),
+    ).toBe(true);
+    expect(mm.inspectPoolAlive()).toEqual([]);
+  });
+
   it('release(machineId) of cold-acquired session: delegates to cold manager', async () => {
     const { fetchImpl, calls } = makeStubFetch(coldHappyPathRoutes('mch_cold', POD_IP_1));
     const mm = manager(fetchImpl);

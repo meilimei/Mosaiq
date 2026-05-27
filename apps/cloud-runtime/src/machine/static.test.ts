@@ -145,4 +145,32 @@ describe('StaticPoolMachineManager', () => {
     const mm = new StaticPoolMachineManager({ podAddrs: ['http://p1:9222'], fetchImpl });
     await expect(mm.release('mch_does_not_exist')).resolves.toBeUndefined();
   });
+
+  it('release(id, {hold: true}) 保留 pod —— 不调 /control/stop, 槽位维持 busy (phase 11.5)', async () => {
+    const calls: string[] = [];
+    const fetchImpl = fakeFetch(async (url) => {
+      calls.push(url);
+      if (url.endsWith('/control/start')) {
+        return new Response(
+          JSON.stringify({ cdpUrl: 'ws://localhost:9223/d/u1', machineId: 'mch_a' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(null, { status: 204 });
+    });
+    const mm = new StaticPoolMachineManager({ podAddrs: ['http://p1:9222'], fetchImpl });
+    const m = await mm.acquire(acquireSpec);
+    await mm.release(m.id, { hold: true });
+
+    // /control/stop 应被跳过
+    expect(calls.some((u) => u.endsWith('/control/stop'))).toBe(false);
+    // 槽位仍 busy（pod 仍在用，capacity 反映"占着"）
+    expect((await mm.capacity()).busy).toBe(1);
+    expect((await mm.capacity()).ready).toBe(0);
+
+    // 后续 release(id, {hold: false}) —— 真正销毁，槽位才回 ready
+    await mm.release(m.id);
+    expect(calls.some((u) => u.endsWith('/control/stop'))).toBe(true);
+    expect((await mm.capacity()).busy).toBe(0);
+  });
 });

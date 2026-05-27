@@ -258,6 +258,67 @@ describe('LocalDockerMachineManager — happy path', () => {
     expect(calls.filter((c) => c.url === `${POD_ORIGIN}/control/stop`).length).toBe(1);
   });
 
+  it('release(id, {hold: true}) 保留容器 —— 不调 /control/stop 也不 DELETE (phase 11.5)', async () => {
+    const { fetchImpl, calls } = makeStubFetch([
+      {
+        match: (u, init) => init?.method === 'POST' && u.includes('/containers/create'),
+        handler: () => new Response(JSON.stringify({ Id: 'cnt_keep_me' }), { status: 201 }),
+      },
+      {
+        match: (u, init) => init?.method === 'POST' && u.includes('/containers/cnt_keep_me/start'),
+        handler: () => new Response(null, { status: 204 }),
+      },
+      {
+        match: (u, init) =>
+          init?.method === 'GET' && u.includes('/containers/cnt_keep_me/json'),
+        handler: () =>
+          new Response(
+            JSON.stringify({
+              Id: 'cnt_keep_me',
+              NetworkSettings: { Networks: { 'mosaiq-net': { IPAddress: '172.20.0.5' } } },
+            }),
+            { status: 200 },
+          ),
+      },
+      {
+        match: (u) => u.endsWith('/healthz'),
+        handler: () => new Response('{}', { status: 200 }),
+      },
+      {
+        match: (u) => u.endsWith('/control/start'),
+        handler: () =>
+          new Response(JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }), {
+            status: 200,
+          }),
+      },
+      {
+        match: (u) => u.endsWith('/control/stop'),
+        handler: () => new Response(null, { status: 204 }),
+      },
+      {
+        match: (u, init) => init?.method === 'DELETE',
+        handler: () => new Response(null, { status: 204 }),
+      },
+    ]);
+
+    const mm = manager(fetchImpl);
+    const m = await mm.acquire(acquireSpec);
+    await mm.release(m.id, { hold: true });
+
+    // /control/stop 与 DELETE 都不应被触发
+    expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(false);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+    // capacity 维持 busy=1（容器仍存在 alive 表里）
+    expect((await mm.capacity()).busy).toBe(1);
+
+    // 后续 release(id) (hold=false default) 才真正销毁
+    await mm.release(m.id);
+    expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(true);
+    expect(calls.some((c) => c.method === 'DELETE')).toBe(true);
+    expect((await mm.capacity()).busy).toBe(0);
+  });
+
   it('release: DELETE 404 视为成功（容器已不存在）', async () => {
     const { fetchImpl } = makeStubFetch([
       {

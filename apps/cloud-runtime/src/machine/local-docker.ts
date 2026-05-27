@@ -40,7 +40,7 @@ import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
 import { callPodStart, callPodStop, rewriteCdpHost, waitForPodReady } from './pod-control.js';
 import type { FetchLike } from './pod-control.js';
-import type { AcquireSpec, AcquiredMachine, MachineManager } from './types.js';
+import type { AcquireSpec, AcquiredMachine, MachineManager, ReleaseOptions } from './types.js';
 
 /** Docker /containers/{id}/json 部分 schema —— 只取我们用到的字段。 */
 interface DockerInspectResponse {
@@ -247,9 +247,21 @@ export class LocalDockerMachineManager implements MachineManager {
     }
   }
 
-  async release(containerId: string): Promise<void> {
+  async release(containerId: string, opts?: ReleaseOptions): Promise<void> {
     const log = getLogger();
     const podOrigin = this.#alive.get(containerId);
+
+    // Phase 11.5: hold=true 保留容器。跳过 callPodStop（chromium 进程继续跑、
+    // --user-data-dir 不动）+ 跳过 docker rm。alive map 维持记账，capacity busy 不变。
+    // 后续 release(id, {hold: false}) 才真正销毁。
+    if (opts?.hold === true) {
+      log.debug(
+        { containerId, podOrigin: podOrigin ?? null },
+        'release(hold=true): docker container retained, alive slot kept',
+      );
+      return;
+    }
+
     if (podOrigin) {
       await callPodStop({
         podOrigin,

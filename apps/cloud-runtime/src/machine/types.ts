@@ -41,6 +41,32 @@ export interface AcquireSpec {
   ttlSeconds: number;
 }
 
+/**
+ * `release(id, opts?)` 的可选行为开关。
+ *
+ * Phase 11.5: 引入 `hold: true` 让 keepAlive 长会话路径保留 pod。
+ * 默认 hold=false 与 phase 11.4 行为完全一致（destroy machine + 清状态）。
+ *
+ * 见 docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md §3 (Pod lifecycle) 与 §5
+ * (single-use safety carve-out)。
+ */
+export interface ReleaseOptions {
+  /**
+   * `true` → 把 machine 保留在"held"状态：跳过 pod /control/stop 与 destroy（fly /
+   * docker rm / static 标 idle），machine 实例继续 running，chromium 进程不变，
+   * `--user-data-dir` 完整保留。alive map 里仍记账，capacity 计为 busy。
+   *
+   * `false`（默认）→ 完整销毁：callPodStop + destroyMachine，alive map 清掉。
+   * 这是 phase 11.4 默认行为，保留 phase 11.3a single-use invariant。
+   *
+   * 谁触发 hold=false 关闭一个曾被 hold=true 的 machine：
+   *   - DELETE /v1/sessions/{id} 客户端显式关
+   *   - session-expiry reaper 看到 idle / hard TTL 过期
+   * 见 §3.2 lifecycle 图与 §3.5 reaper 扩展。
+   */
+  hold?: boolean;
+}
+
 export interface MachineManager {
   /** 实现类型，记录到 /v1/health 用。 */
   readonly kind: 'static' | 'local-docker' | 'fly';
@@ -57,12 +83,21 @@ export interface MachineManager {
   acquire(spec: AcquireSpec): Promise<AcquiredMachine>;
 
   /**
-   * 释放 machine。语义按实现：
-   *  - static  → POST {podOrigin}/control/stop（清 user-data，标 idle）
-   *  - docker  → docker rm -f
-   *  - fly     → fly machines destroy
+   * 释放 machine。语义按实现 + opts.hold：
+   *  - hold=false (默认): 完整销毁
+   *      - static  → POST {podOrigin}/control/stop（清 user-data，标 idle）
+   *      - docker  → docker rm -f
+   *      - fly     → fly machines destroy
+   *  - hold=true (phase 11.5): 保留 machine + 用户态全部 state
+   *      - 跳过 callPodStop（chromium 进程不动，--user-data-dir 保留）
+   *      - 跳过 destroyMachine / docker rm
+   *      - alive map 仍记账（machine 持续占 cap 与计费）
+   *      - 后续 `release(id, {hold: false})` 真正销毁
+   *
+   * Phase 11.4 之前的 callers 调 `release(id)` 不传 opts，与 hold=false 等价，
+   * 行为零变化。
    */
-  release(machineId: string): Promise<void>;
+  release(machineId: string, opts?: ReleaseOptions): Promise<void>;
 
   /** 当前池容量统计，/v1/health 用。 */
   capacity(): Promise<{ ready: number; busy: number; cap: number }>;

@@ -39,7 +39,7 @@ import type {
 } from './fly-api.js';
 import { callPodStart, callPodStop, rewriteCdpHost, waitForPodReady } from './pod-control.js';
 import type { FetchLike } from './pod-control.js';
-import type { AcquireSpec, AcquiredMachine, MachineManager } from './types.js';
+import type { AcquireSpec, AcquiredMachine, MachineManager, ReleaseOptions } from './types.js';
 
 // Re-export for callers that historically imported from fly.ts (e.g. factory.ts).
 // New callers should import from './fly-api.js' directly.
@@ -242,9 +242,22 @@ export class FlyMachineManager implements MachineManager {
     }
   }
 
-  async release(machineId: string): Promise<void> {
+  async release(machineId: string, opts?: ReleaseOptions): Promise<void> {
     const log = getLogger();
     const podOrigin = this.#alive.get(machineId);
+
+    // Phase 11.5: hold=true 让 fly machine 保持 running，跳过 callPodStop +
+    // destroyMachine。chromium 进程不动，volume / --user-data-dir 留存。
+    // alive map 仍记账，maxMachines cap 维持占用，Fly 侧持续计费 running 状态。
+    // 后续 release(id, {hold: false}) 才会真正 destroy。
+    if (opts?.hold === true) {
+      log.debug(
+        { machineId, podOrigin: podOrigin ?? null },
+        'release(hold=true): fly machine retained running, alive slot kept',
+      );
+      return;
+    }
+
     if (podOrigin) {
       // best-effort 让 pod 干净停 chromium。pod-control 内部不抛错。
       await callPodStop({ podOrigin, machineId, fetchImpl: this.#fetchImpl });
