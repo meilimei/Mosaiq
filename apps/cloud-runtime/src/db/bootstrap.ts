@@ -52,11 +52,13 @@ const STATEMENTS: string[] = [
     error_message TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     user_metadata TEXT NOT NULL DEFAULT '{}',
-    signing_key TEXT
+    signing_key TEXT,
+    keep_alive INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE INDEX IF NOT EXISTS sessions_project_idx ON sessions (project_id, opened_at)`,
   `CREATE INDEX IF NOT EXISTS sessions_status_idx ON sessions (status)`,
   `CREATE INDEX IF NOT EXISTS sessions_machine_idx ON sessions (machine_id)`,
+  `CREATE INDEX IF NOT EXISTS sessions_keepalive_idle_idx ON sessions (status, keep_alive, last_seen_at)`,
 
   // personas
   `CREATE TABLE IF NOT EXISTS personas (
@@ -123,6 +125,33 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     column: 'signing_key',
     alterSql: `ALTER TABLE sessions ADD COLUMN signing_key TEXT`,
   },
+  {
+    // Phase 11.5: keepAlive flag. NOT NULL DEFAULT 0 preserves the phase 11.3a
+    // single-use invariant on any pre-existing row (they all become keepAlive=false
+    // i.e. destroy-on-close, identical to phase 11.4 behavior). New keepAlive=true
+    // sessions opt into the long-session lifecycle.
+    // See docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md §5 for the carve-out matrix.
+    table: 'sessions',
+    column: 'keep_alive',
+    alterSql: `ALTER TABLE sessions ADD COLUMN keep_alive INTEGER NOT NULL DEFAULT 0`,
+  },
+];
+
+/**
+ * Phase 11.5: indexes added in later phases need to be created on already-bootstrapped
+ * DBs too (the STATEMENTS block above only runs for fresh tables via IF NOT EXISTS,
+ * but the index itself is still wrapped in IF NOT EXISTS so it's safe to re-run
+ * unconditionally on every boot).
+ *
+ * Why this list exists separately from STATEMENTS: STATEMENTS is the "what does
+ * a fresh DB look like" source of truth. INDEX_ADDITIONS is the "what indexes
+ * does an existing prod DB need that it might not have yet" list. They overlap
+ * but the semantic intent is different and keeping them separate matches the
+ * COLUMN_ADDITIONS / STATEMENTS split convention.
+ */
+const INDEX_ADDITIONS: ReadonlyArray<string> = [
+  // Phase 11.5: reaper's keepAlive-idle scan
+  `CREATE INDEX IF NOT EXISTS sessions_keepalive_idle_idx ON sessions (status, keep_alive, last_seen_at)`,
 ];
 
 export async function ensureSchema(): Promise<void> {
@@ -140,6 +169,12 @@ export async function ensureSchema(): Promise<void> {
       handle.drizzle.run(sql.raw(alterSql));
       log.info({ table, column }, 'schema migrated: column added');
     }
+  }
+
+  // Index additions are idempotent (CREATE INDEX IF NOT EXISTS), so we can just
+  // run them unconditionally. Cheap on every boot — SQLite checks sqlite_master.
+  for (const stmt of INDEX_ADDITIONS) {
+    handle.drizzle.run(sql.raw(stmt));
   }
 
   log.info({ tables: 6 }, 'schema ensured');

@@ -110,11 +110,38 @@ export const sessions = sqliteTable(
      * 仍然只能通过 Bearer header 接入。新建的 session 一律必须有该字段。
      */
     signingKey: text('signing_key'),
+    /**
+     * Phase 11.5: keepAlive flag. When true, the session opts into long-session
+     * lifecycle (docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md):
+     *  - extended TTL ceiling via SESSION_TTL_MAX_KEEPALIVE_SECONDS (default 24h)
+     *  - pod stays running across WS disconnects (mm.release(id, {hold:true}))
+     *  - idle-timeout termination via SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS
+     *  - subject to per-project quota KEEPALIVE_SESSIONS_PER_PROJECT_MAX
+     *
+     * NOT NULL with default false preserves phase 11.3a single-use invariant:
+     * any session row predating phase 11.5 (migrated via COLUMN_ADDITIONS in
+     * bootstrap.ts) defaults to keepAlive=false → unchanged destroy-on-close
+     * behavior. Only sessions explicitly created with keepAlive=true get the
+     * new lifecycle. See §5 of the phase doc for the safety carve-out matrix.
+     */
+    keepAlive: integer('keep_alive', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => ({
     projectIdx: index('sessions_project_idx').on(t.projectId, t.openedAt),
     statusIdx: index('sessions_status_idx').on(t.status),
     machineIdx: index('sessions_machine_idx').on(t.machineId),
+    /**
+     * Phase 11.5: composite index for the reaper's keepAlive-idle scan
+     * (`WHERE status IN (...) AND keep_alive = 1 AND last_seen_at < ?`).
+     * Prefix is `(status, keep_alive)` so non-keepAlive scans (the vast majority)
+     * still get index-only access; the trailing `last_seen_at` keeps the
+     * range predicate sargable.
+     */
+    keepAliveIdleIdx: index('sessions_keepalive_idle_idx').on(
+      t.status,
+      t.keepAlive,
+      t.lastSeenAt,
+    ),
   }),
 );
 

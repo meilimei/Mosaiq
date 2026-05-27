@@ -85,6 +85,48 @@ const EnvSchema = z
 
     SESSION_TTL_DEFAULT_SECONDS: z.coerce.number().int().min(60).max(86400).default(1800),
     SESSION_TTL_MAX_SECONDS: z.coerce.number().int().min(60).max(86400).default(7200),
+
+    // ─── Phase 11.5 keepAlive long sessions ────────────────────────────────
+    // 见 docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md。三个 knob 仅作用于
+    // `keepAlive: true` 路径（POST /v1/sessions BB-shape 字段或 native lifecycle）；
+    // `keepAlive: false`（默认）路径完全沿用 phase 11.4 行为，受 SESSION_TTL_MAX_SECONDS
+    // 封顶，pool entry single-use destroy 不变。
+
+    /**
+     * keepAlive=true session 的 TTL 上限秒数。默认 86400 = 24h，覆盖 LaunchAI Reddit
+     * 类 daily grooming 窗口。SESSION_TTL_MAX_SECONDS 必须 ≤ 这个值（superRefine 校验）。
+     * 上限 604800 = 7 天 —— 超过这值的需求应该考虑 Browserbase Contexts API 风格的
+     * cookie 持久化（phase 11.6）而不是无限延长 pod 生命周期。
+     */
+    SESSION_TTL_MAX_KEEPALIVE_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(3600)
+      .max(7 * 86400)
+      .default(86400),
+    /**
+     * keepAlive=true session 在 WS 断开后允许的最大无活动时间，过此则 reaper 标 closed +
+     * release(hold=false) 销毁 pod。默认 3600 = 1h —— 多数客户端崩溃 / 重启场景
+     * 内能恢复，1h 之后还没重连基本是业务 abandoned 而非短暂网络抖动。范围
+     * [60, 86400]：< 60s 会让任何 WS 断重连测试都 false-positive，> 24h 没意义
+     * （hard TTL 默认也是 24h）。
+     */
+    SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(86400)
+      .default(3600),
+    /**
+     * 每 project 同时存活的 keepAlive=true session 上限。默认 5 ——
+     * 5 × ~$1.9/天/running-pod ≈ $9.5/天/customer，覆盖 PRD §3 Scale tier
+     * $499/mo 的 keepAlive 占比预算（cost < 2% of revenue）。范围 [0, 50]：
+     * - 0 = 紧急 kill switch，所有 keepAlive: true 请求立即 429 pool.keepalive_saturated
+     *       （参考 POOL_TARGET_SIZE=0 的 disable-flag 模式）
+     * - 上限 50 是 hard safety cap 防 cost runaway，customer 真需要可以走 ticket
+     *   升档（phase 11.5b 考虑加 per-project override）。
+     */
+    KEEPALIVE_SESSIONS_PER_PROJECT_MAX: z.coerce.number().int().min(0).max(50).default(5),
     /**
      * session expiry reaper 的轮询间隔 ms。每个 tick 扫一次 sessions 表把
      * status='live' 但 expires_at 已过的强制 release + 标 closed。
@@ -163,6 +205,17 @@ const EnvSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SESSION_TTL_DEFAULT_SECONDS'],
         message: 'SESSION_TTL_DEFAULT_SECONDS must be <= SESSION_TTL_MAX_SECONDS',
+      });
+    }
+    // Phase 11.5: keepAlive ceiling must accommodate the non-keepAlive ceiling.
+    // Otherwise a keepAlive=true request with high ttlSeconds would land on a
+    // smaller cap than a normal request, which is nonsensical.
+    if (env.SESSION_TTL_MAX_SECONDS > env.SESSION_TTL_MAX_KEEPALIVE_SECONDS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_TTL_MAX_KEEPALIVE_SECONDS'],
+        message:
+          'SESSION_TTL_MAX_KEEPALIVE_SECONDS must be >= SESSION_TTL_MAX_SECONDS (keepAlive sessions only extend the ceiling, never shrink it)',
       });
     }
   });

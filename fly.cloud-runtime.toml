@@ -121,6 +121,18 @@ primary_region = "iad"
   # apps/cloud-runtime/src/jobs/session-expiry.ts。
   SESSION_EXPIRY_INTERVAL_MS = "30000"
 
+  # ─── Phase 11.5 keepAlive long sessions ──────────────────────────────────
+  # 见 docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md。仅作用于显式 keepAlive: true
+  # 的 session（POST /v1/sessions BB-shape 字段），默认行为不变。
+  #   - MAX_KEEPALIVE_SECONDS 86400 (24h) 覆盖 LaunchAI Reddit 日常窗口
+  #   - IDLE_TIMEOUT_KEEPALIVE 3600 (1h) 平衡 client 短暂断连与持续闲置成本
+  #   - PER_PROJECT_MAX 5 控制单 customer 同时 hold 的 pod 数（cost cap ≈ $9.5/天）
+  # 紧急回滚（如 cost 失控）：`flyctl secrets set KEEPALIVE_SESSIONS_PER_PROJECT_MAX=0`
+  # 会让所有 keepAlive: true 请求拿 429 pool.keepalive_saturated，等价临时关闭。
+  SESSION_TTL_MAX_KEEPALIVE_SECONDS = "86400"
+  SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS = "3600"
+  KEEPALIVE_SESSIONS_PER_PROJECT_MAX = "5"
+
   # ─── rate limit (per api_key_id token bucket) ────────────────────────────
   # 默认值同 env.ts，这里显式写出便于 ops 调整（改完 `flyctl deploy` 或
   # `flyctl secrets set` 然后重启即可生效）：
