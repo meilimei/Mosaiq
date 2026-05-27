@@ -89,6 +89,83 @@ describe('ensureSchema', () => {
     ) as Array<{ name: string }>;
     expect(idx).toHaveLength(1);
   });
+
+  /**
+   * Phase 11.6 upgrade-path regression test (sustaining the discipline phase 11.5
+   * commit 6 outage taught us)：
+   *
+   * v18 prod DB 已经有 sessions 表（带 keep_alive 列）但**没有** contexts 表，也没有
+   * sessions.context_id / sessions.context_persist 列。部署 v19 时：
+   *   - STATEMENTS 段必须 CREATE TABLE IF NOT EXISTS contexts（fresh 表，无 ALTER 烦恼）
+   *   - COLUMN_ADDITIONS 段必须把 context_id / context_persist 加到 sessions
+   *   - INDEX_ADDITIONS 段必须 CREATE INDEX sessions_context_idx + contexts indexes
+   *
+   * 本测试模拟"v18 prod 现状"：sessions 已有 keep_alive 列 但无 context_id；
+   * contexts 表还不存在。ensureSchema() 必须能优雅升级，最终包含全部新结构。
+   *
+   * 与 phase 11.5 测试的区别：phase 11.5 测的是 v16 → v17（无 keep_alive）；
+   * 本测试是 v18 → v19（已有 keep_alive，缺 context_*）。两者都覆盖能让
+   * "新 phase 在已运行的旧 schema 上跑通"。
+   */
+  it('upgrade 路径：v18 sessions 表（有 keep_alive，无 context_id）→ ensureSchema 加列 + 加索引 + 建 contexts 表不报错', async () => {
+    const handle = await getDb();
+    handle.drizzle.run(sql`DROP TABLE IF EXISTS sessions`);
+    handle.drizzle.run(sql`CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      persona_id TEXT,
+      machine_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      cdp_internal_url TEXT NOT NULL,
+      cdp_public_url TEXT NOT NULL,
+      opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      closed_at TEXT,
+      expires_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      client_addr TEXT,
+      client_label TEXT,
+      error_message TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      user_metadata TEXT NOT NULL DEFAULT '{}',
+      signing_key TEXT,
+      keep_alive INTEGER NOT NULL DEFAULT 0
+    )`);
+    // contexts table doesn't exist yet — STATEMENTS' CREATE TABLE IF NOT EXISTS will create it
+
+    await ensureSchema();
+
+    // 1. sessions 加了 context_id + context_persist 列
+    const sessionCols = handle.drizzle.all(
+      sql`PRAGMA table_info(sessions)`,
+    ) as Array<{ name: string }>;
+    const sessionColNames = sessionCols.map((c) => c.name);
+    expect(sessionColNames).toContain('context_id');
+    expect(sessionColNames).toContain('context_persist');
+    expect(sessionColNames).toContain('keep_alive'); // 旧列保留
+
+    // 2. contexts 表存在 + 关键列就位
+    const ctxCols = handle.drizzle.all(
+      sql`PRAGMA table_info(contexts)`,
+    ) as Array<{ name: string }>;
+    const ctxColNames = ctxCols.map((c) => c.name);
+    expect(ctxColNames).toContain('id');
+    expect(ctxColNames).toContain('project_id');
+    expect(ctxColNames).toContain('storage_backend');
+    expect(ctxColNames).toContain('storage_key');
+    expect(ctxColNames).toContain('enc_algo');
+    expect(ctxColNames).toContain('active_session_id');
+    expect(ctxColNames).toContain('deleted_at');
+
+    // 3. 索引就位
+    const idx = handle.drizzle.all(
+      sql`SELECT name FROM sqlite_master WHERE type='index' AND name IN ('sessions_context_idx', 'contexts_project_idx', 'contexts_active_session_idx')`,
+    ) as Array<{ name: string }>;
+    expect(idx.map((r) => r.name).sort()).toEqual([
+      'contexts_active_session_idx',
+      'contexts_project_idx',
+      'sessions_context_idx',
+    ]);
+  });
 });
 
 describe('ensureDefaultPersonas (phase 11.4 commit 4a)', () => {

@@ -105,6 +105,26 @@ const STATEMENTS: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS audit_events_project_ts_idx ON audit_events (project_id, ts)`,
   `CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action)`,
+
+  // contexts (Phase 11.6) — see docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §4.1.
+  // Indexes for this table go in INDEX_ADDITIONS below — same pattern phase 11.5
+  // commit 6 hotfix established (referencing tables in indexes that may not
+  // exist on prod-existing-DB upgrade paths must run AFTER the COLUMN_ADDITIONS
+  // pass would have added them; for this fresh table the table itself is here).
+  `CREATE TABLE IF NOT EXISTS contexts (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    storage_backend TEXT NOT NULL DEFAULT 'fs',
+    storage_key TEXT NOT NULL,
+    enc_algo TEXT NOT NULL DEFAULT 'aes-256-gcm-v1',
+    enc_nonce TEXT,
+    bytes INTEGER,
+    active_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+    active_session_acquired_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_snapshot_at TEXT,
+    deleted_at TEXT
+  )`,
 ];
 
 /**
@@ -142,6 +162,26 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     column: 'keep_alive',
     alterSql: `ALTER TABLE sessions ADD COLUMN keep_alive INTEGER NOT NULL DEFAULT 0`,
   },
+  {
+    // Phase 11.6: link session to its bound context. Nullable FK — pre-existing
+    // sessions migrate to NULL (no context, phase 11.4a behavior). Note we do
+    // NOT add the FOREIGN KEY constraint via ALTER (sqlite cannot add FK after
+    // table creation); the schema.ts drizzle definition declares it for fresh
+    // tables, and runtime joins are checked at the application layer anyway.
+    // See docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §4.2.
+    table: 'sessions',
+    column: 'context_id',
+    alterSql: `ALTER TABLE sessions ADD COLUMN context_id TEXT`,
+  },
+  {
+    // Phase 11.6: persist flag for context (BB compat browserSettings.context.persist).
+    // Default 0 (false) is safe — a row predating phase 11.6 has NULL contextId
+    // anyway, so this column is meaningless for it. The CreateSessionSchema
+    // validator defaults persist=true on new requests with context.id present.
+    table: 'sessions',
+    column: 'context_persist',
+    alterSql: `ALTER TABLE sessions ADD COLUMN context_persist INTEGER NOT NULL DEFAULT 0`,
+  },
 ];
 
 /**
@@ -159,6 +199,17 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
 const INDEX_ADDITIONS: ReadonlyArray<string> = [
   // Phase 11.5: reaper's keepAlive-idle scan
   `CREATE INDEX IF NOT EXISTS sessions_keepalive_idle_idx ON sessions (status, keep_alive, last_seen_at)`,
+  // Phase 11.6: locate sessions by their bound context (release lock on close,
+  // find in-flight sessions on context delete attempt). Matches the
+  // sessions_context_idx defined in schema.ts.
+  `CREATE INDEX IF NOT EXISTS sessions_context_idx ON sessions (context_id)`,
+  // Phase 11.6: contexts table indexes. The table itself is in STATEMENTS
+  // above, so on a fresh DB the table exists by the time we reach here. On an
+  // upgrade DB (existing prod), STATEMENTS' CREATE TABLE IF NOT EXISTS creates
+  // the table fresh (it didn't exist pre-11.6), so it's also there. Either
+  // way these indexes are safe to run after STATEMENTS.
+  `CREATE INDEX IF NOT EXISTS contexts_project_idx ON contexts (project_id)`,
+  `CREATE INDEX IF NOT EXISTS contexts_active_session_idx ON contexts (active_session_id)`,
 ];
 
 export async function ensureSchema(): Promise<void> {

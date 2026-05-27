@@ -127,6 +127,63 @@ const EnvSchema = z
      *   升档（phase 11.5b 考虑加 per-project override）。
      */
     KEEPALIVE_SESSIONS_PER_PROJECT_MAX: z.coerce.number().int().min(0).max(50).default(5),
+
+    // ─── Phase 11.6 Browserbase Contexts API ────────────────────────────────
+    // 见 docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md。Contexts 让用户跨多个 session
+    // 持久化整个 chromium user-data-dir（cookies + localStorage + IndexedDB + ...）。
+    // 与 phase 11.5 keepAlive 互补：keepAlive 跨 WS 重连，contexts 跨 sessionId。
+
+    /**
+     * 每 project 同时存活（未 soft-delete）的 contexts 上限。默认 100 ——
+     * 100 contexts × ~50MB avg compressed = 5GB/project，单 fly volume (100GB)
+     * 容下 20 projects；远超 Hobby tier (5 contexts) / Pro tier (50 contexts) 需求。
+     * 范围 [0, 1000]：
+     * - 0 = kill switch；POST /v1/contexts 立即 429 pool.contexts_saturated
+     * - 上限 1000 是 hard safety cap；客户真要更多走 ticket 升档（phase 11.6b
+     *   引入 plan-aware override）
+     */
+    MOSAIQ_CONTEXTS_PER_PROJECT_MAX: z.coerce.number().int().min(0).max(1000).default(100),
+    /**
+     * 单个 context snapshot 的最大字节数（compressed + encrypted blob，PUT 入参
+     * 大小）。默认 200MB —— 覆盖典型 chromium profile（多数 5–50MB；含重 IDB
+     * 用户偶发 100MB+）。范围 [1, 1024]MB。
+     *
+     * pod snapshotContext 在 PUT 之前自检 size > limit → 不上传，cloud-runtime
+     * 收到 413 后保留旧 blob，response 加 snapshotFailed=true 告知客户。
+     */
+    MOSAIQ_CONTEXT_SIZE_MAX_MB: z.coerce.number().int().min(1).max(1024).default(200),
+    /**
+     * FsContextStorage 落盘根目录。Prod 走 fly volume mount 在 `/data`，所以
+     * 默认 `/data/contexts/`（与 fly.cloud-runtime.toml [mounts] 对齐）。dev /
+     * test 单测可覆盖到 tmp 目录。phase 11.6b 加 's3' backend 时此 knob 仅作用
+     * 于 storage_backend='fs' 行。
+     */
+    MOSAIQ_CONTEXT_STORAGE_PATH: z.string().default('/data/contexts'),
+    /**
+     * AES-GCM master key（32 bytes，base64 编码）。从 fly secrets 注入，**绝不**
+     * 出现在源码 / 镜像 / 日志。运行时 HKDF-SHA256(masterKey, projectId, info='mosaiq-ctx-v1')
+     * 派生 per-project 32-byte key 用于加密 / 解密 context blob。
+     *
+     * 缺省空字符串 = phase 11.6 contexts 功能整体禁用（POST /v1/contexts 返 503
+     * configuration_error）；这是 prod 必须显式配置才启用的安全姿态，与
+     * METRICS_TOKEN 的 disable-by-default 模式同款。
+     *
+     * Generation: `openssl rand -base64 32`，长度 == 44（含 padding）。
+     * 长度 < 44 → schema 报错（防 fly secret 设置错值）。
+     */
+    MOSAIQ_CONTEXT_MASTER_KEY: z.string().default(''),
+    /**
+     * HMAC secret（≥ 32 chars） 用于签发 cloud-runtime ↔ pod 内部 endpoint 的
+     * 短期 bearer token（5 min TTL）。pod 拿 GET /v1/_internal/contexts/{id}/download
+     * 时校验签名 + expiresAt；伪造 token 在 secret 不泄漏前提下 unforgeable。
+     *
+     * 与 master key 分离：master key 泄漏 → 已落盘的 context blob 可解；HMAC
+     * secret 泄漏 → 攻击者可拖取 in-flight context 流量但不能解密。Defense in
+     * depth: 两个独立的 fly secrets 同时被攻破才致命。
+     *
+     * Generation: `openssl rand -base64 64`。
+     */
+    MOSAIQ_INTERNAL_HMAC_SECRET: z.string().default(''),
     /**
      * session expiry reaper 的轮询间隔 ms。每个 tick 扫一次 sessions 表把
      * status='live' 但 expires_at 已过的强制 release + 标 closed。
@@ -217,6 +274,40 @@ const EnvSchema = z
         message:
           'SESSION_TTL_MAX_KEEPALIVE_SECONDS must be >= SESSION_TTL_MAX_SECONDS (keepAlive sessions only extend the ceiling, never shrink it)',
       });
+    }
+    // Phase 11.6: when MOSAIQ_CONTEXT_MASTER_KEY is set, enforce strong format.
+    // Empty (default) = contexts disabled and downstream code returns 503; both
+    // secrets being non-empty = enabled. Mismatched (one set, other empty) is a
+    // misconfiguration we reject early.
+    const ctxKeySet = env.MOSAIQ_CONTEXT_MASTER_KEY !== '';
+    const hmacSet = env.MOSAIQ_INTERNAL_HMAC_SECRET !== '';
+    if (ctxKeySet !== hmacSet) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [ctxKeySet ? 'MOSAIQ_INTERNAL_HMAC_SECRET' : 'MOSAIQ_CONTEXT_MASTER_KEY'],
+        message:
+          'Phase 11.6 contexts require BOTH MOSAIQ_CONTEXT_MASTER_KEY and MOSAIQ_INTERNAL_HMAC_SECRET to be set, or both empty (feature disabled). One-of-two is a misconfiguration.',
+      });
+    }
+    if (ctxKeySet) {
+      // base64 32 bytes = 44 chars (incl. padding). Reject shorter to catch
+      // truncation in fly secrets shell escaping.
+      if (env.MOSAIQ_CONTEXT_MASTER_KEY.length < 40) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MOSAIQ_CONTEXT_MASTER_KEY'],
+          message:
+            'MOSAIQ_CONTEXT_MASTER_KEY too short; expected base64-encoded 32 bytes (~44 chars). Generate with: openssl rand -base64 32',
+        });
+      }
+      if (env.MOSAIQ_INTERNAL_HMAC_SECRET.length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MOSAIQ_INTERNAL_HMAC_SECRET'],
+          message:
+            'MOSAIQ_INTERNAL_HMAC_SECRET too short; expected ≥ 32 chars (recommended: openssl rand -base64 64)',
+        });
+      }
     }
   });
 

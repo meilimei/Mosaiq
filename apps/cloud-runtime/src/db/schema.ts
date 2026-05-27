@@ -125,6 +125,34 @@ export const sessions = sqliteTable(
      * new lifecycle. See §5 of the phase doc for the safety carve-out matrix.
      */
     keepAlive: integer('keep_alive', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Phase 11.6: which `contexts` row this session is bound to (BB compat
+     * `browserSettings.context.id`). Null = no context (the phase 11.4 default).
+     *
+     * FK with `ON DELETE SET NULL`: if a context row is deleted while a session
+     * is still actively using it, we drop the link rather than cascade the
+     * session — the running pod still has its own user-data-dir and can finish
+     * its work, just without snapshotting back. The lock on `contexts.active_session_id`
+     * is what prevents stealing the context out from under the live session;
+     * deletion of an in-use context is rejected at the DELETE handler with 409.
+     *
+     * Nullable preserves phase 11.5 behavior for sessions created before 11.6
+     * and the phase 11.4a "no context" default path. See PHASE-11.6 §5 for
+     * the full lifecycle.
+     */
+    contextId: text('context_id'),
+    /**
+     * Phase 11.6: BB compat `browserSettings.context.persist` (default true).
+     * When true, on graceful DELETE the pod tar+encrypts the user-data-dir
+     * and uploads it back to the context's storage blob. `false` = read-only
+     * mode: we still load the context on session start, but skip the snapshot
+     * on close (the context stays at its previous snapshot point).
+     *
+     * NOT NULL with default `false` is the safe migration default — a row
+     * predating phase 11.6 has no context anyway, so the value of this column
+     * is meaningless. Honor only kicks in when contextId is set.
+     */
+    contextPersist: integer('context_persist', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => ({
     projectIdx: index('sessions_project_idx').on(t.projectId, t.openedAt),
@@ -142,6 +170,108 @@ export const sessions = sqliteTable(
       t.keepAlive,
       t.lastSeenAt,
     ),
+    /**
+     * Phase 11.6: locate sessions by their bound context (used at session
+     * close to clear `contexts.active_session_id`, and on context delete to
+     * find any in-flight sessions). Most session rows will have NULL contextId,
+     * so the index is small. We do NOT make it partial WHERE contextId IS NOT NULL
+     * because sqlite partial indexes don't help nullable column lookups in our
+     * planner; the full index is fine and tiny.
+     */
+    contextIdx: index('sessions_context_idx').on(t.contextId),
+  }),
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// contexts — Phase 11.6 Browserbase Contexts API（跨 session 持久化 user-data-dir）
+//
+// 一个 context = 一份命名的 chromium profile blob（cookies + localStorage +
+// IndexedDB + ServiceWorker + sessionStorage + form autofill + browser prefs）。
+// 见 docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §2 for the full data inventory.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const contexts = sqliteTable(
+  'contexts',
+  {
+    /** 'ctx_<22 chars base58>' */
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+
+    /**
+     * Storage backend identifier. Phase 11.6a 仅 `'fs'`（FsContextStorage写到
+     * fly volume `/data/contexts/`）；phase 11.6b 加 `'s3'` / `'r2'`。把 backend
+     * 存表里让单 deploy 期间从 fs 迁到 s3 不需要 schema 改动 —— 老 row 继续走 fs，
+     * 新 row 走 s3，逐步迁移。
+     */
+    storageBackend: text('storage_backend').notNull().default('fs'),
+    /**
+     * Backend-specific path / object key. For `fs`, relative to MOSAIQ_CONTEXT_STORAGE_PATH
+     * (e.g. `ctx_abc.tar.zst.enc`). For S3, the full object key.
+     */
+    storageKey: text('storage_key').notNull(),
+
+    /**
+     * AES-GCM ciphertext authentication. We don't store the encryption key
+     * itself — it's HKDF-derived from MOSAIQ_CONTEXT_MASTER_KEY (fly secret) and
+     * projectId at runtime. We DO store the algorithm name so phase 11.6c key
+     * rotation can lazily migrate; storing 'aes-256-gcm-v1' lets a v2 spec
+     * coexist on different rows.
+     *
+     * `enc_nonce` is the 12-byte GCM IV. Stored as BLOB so we can use random
+     * bytes (not utf8). Phase 11.6a writes this on each snapshot; the nonce
+     * lives in the encrypted blob's header (first 12 bytes, see
+     * `apps/cloud-runtime/src/utils/crypto.ts`) so we technically don't need
+     * the column — but having it duplicated lets ops verify integrity without
+     * downloading the blob. NULL on empty contexts (never snapshotted).
+     */
+    encAlgo: text('enc_algo').notNull().default('aes-256-gcm-v1'),
+    encNonce: text('enc_nonce'), // hex, 24 chars (12 bytes); NULL = empty/never snapshotted
+
+    /** Compressed+encrypted blob size in bytes. NULL = empty. */
+    bytes: integer('bytes'),
+
+    /**
+export type ContextRow = typeof contexts.$inferSelect;
+     * Lock: at most one session can hold a context at a time (BB semantics).
+     * NULL = available. Set on POST /v1/sessions browserSettings.context.id atomic
+     * OCC; cleared on session close (DELETE handler) or by `ON DELETE SET NULL`
+     * if the session row is removed.
+     *
+     * `active_session_acquired_at` is informational — lets ops/dashboards
+     * show "context X locked since Y ago" without joining sessions.
+     */
+    activeSessionId: text('active_session_id').references(() => sessions.id, {
+      onDelete: 'set null',
+    }),
+    activeSessionAcquiredAt: text('active_session_acquired_at'),
+
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    /** ISO timestamp of last successful snapshot. NULL = never snapshotted (empty). */
+    lastSnapshotAt: text('last_snapshot_at'),
+    /**
+     * Soft delete: DELETE /v1/contexts/{id} sets this. Blob is not unlinked
+     * synchronously — that's deferred to a phase 11.6b GC job. Soft-deleted
+     * rows are excluded from quota count and from POST /v1/sessions resolution
+     * (404 not_found path).
+     */
+    deletedAt: text('deleted_at'),
+  },
+  (t) => ({
+    projectIdx: index('contexts_project_idx').on(t.projectId),
+    /**
+     * Partial index limited to currently-locked rows. Sqlite supports partial
+     * indexes (CREATE INDEX ... WHERE ...) and the planner will use them when
+     * the query has a matching WHERE. Drizzle's partial index syntax via
+     * `.where()` lands a `CREATE INDEX ... WHERE active_session_id IS NOT NULL`
+     * — we ALWAYS query this column with `IS NOT NULL` (release on close,
+     * find leaks for ops), so the partial index keeps disk usage minimal and
+     * lookups O(locked-set) instead of O(all-contexts).
+     */
+    activeSessionIdx: index('contexts_active_session_idx').on(t.activeSessionId),
   }),
 );
 
