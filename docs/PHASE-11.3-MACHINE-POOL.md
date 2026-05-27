@@ -508,8 +508,10 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 
 - [x] **Step 1 baseline** ：`POOL_TARGET_SIZE=0` 下 prod-smoke 跑通 + 抓基线快照。**实测 mean acquire = 62s（n=1）**，远高于设计稿预期的 ~40s。
 - [x] **Step 2 pool=1（启动 + 初步验证）** ：`flyctl secrets set POOL_TARGET_SIZE=1` + `flyctl deploy` 后，跑 2 个 smoke。**mean acquire = 34.95s, hit_rate = 100% (2/2), prov_fail = 0% (0/3)**。pool bootstrap reconcile 干净（kept=0, evicted=0），replenish 在 consume 后 ~70s 内补回 stopped 状态。详见 §11.4。
-- [-] **Step 2 续 — 24h 稳态观测** —— **PARKED 2026-05-26**：~25h 后 baseline snapshot 显示 0 traffic（`hit_rate=n/a`, `mm_acquire_count=0`）。decision gate `hit_rate ≥ 80%` 需要 acquire 样本，无 traffic 不可达。重启条件：业务量 ≥5 sessions/day 持续 3 天后重跑。详见 §11.4 item 6。
-- [-] **Step 3 pool=3** —— **PARKED 2026-05-26**：gate 是"持续 hit_rate ≥ 90% AND 业务量 > 50 sessions/day"。先解 demand 侧（phase 11.4 Stagehand 兼容）再回头看。
+- [-] **Step 2 续 — 24h 稳态观测（POOL_TARGET_SIZE=1）** —— **PARKED 2026-05-26 + 由 phase 11.4a 超越**：
+  - 2026-05-26：~25h 后 baseline snapshot 显示 0 traffic（`hit_rate=n/a`, `mm_acquire_count=0`）。decision gate `hit_rate ≥ 80%` 需要 acquire 样本，无 traffic 不可达。详 §11.4 item 6。
+  - 2026-05-27：phase 11.4a Stagehand-compat 落地后 POOL_TARGET_SIZE 被升到 **5**（为 smoke 的 3 并发 + 临近跑次提供足够 burst 容量）。为了 pool=1 专项补手 24h 观测表，需重新下调 1 并启动 traffic；gate 依旧必须是 ≥5 sessions/day 持续 3 天。在那之前，§11.3 表中新增一行 **pool=5 @ post-stagehand** 接上 phase 11.4a §6.1 实测的 15 个 acquire 样本作为当下唯一可靠的 prod traffic 参考。
+- [-] **Step 3 pool=3** —— **PARKED 2026-05-26**：gate 是"持续 hit_rate ≥ 90% AND 业务量 > 50 sessions/day"。phase 11.4a 已解 demand 侧供给面，但 traffic 仅有内部 smoke，还不达 gate。后续看外部 onboarding。
 - [-] **Step 4 (optional)** —— **PARKED 同上**：gate 是 > 100 sessions/day。
 - [x] cloud-runtime 重启后 30s 内 pool 视图重建（log: `pool bootstrap reconcile done`）—— 实测 boot→reconcile=0.2s，reconcile→first entry stopped=71s。
 
@@ -519,7 +521,8 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 |---|---|---|---|---|---|---|---|---|
 | baseline (pool=0) | 2026-05-24 23:04 | 1 | 62.06s | ∞ (>60) | ∞ (>60) | n/a | n/a | client `fetch failed`（>Fly proxy 60s timeout）→ 立即推进 step 2 |
 | pool=1 初始 | 2026-05-24 23:47 + 2026-05-25 04:40 | 2 | 34.95s (33.9-36.4) | ≤60 (bucket cap) | ≤60 (bucket cap) | 100% | 0% (0/3 provs) | 健康，继续 24h 观测 |
-| pool=1 @ 24h | TBD | — | — | — | — | — | — | TBD |
+| pool=1 @ 24h | PARKED · 需 ≥5 sess/day 重跑 | 0 | n/a | n/a | n/a | n/a | n/a | 0 traffic, gate 不可达 |
+| pool=5 @ post-stagehand | 2026-05-27 23:29-23:42 | 15 | 35.49s | ~34.4s (中位数) | 39.0s (p100) | 100% (15/15) | 0% (0/15) | warm-pool acquire 趋于稳态、无 retry、与设计预期 35-40s 同区间 |
 | pool=3 @ 24h | TBD | — | — | — | — | — | — | TBD |
 | pool=3 @ 72h | TBD | — | — | — | — | — | — | TBD |
 
@@ -527,6 +530,7 @@ $pool = Get-Content tmp/pool-snapshots/snapshot-*-pool-3-h24.json     | ConvertF
 - Cold→warm 节省 ~27s（**42% latency reduction**），单样本对比一致。
 - 解决了一个未在设计稿预测到的 **副作用**：cold path 62s 高于 Fly edge proxy ~60s idle timeout，导致客户端必现 `TypeError: fetch failed`（即使 server 端 session 创建成功）。pool=1 warm 路径 35s 落在 proxy 预算内，行为从"server 成功但 client 报错"恢复到"正常 201"。
 - Replenish loop 在 consume 后 ~70s 内补回（首次 bootstrap 也是 71s）。意味着 pool=1 只适合 inter-arrival > 70s 的稀疏流量；高并发突发流量需要 pool >= burst size 才能保住命中率。
+- **pool=5 @ post-stagehand**（2026-05-27 phase 11.4a 后续观测）：mean=35.49s，与 pool=1 初始采集的 34.95s 几乎同区间，说明 replenish 机制随 pool size 线性撑开、不会引入额外延迟。p100=39.0s 仍 < Fly proxy 60s budget，0/15 retry 表明 provision_failure path 在平台上近于绝迹。详 [PHASE-11.4-STAGEHAND-COMPAT.md §6.1](./PHASE-11.4-STAGEHAND-COMPAT.md#61-hello-world-烟测)。
 
 **实测 vs 设计预期**：
 - 实测 warm: **35s** vs 设计稿"~22s start"目标。差距来自 Fly machine `stopped→started` (2-5s) + browser-pod chrome 冷启动 + control-plane 握手，比初版估计更长。

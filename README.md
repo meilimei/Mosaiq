@@ -24,6 +24,35 @@ mosaiq personas templates list   # 看 4 个 OS 模板
 → **[docs/V0.8-DETECTION-LAB.md](./docs/V0.8-DETECTION-LAB.md)** — Detection Lab 完整 product-level 设计稿（v0.8 落地、v0.9 polish）
 → **[docs/HUMANIZE-DESIGN.md](./docs/HUMANIZE-DESIGN.md)** — humanize 引擎设计稿（v0.2 起持续维护）
 
+---
+
+## ☁️ 想用云端 Browser API（Browserbase / Stagehand 兼容）？
+
+**Mosaiq Cloud Runtime alpha 已上线**（2026-05-27 prod 验证 / fly.io iad / image `01KSK9NYJKX99Z6KQHS55GG57F`）。Phase 11.4a 着取与 Browserbase API 同型同垍：同时接受 `X-BB-API-Key` 与 `Authorization: Bearer`、`POST /v1/sessions` 同时说 BB 形状语句与原生 native 形状、response superset 返 14 个 BB-compat 字段 + 8 个 native 字段。原 `@browserbasehq/sdk` + `playwright-core` 不需改代码，**快手只需换一个 baseURL**：
+
+```js
+import { Browserbase } from '@browserbasehq/sdk';
+import { chromium } from 'playwright-core';
+
+const bb = new Browserbase({
+  apiKey: process.env.MOSAIQ_API_KEY,                   // msq_sk_live_...
+  baseURL: 'https://mosaiq-cloud-runtime.fly.dev',      // ← 唯一改动
+});
+
+const session = await bb.sessions.create({});          // 默认 persona seed
+const browser = await chromium.connectOverCDP(session.connectUrl);
+const page = await browser.newPage();
+await page.goto('https://example.com');
+console.log(await page.title());                       // → "Example Domain"
+await browser.close();
+```
+
+验证路径：`scripts/stagehand-compat-smoke.mjs`。5 跑次 × 3 场景（空 body / userMetadata / browserSettings.viewport）= 15/15 sessions all-pass，mean acquire 35.5s / mean connect 6.3s / 0 retry。
+
+→ **[docs/PHASE-11.4-STAGEHAND-COMPAT.md](./docs/PHASE-11.4-STAGEHAND-COMPAT.md)** — Stagehand-compat 设计稿 + §6.1 实测表 + commit 4c per-session signing key 根因拆解
+→ **[docs/PHASE-11.3-MACHINE-POOL.md](./docs/PHASE-11.3-MACHINE-POOL.md)** — acquire 底层的 fly machine pool 设计 + Prometheus 应用仪表板上下文
+→ **[docs/CLOUD-RUNTIME-ARCH.md](./docs/CLOUD-RUNTIME-ARCH.md)** — Cloud Runtime 整体架构 / Browserbase 对比 / 财务模型
+
 **Chromium fork 路径目前冷藏中**（详见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）— 硬件 + 工程效率原因 pivot 到 SDK 注入路径，所有 fork 资产（27 GB sync + 11 个脚本 + 3 个 patch 草稿）原样保留作未来 Phase 3 解冻素材。解冻触发器明确写在 STATUS.md 里。
 
 下面的内容是 Mosaiq 的**长期产品愿景**（Chromium fork、双引擎、$60–115M ARR），与 v0.10 实际产物（npm 发行的注入路径 + 桌面 + CLI）存在差距。这是有意为之 —— 先用务实方案在 ≤ 1 个月内验证最小可用路径，再决定哪些愿景值得砸数百人月去落地。
@@ -149,7 +178,7 @@ Mosaiq/
 长期愿景（**未落地，可能 v1.0+**）：
 
 - Chromium fork + 15 个 C++ patch（cold storage 中，触发器见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）
-- Cloud Runtime（K8s + gVisor headless 集群、REST + CDP-over-WebSocket、Stagehand SDK 兼容）
+- Cloud Runtime：**alpha 已在 fly.io 跑**（phase 11.4a Browserbase 一行切换、phase 11.3a fly machine pool + Prometheus）；K8s + gVisor 多租户集群 / context API / recording 仍位于 v1.0+ 路径上
 - Persona auto-tune from detection results、real-hardware capture pipeline
 - 法律主体（新加坡 + Delaware C-Corp）、Phase 0 团队组建
 
