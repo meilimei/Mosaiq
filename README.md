@@ -49,6 +49,9 @@ await browser.close();
 
 验证路径：`scripts/stagehand-compat-smoke.mjs`。5 跑次 × 3 场景（空 body / userMetadata / browserSettings.viewport）= 15/15 sessions all-pass，mean acquire 35.5s / mean connect 6.3s / 0 retry。
 
+**长会话 / sticky pod**（phase 11.5 起）：`{ keepAlive: true, userMetadata: { stickyKey: "..." } }` —— WS 断开 pod 不销毁、`--user-data-dir` 保留、TTL ceiling 24h、配额 5 keepAlive/project；同 stickyKey 二次创建 409 含 `connectUrl` 让客户端一步 rejoin。LaunchAI Reddit 类长会话依赖此通路。
+
+→ **[docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md](./docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md)** — keepAlive 长会话 + sticky pod 路由设计（pod lifecycle / sticky registry / quota / metrics labels）
 → **[docs/PHASE-11.4-STAGEHAND-COMPAT.md](./docs/PHASE-11.4-STAGEHAND-COMPAT.md)** — Stagehand-compat 设计稿 + §6.1 实测表 + commit 4c per-session signing key 根因拆解
 → **[docs/PHASE-11.3-MACHINE-POOL.md](./docs/PHASE-11.3-MACHINE-POOL.md)** — acquire 底层的 fly machine pool 设计 + Prometheus 应用仪表板上下文
 → **[docs/CLOUD-RUNTIME-ARCH.md](./docs/CLOUD-RUNTIME-ARCH.md)** — Cloud Runtime 整体架构 / Browserbase 对比 / 财务模型

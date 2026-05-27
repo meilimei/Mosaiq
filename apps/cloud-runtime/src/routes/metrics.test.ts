@@ -26,6 +26,7 @@ import { setMachineManagerForTesting, shutdownMachineManager } from '../machine/
 import type { AcquireSpec, AcquiredMachine, MachineManager } from '../machine/types.js';
 import { resetMetricsForTesting } from '../metrics.js';
 import { resetRateLimitStore } from '../middleware/rate-limit.js';
+import { resetStickyRegistryForTesting } from '../sticky/registry.js';
 import { sha256Hex } from '../utils/hash.js';
 import { newId } from '../utils/ids.js';
 
@@ -79,6 +80,7 @@ beforeEach(async () => {
   resetEnvCache();
   resetRateLimitStore();
   resetMetricsForTesting();
+  resetStickyRegistryForTesting();
   await ensureSchema();
 
   const handle = await getDb();
@@ -241,5 +243,76 @@ describe('counter wiring', () => {
     );
     expect(matched).not.toBeNull();
     expect(Number(matched?.[1])).toBeGreaterThanOrEqual(1);
+  });
+
+  // ─── Phase 11.5 commit 5: keepAlive metrics ──────────────────────────────
+
+  it('Phase 11.5: POST keepAlive=true → mm_acquire_duration_seconds_count{keepalive="true"} 自增', async () => {
+    const app = createApp();
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    // 一次 keepAlive=true + 一次默认（false），样本数应分两 label
+    await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: PROJECT_ID,
+        persona: { id: 'win11-chrome-us' },
+        keepAlive: true,
+      }),
+    });
+    await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: PROJECT_ID,
+        persona: { id: 'win11-chrome-us' },
+      }),
+    });
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(/mm_acquire_duration_seconds_count\{keepalive="true"\}\s+1/);
+    expect(text).toMatch(/mm_acquire_duration_seconds_count\{keepalive="false"\}\s+1/);
+  });
+
+  it('Phase 11.5: keepalive_sessions_active{project_id} gauge 反映当前 live keepAlive 数', async () => {
+    const app = createApp();
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    // 创建 2 个 keepAlive=true + 1 个普通 session
+    for (let i = 0; i < 2; i++) {
+      await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({
+          project_id: PROJECT_ID,
+          persona: { id: 'win11-chrome-us' },
+          keepAlive: true,
+        }),
+      });
+    }
+    await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: PROJECT_ID,
+        persona: { id: 'win11-chrome-us' },
+      }),
+    });
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(
+      new RegExp(`keepalive_sessions_active\\{project_id="${PROJECT_ID}"\\}\\s+2`),
+    );
+    // 0 keepAlive 的 project 不应在 gauge 里（SQL GROUP BY 不返）
+    expect(text).not.toMatch(/keepalive_sessions_active\{project_id="proj_other"\}/);
   });
 });

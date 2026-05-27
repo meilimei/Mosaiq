@@ -344,7 +344,7 @@
 | **Free trial** | $0 | 5 hours（一次性） | 1 | 共享库 | 不含 | 试用 |
 | **Hobby** | $29/mo | 50 hours | 2 | 共享库 | 不含（BYOP） | 个人开发者 |
 | **Pro** | $99/mo | 200 hours | 10 | 专属 | 含 5GB | 中小 AI agent 初创 |
-| **Scale** | $499/mo | 2000 hours | 50 | 专属 + sticky | 含 50GB | 中型自动化团队 |
+| **Scale** | $499/mo | 2000 hours | 50 | 专属 + [sticky](./PHASE-11.5-KEEPALIVE-LONG-SESSION.md) | 含 50GB | 中型自动化团队 |
 | **Business** | $1999/mo | 10000 hours | 200 | 专属 + warming | 含 200GB | 大型 AI agent 公司 |
 | **Enterprise** | 定制（起 $5k/mo） | 无限 | 无限 | 专属 + 定制入库 | 无限 | + Private VPC、SOC 2、SSO、专属支持 |
 

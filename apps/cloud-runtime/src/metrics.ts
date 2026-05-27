@@ -59,7 +59,8 @@ export const sessionsCreatedTotal = new Counter({
 
 export const sessionsClosedTotal = new Counter({
   name: 'sessions_closed_total',
-  help: 'session 关闭次数。reason=client(DELETE) | expired(reaper) | error(创建后失败)',
+  help:
+    'session 关闭次数。reason=client(DELETE) | expired-ttl(reaper hit hard TTL) | expired-idle(reaper hit keepAlive idle timeout, phase 11.5) | error(创建后失败)',
   labelNames: ['reason'] as const,
   registers: [metricsRegistry],
 });
@@ -102,7 +103,8 @@ export const httpRequestDurationSeconds = new Histogram({
 
 export const mmAcquireDurationSeconds = new Histogram({
   name: 'mm_acquire_duration_seconds',
-  help: 'MachineManager.acquire 耗时（拨 fly machine + 等 chromium 起来）',
+  help:
+    'MachineManager.acquire 耗时（拨 fly machine + 等 chromium 起来）。Phase 11.5: keepalive label 让 dashboard 分别画 keepAlive=true（一般 reconnect 不走 acquire）vs false（短会话）的延迟分布',
   // bucket 选择反映 phase 11.3a 灰度实测：
   //   - cold path (POOL_TARGET_SIZE=0): mean ~60s（首次部署 + image pull 后），上界
   //     必须放到 90s 才能让 P95 不挂在 +Inf。
@@ -110,7 +112,20 @@ export const mmAcquireDurationSeconds = new Histogram({
   //     要 40/50 这种细粒度 bucket 才能区分"warm 35s vs warm 45s"。
   //   - 120s 是 POOL_PROVISION_TIMEOUT_MS 的对照线——超过这线必定是 cold timeout，
   //     不应混进 warm 分布。
+  labelNames: ['keepalive'] as const,
   buckets: [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 15, 30, 40, 50, 60, 75, 90, 120],
+  registers: [metricsRegistry],
+});
+
+// ─── Phase 11.5 keepAlive observability ─────────────────────────────────────
+
+export const keepaliveSessionsActiveGauge = new Gauge({
+  name: 'keepalive_sessions_active',
+  help:
+    'phase 11.5: 当前 status=live 且 keep_alive=true 的 session 数（按 project_id）。'
+    + ' /v1/metrics scrape 时刷新。运维报警：长期接近 KEEPALIVE_SESSIONS_PER_PROJECT_MAX 说明该 customer 即将触限，'
+    + '或 reaper / DELETE 路径有 leak。',
+  labelNames: ['project_id'] as const,
   registers: [metricsRegistry],
 });
 

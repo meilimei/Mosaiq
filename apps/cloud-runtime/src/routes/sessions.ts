@@ -429,6 +429,10 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   const mm = getMachineManager();
   let machine: Awaited<ReturnType<typeof mm.acquire>>;
   const acquireStart = process.hrtime.bigint();
+  // Phase 11.5: keepalive label 让 dashboard 拆开 keepAlive=true / false 的 acquire 分布。
+  // keepAlive=true 第一次仍走完整 acquire（拨 machine + boot chromium）；后续 reconnect
+  // 不走这条 hot path（proxy 直接拨原 podOrigin），所以 keepAlive=true 的样本数 ≪ false。
+  const keepaliveLabel = effectiveKeepAlive ? 'true' : 'false';
   try {
     machine = await mm.acquire({
       sessionId,
@@ -437,10 +441,16 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       ttlSeconds: ttl,
       ...(viewport ? { viewport } : {}),
     });
-    mmAcquireDurationSeconds.observe(Number(process.hrtime.bigint() - acquireStart) / 1e9);
+    mmAcquireDurationSeconds.observe(
+      { keepalive: keepaliveLabel },
+      Number(process.hrtime.bigint() - acquireStart) / 1e9,
+    );
   } catch (err) {
     // 失败也记 latency（同样的 series），让 ops 区分快速 fail vs 慢速 fail
-    mmAcquireDurationSeconds.observe(Number(process.hrtime.bigint() - acquireStart) / 1e9);
+    mmAcquireDurationSeconds.observe(
+      { keepalive: keepaliveLabel },
+      Number(process.hrtime.bigint() - acquireStart) / 1e9,
+    );
     audit(c, 'session.create', `session:${sessionId}`, 'errored', {
       cause: err instanceof Error ? err.message : String(err),
     });

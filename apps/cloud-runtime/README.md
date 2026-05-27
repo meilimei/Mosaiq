@@ -104,10 +104,10 @@ pnpm --filter @mosaiq/cloud-runtime test
 ## 当前限制（phase 11.1）
 
 - ❌ Postgres：DB 写死 sqlite。phase 11.2 切 Fly + Postgres
-- ❌ Warm pool / sticky session：每次 acquire 是 round-robin 的，session 重启不会复用同 pod
-- ⚠️ Browserbase compat：phase 11.4 已支持 `/v1/sessions` 上 dual-shape（X-BB-API-Key 头 + native superset 响应 + BB-shape 请求体）；剩下 keepAlive / recording / proxies / browserSettings.fingerprint 等字段为 warn-and-ignore（response.unsupportedFields[] 标记）
-- ❌ Stripe metered：`usage_events` 表已有，但没有 emitter。phase 11.5 起做
-- ❌ Live View / Recording：phase 11.5 起做
+- ✓ Warm pool（phase 11.3a 落地）+ Sticky session（phase 11.5 已落地，见 [PHASE-11.5-KEEPALIVE-LONG-SESSION.md](../../docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md)）
+- ⚠️ Browserbase compat：phase 11.4 支持 `/v1/sessions` 上 dual-shape（X-BB-API-Key 头 + native superset 响应 + BB-shape 请求体），phase 11.5 起 `keepAlive: true` 也 honor；剩下 recording / proxies / browserSettings.fingerprint 等字段为 warn-and-ignore（response.unsupportedFields[] 标记）
+- ❌ Stripe metered：`usage_events` 表已有，但没有 emitter。phase 11.7 起做（phase 11.5/11.6 各自占用）
+- ❌ Live View / Recording：M9 milestone
 
 ---
 

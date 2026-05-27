@@ -202,10 +202,10 @@ export async function reapExpiredSessions(deps: {
     // 只有在乐观锁实际更新到这一行时才写 audit；如果 update no-op（DELETE
     // 抢先），则 DELETE handler 已经写过 'session.close' 了，不要重复写。
     if (updated.length > 0) {
-      // Phase 11.5: 临时保持 metrics label='expired' 不变——commit 5 会拆成
-      // {expired-ttl, expired-idle}。现阶段 audit_events.detailJson.reason 才带区分，
-      // 便于 prod grep 。
-      sessionsClosedTotal.inc({ reason: 'expired' });
+      // Phase 11.5 commit 5: metrics label 与 audit reason 对齐，分别 inc
+      // {expired-ttl, expired-idle}。旧 dashboard query reason='expired' 需要改成
+      // `reason=~"expired-.*"`；commit message 已记录 breaking change。
+      sessionsClosedTotal.inc({ reason: reaperReason });
       await db.drizzle.insert(auditEvents).values({
         id: newId('aud'),
         projectId: row.projectId,

@@ -20,10 +20,13 @@
  * fly proxy / TLS 一条规则全管。代价是 path 多 3 个字符，可接受。
  */
 
+import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
+import { getDb } from '../db/client.js';
 import { loadEnv } from '../env.js';
 import {
+  keepaliveSessionsActiveGauge,
   machinePoolEntriesGauge,
   metricsRegistry,
   poolStateGauge,
@@ -83,6 +86,23 @@ metricsRoute.get('/', async (c) => {
     }
   } catch {
     // mm 抛错就别更新 gauge —— 旧值仍可读，scrape 不能因为 mm 故障失败
+  }
+
+  // Phase 11.5: 刷新 keepalive_sessions_active{project_id} gauge。
+  // SELECT project_id, count(*) FROM sessions WHERE keep_alive=1 AND status='live' GROUP BY project_id。
+  // 注意：reset() 调用让上一次出现但本次没出现的 project_id label 归 0/消失，否则 gauge 会一直
+  // 显示陈旧值（比如某 customer 关掉所有 keepAlive 后，仪表板还显示活跃数）。
+  try {
+    const handle = await getDb();
+    const rows = handle.drizzle.all(
+      sql`SELECT project_id AS projectId, COUNT(*) AS n FROM sessions WHERE keep_alive = 1 AND status = 'live' GROUP BY project_id`,
+    ) as Array<{ projectId: string; n: number }>;
+    keepaliveSessionsActiveGauge.reset();
+    for (const r of rows) {
+      keepaliveSessionsActiveGauge.set({ project_id: r.projectId }, Number(r.n));
+    }
+  } catch {
+    // DB 抛错时保留 gauge 旧值；同 mm 路径同样不让 scrape 失败
   }
 
   const text = await metricsRegistry.metrics();

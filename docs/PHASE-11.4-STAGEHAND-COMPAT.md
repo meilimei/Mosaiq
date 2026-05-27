@@ -159,7 +159,7 @@ await page.goto("https://example.com");
 | `expiresAt` | RFC3339 | `row.expiresAt` → `.toISOString()` | 直接 |
 | `endedAt` | RFC3339\|null | `row.closedAt` → `.toISOString()` 或 null | 创建时一律 null |
 | `proxyBytes` | int | `0`（stub） | 我们暂不计 proxy 流量；M9 加 |
-| `keepAlive` | bool | `false`（stub） | 我们的 TTL 已经支持长 session（最长 SESSION_TTL_MAX_SECONDS），但还没有 BB 的 `keepAlive=true` 语义（断 WS 后保活）。phase 11.5 加 |
+| `keepAlive` | bool | `row.keepAlive`（phase 11.5 起 honor）| Phase 11.5 已实现完整 BB `keepAlive=true` 语义：WS 断后 pod 不销毁、`--user-data-dir` 保留、TTL ceiling 提升到 `SESSION_TTL_MAX_KEEPALIVE_SECONDS`（24h 默认），并附配额与 sticky 路由。详 [docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md](./PHASE-11.5-KEEPALIVE-LONG-SESSION.md) |
 | `connectUrl` | string | 现有 `publicCdpUrl(sessionId)` | **核心字段**——Stagehand 唯一依赖 |
 | `seleniumRemoteUrl` | string\|null | `null` | 我们不开 Selenium WebDriver，仅 CDP/Playwright |
 | `signingKey` | string\|null | `null` | BB 用来 short-lived 签 connectUrl token；我们用 session id + auth middleware 替代（同等安全） |
@@ -201,7 +201,7 @@ await page.goto("https://example.com");
 - 字段映射：
   - `viewport.{width,height}` → 现有 `viewport`
   - `userMetadata` → 新 column
-  - `keepAlive` → ignored（warn log）
+  - `keepAlive` → **phase 11.5 起 honored**（不再 warn-ignore；见 PHASE-11.5 doc）
   - `recording` → ignored（warn log）
   - `proxies` → ignored（warn log）
   - `browserSettings.fingerprint` → ignored（warn log；和我们的 Persona 不兼容）
@@ -209,7 +209,7 @@ await page.goto("https://example.com");
 - 测试：
   - BB-shape `{projectId, persona:{inline}, browserSettings:{viewport}}` → 应用 viewport（同形）
   - BB-shape 同时给 native viewport 与 browserSettings.viewport → native 优先
-  - BB-shape 未支持字段（keepAlive/recording/proxies/extensionId/region/timezone/browserSettings.fingerprint/blockAds）→ 201 + `unsupportedFields[]` 包含全部
+  - BB-shape 未支持字段（recording/proxies/extensionId/region/timezone/browserSettings.fingerprint/blockAds；keepAlive 在 phase 11.5 起已 honor 不在此名单）→ 201 + `unsupportedFields[]` 包含剩余字段
   - native-only 请求 → 响应**不带** unsupportedFields key
   - project_id ↔ projectId 同存且不一致 → 422 request.invalid
   - 完全省略 project id → 用 auth.projectId
@@ -321,7 +321,7 @@ Pool 状态 `ready=9 busy=1 cap=10`（POOL_TARGET_SIZE=5 secret，replenish_conc
 | `bb.sessions.create({})` 返回 connectUrl | ✓ | ✓ |
 | `chromium.connectOverCDP(connectUrl)` 接通 | ✓ | ✓ |
 | 默认 stealth fingerprint | BB 自己的 fingerprint stack | Mosaiq Persona（5 个 default seed） |
-| `keepAlive: true` 长 session | ✓ | ⚠️ phase 11.5（暂时 30min TTL 上限） |
+| `keepAlive: true` 长 session | ✓ | ✓ phase 11.5（24h 默认 ceiling + sticky 路由，见 [doc](./PHASE-11.5-KEEPALIVE-LONG-SESSION.md)） |
 | `recording: true` | ✓ | ❌ 11.4a 不支持 |
 | Stagehand `act()` / `observe()` / `extract()` | ✓（依赖 LLM 调度，与 SDK 无关） | ✓（这部分是 Stagehand 本地模型调用，不走 BB 服务端） |
 | Contexts API（cookie/auth 持久化）| ✓ | ❌ phase 11.6 |
@@ -333,7 +333,7 @@ Pool 状态 `ready=9 busy=1 cap=10`（POOL_TARGET_SIZE=5 secret，replenish_conc
 - ❌ `POST /v1/contexts` 系列（cookie persistence）—— phase 11.6
 - ❌ `recording: true`（CDP trace 录制 + replay）—— M9 milestone
 - ❌ `debug` URL（实时 viewer/screenshot 流）—— M9
-- ❌ `keepAlive: true` 长 session 保活—— phase 11.5
+- ✓ `keepAlive: true` 长 session 保活 —— **phase 11.5 已落地**（见 [PHASE-11.5-KEEPALIVE-LONG-SESSION.md](./PHASE-11.5-KEEPALIVE-LONG-SESSION.md)）
 - ❌ Multi-region —— phase 11.5（PRD M11 之前）
 - ❌ Browserbase Search / Fetch / Functions API —— Browserbase 专属功能，非 Stagehand 依赖
 - ❌ 我们这边的 fingerprint schema → BB `browserSettings.fingerprint` 双向翻译 —— BB 的 fingerprint API 不是 Stagehand 必需，跳过
