@@ -138,5 +138,12 @@ runtime/cache/
 # 每次跑会生成几 MB 截图 + HTML，不入库
 packages/sdk/bench/results/
 
+# ────────────────────────────────────────
+# Smoke test JSONL traces（stagehand-compat-smoke 等）
+# ────────────────────────────────────────
+# 每次 prod smoke 跑会留一个 JSONL，含 sessionId 时序，用于 §6.1 表填表后归档；
+# 实测数据已写进文档，原始文件留本地参考、不入库。
+.smoke-results/
+
 # tshy 临时输出
 .tshy-build-tmp/
