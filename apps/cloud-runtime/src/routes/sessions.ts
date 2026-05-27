@@ -28,6 +28,11 @@ import {
   sessionsCreatedTotal,
 } from '../metrics.js';
 import { pickDefaultPersonaDbId } from '../seed/default-personas.js';
+import {
+  stickyRegistryDelete,
+  stickyRegistryGet,
+  stickyRegistrySet,
+} from '../sticky/registry.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
@@ -112,9 +117,16 @@ const CreateSessionSchema = z.object({
   /** browserSettings.viewport → 等价 native viewport；其他子字段忽略并 warn */
   browserSettings: BrowserSettingsSchema.optional(),
 
-  // ── Browserbase 字段，我们暂不实现，收到就 warn-and-ignore ──
-  /** TTL 我们已通过 SESSION_TTL_MAX_SECONDS 强制封顶，keepAlive=true 不改变这个语义 */
+  // ── Browserbase 字段 ──
+  /**
+   * Phase 11.5: 现在 honored —— true 触发长会话路径（WS 断 pod 不销毁、
+   * TTL ceiling 提升到 SESSION_TTL_MAX_KEEPALIVE_SECONDS、受 KEEPALIVE_SESSIONS_PER_PROJECT_MAX
+   * 配额）。与 native lifecycle.keep_alive 等价（任一为 true 即生效）。
+   * 见 docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md §2-3。
+   */
   keepAlive: z.boolean().optional(),
+
+  // ── 以下 Browserbase 字段仍暂不实现，收到就 warn-and-ignore ──
   /** 录像（M9 milestone） */
   recording: z.unknown().optional(),
   /** 远端 logging（M9 milestone） */
@@ -206,7 +218,8 @@ function shapeSession(
     expiresAt: row.expiresAt,
     endedAt: row.closedAt,
     proxyBytes: 0,
-    keepAlive: false,
+    // Phase 11.5: 反映 row.keepAlive（之前 phase 11.4 stub 是固定 false）。
+    keepAlive: row.keepAlive,
     connectUrl: cdpUrl,
     seleniumRemoteUrl: null as string | null,
     signingKey: row.signingKey,
@@ -249,8 +262,8 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   // 没给 project id 时，从 auth 推断（BB SDK 默认行为）。
 
   // 收集所有「我们暂不实现」的 BB 字段，落到 response.unsupportedFields[] 与 warn 日志。
+  // 注：phase 11.5 起 keepAlive 已 honored，不再列入此名单。
   const unsupportedFields: string[] = [];
-  if (req.keepAlive !== undefined) unsupportedFields.push('keepAlive');
   if (req.recording !== undefined) unsupportedFields.push('recording');
   if (req.logging !== undefined) unsupportedFields.push('logging');
   if (req.proxies !== undefined) unsupportedFields.push('proxies');
@@ -312,9 +325,99 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     }
   }
 
+  // ── Phase 11.5: effective keepAlive + quota + sticky ──────────────────
+  // 接受 native(lifecycle.keep_alive) 与 BB(keepAlive) 两种入口；任一 true 即生效。
+  const effectiveKeepAlive =
+    req.lifecycle.keep_alive === true || req.keepAlive === true;
+  // stickyKey 仅 keepAlive=true 时启用路由；keepAlive=false 即使传 stickyKey 也忽略，
+  // 但 round-trip 进 userMetadata（GET 能取回），保留客户端语义。
+  const stickyKey =
+    effectiveKeepAlive && typeof req.userMetadata?.stickyKey === 'string'
+      ? (req.userMetadata.stickyKey as string)
+      : null;
+
+  const handle = await getDb();
+
+  if (effectiveKeepAlive) {
+    // ── quota check ────────────────────────────────────────────
+    // KEEPALIVE_SESSIONS_PER_PROJECT_MAX=0 → kill switch，所有 keepAlive 请求立刻 429。
+    // 用 SELECT id 数 length，不引入 sql<number>`COUNT(*)` 复杂度；configured cap ≤ 50
+    // 让 row scan 成本可忽略，索引 sessions_keepalive_idle_idx (status, keep_alive, last_seen_at)
+    // 也让前缀 (status='live', keep_alive=1) 命中 covering scan。
+    const liveKeepAlive = await handle.drizzle
+      .select({ id: sessionsTable.id })
+      .from(sessionsTable)
+      .where(
+        and(
+          eq(sessionsTable.projectId, auth.projectId),
+          eq(sessionsTable.keepAlive, true),
+          eq(sessionsTable.status, 'live'),
+        ),
+      );
+    const activeCount = liveKeepAlive.length;
+    if (activeCount >= env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX) {
+      // c.header 必须在 throw 之前 set 才会被 Hono onError 路径保留
+      c.header('Retry-After', '60');
+      audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
+        reason: 'keepalive_saturated',
+        activeCount,
+        quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+      });
+      throw new ApiError(
+        'pool.keepalive_saturated',
+        `project ${auth.projectId} has ${activeCount} live keepAlive sessions (quota ${env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX})`,
+        {
+          activeCount,
+          quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+          retryAfterSeconds: 60,
+        },
+      );
+    }
+
+    // ── sticky lookup ───────────────────────────────────────────
+    if (stickyKey) {
+      const hit = stickyRegistryGet(auth.projectId, stickyKey);
+      if (hit) {
+        // double-check 防 reaper / DELETE 已 evict 但 map 漏清的 stale entry
+        const hitRow = (
+          await handle.drizzle
+            .select()
+            .from(sessionsTable)
+            .where(eq(sessionsTable.id, hit.sessionId))
+            .limit(1)
+        )[0];
+        const nowIso = new Date().toISOString();
+        if (hitRow && hitRow.status === 'live' && hitRow.expiresAt > nowIso) {
+          audit(c, 'session.create', `session:${hit.sessionId}`, 'denied', {
+            reason: 'sticky_conflict',
+            stickyKey,
+          });
+          throw new ApiError(
+            'session.sticky_conflict',
+            `sticky key '${stickyKey}' already in use by session ${hit.sessionId}`,
+            {
+              existingSessionId: hit.sessionId,
+              expiresAt: hitRow.expiresAt,
+              // 让客户端直接 chromium.connectOverCDP(detail.connectUrl) 一步 rejoin —
+              // 避免还要先 GET /v1/sessions/{id} 再读 connectUrl（详见 design doc §9 decision 8）。
+              connectUrl: cdpUrlWithToken(hitRow.cdpPublicUrl, hitRow.signingKey),
+            },
+          );
+        }
+        // entry stale（DB 看到 closed / expired）→ evict 后继续走新建
+        stickyRegistryDelete(auth.projectId, stickyKey);
+      }
+    }
+  }
+
+  // TTL ceiling depends on keepAlive：normal session 受 SESSION_TTL_MAX_SECONDS，
+  // keepAlive=true 受更高的 SESSION_TTL_MAX_KEEPALIVE_SECONDS（env superRefine 保证后者 >= 前者）。
+  const ttlCeiling = effectiveKeepAlive
+    ? env.SESSION_TTL_MAX_KEEPALIVE_SECONDS
+    : env.SESSION_TTL_MAX_SECONDS;
   const ttl = Math.min(
     req.lifecycle.ttl_seconds ?? env.SESSION_TTL_DEFAULT_SECONDS,
-    env.SESSION_TTL_MAX_SECONDS,
+    ttlCeiling,
   );
 
   const sessionId = newId('ses');
@@ -347,7 +450,6 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttl * 1000);
 
-  const handle = await getDb();
   await handle.drizzle.insert(sessionsTable).values({
     id: sessionId,
     projectId: auth.projectId,
@@ -365,7 +467,18 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     metadataJson: JSON.stringify({ stealth, viewport }),
     userMetadata: req.userMetadata ? JSON.stringify(req.userMetadata) : '{}',
     signingKey,
+    // Phase 11.5: 持久化 keepAlive flag。reaper + release(hold) 都按它分支。
+    keepAlive: effectiveKeepAlive,
   });
+
+  // Phase 11.5: 注册 sticky entry。失败（同 key 已注册）会被 stickyRegistrySet
+  // 覆盖 —— 设计上不应发生，因为上面 sticky lookup 已 evict 任何 stale entry。
+  if (effectiveKeepAlive && stickyKey) {
+    stickyRegistrySet(auth.projectId, stickyKey, {
+      sessionId,
+      expiresAt: expiresAt.toISOString(),
+    });
+  }
 
   log.info(
     { sessionId, projectId: auth.projectId, machineId: machine.id, ttl },

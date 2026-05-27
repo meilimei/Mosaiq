@@ -17,6 +17,10 @@ import { resetEnvCache } from './env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from './machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './machine/types.js';
 import { resetRateLimitStore } from './middleware/rate-limit.js';
+import {
+  resetStickyRegistryForTesting,
+  stickyRegistrySizeForTesting,
+} from './sticky/registry.js';
 import { sha256Hex } from './utils/hash.js';
 import { newId } from './utils/ids.js';
 
@@ -80,6 +84,7 @@ beforeEach(async () => {
   delete process.env.RATE_LIMIT_READ_REFILL_PER_SEC;
   resetEnvCache();
   resetRateLimitStore();
+  resetStickyRegistryForTesting();
   await ensureSchema();
 
   // 预先 seed 两个 project + 两个 api key
@@ -783,7 +788,7 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
       body: JSON.stringify({
         projectId: TEST_PROJECT_ID,
         persona: { inline: PERSONA_FIXTURE },
-        keepAlive: true,
+        // 注：phase 11.5 起 keepAlive 已 honor，本测试只覆盖仍 warn-ignore 的字段。
         recording: { enabled: true },
         proxies: [{ type: 'browserbase' }],
         extensionId: 'ext_xxx',
@@ -801,7 +806,6 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
     // 至少包含我们枚举出的几个；顺序以收集顺序为准。
     expect(body.unsupportedFields).toEqual(
       expect.arrayContaining([
-        'keepAlive',
         'recording',
         'proxies',
         'extensionId',
@@ -811,8 +815,9 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
         'browserSettings.blockAds',
       ]),
     );
-    // viewport 不应出现在 unsupportedFields（它被 honor 了）
+    // viewport + keepAlive 都不应出现（前者 honor、后者 phase 11.5 起 honor）
     expect(body.unsupportedFields).not.toContain('browserSettings.viewport');
+    expect(body.unsupportedFields).not.toContain('keepAlive');
   });
 
   it('persona 完全省略 + 默认 seed 未植入 → 404 persona.not_found（命中清晰 default id）', async () => {
@@ -845,6 +850,295 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
     expect(resp.status).toBe(201);
     const body = (await resp.json()) as Record<string, unknown>;
     expect(Object.prototype.hasOwnProperty.call(body, 'unsupportedFields')).toBe(false);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 11.5 commit 3: POST /v1/sessions honors keepAlive + sticky registry + quota
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
+  it('POST keepAlive=true → 201, response.keepAlive=true, 提升 TTL ceiling 到 KEEPALIVE 配置', async () => {
+    // 显式传 10800s (3h) > 默认非-keepAlive ceiling SESSION_TTL_MAX_SECONDS=7200s。
+    // keepAlive=true 时 ceiling 应为 SESSION_TTL_MAX_KEEPALIVE_SECONDS (86400s 默认)，
+    // 因此 10800 应该原样被采纳，而非被 7200 截断。同时避免依赖 24h 的精确数值
+    // —— 上面 "TTL 上限封顶" 测试会污染 SESSION_TTL_DEFAULT_SECONDS=60 到本测试。
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        lifecycle: { ttl_seconds: 10800 },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as Record<string, unknown>;
+    expect(body['keepAlive']).toBe(true);
+    // expiresAt - now ≈ 10800s ± clock skew + insert latency；放宽到 10700~10900
+    const secondsAhead = (new Date(body['expiresAt'] as string).getTime() - Date.now()) / 1000;
+    expect(secondsAhead).toBeGreaterThan(10700);
+    expect(secondsAhead).toBeLessThan(10900);
+  });
+
+  it('POST native lifecycle.keep_alive=true → 等价 BB keepAlive=true 入口', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        lifecycle: { keep_alive: true },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as Record<string, unknown>;
+    expect(body['keepAlive']).toBe(true);
+  });
+
+  it('POST 同 (projectId, stickyKey) 两次 → 第二次 409 session.sticky_conflict 含 existingSessionId+expiresAt+connectUrl', async () => {
+    const app = createApp();
+    const first = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'reddit:user_42' },
+      }),
+    });
+    expect(first.status).toBe(201);
+    const firstBody = (await first.json()) as Record<string, unknown>;
+    const firstId = firstBody['id'] as string;
+
+    const second = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'reddit:user_42' },
+      }),
+    });
+    expect(second.status).toBe(409);
+    const secondBody = (await second.json()) as {
+      error: { code: string; detail: { existingSessionId: string; expiresAt: string; connectUrl: string } };
+    };
+    expect(secondBody.error.code).toBe('session.sticky_conflict');
+    expect(secondBody.error.detail.existingSessionId).toBe(firstId);
+    expect(secondBody.error.detail.expiresAt).toBe(firstBody['expiresAt']);
+    // connectUrl 必须可被客户端直接用做 chromium.connectOverCDP(...) 的入参，
+    // 含 ?token= 内嵌 signing key (phase 11.4 commit 4c 行为)。
+    expect(secondBody.error.detail.connectUrl).toMatch(/\?token=sks_/);
+    expect(secondBody.error.detail.connectUrl).toBe(firstBody['connectUrl']);
+  });
+
+  it('POST 同 stickyKey 但第一个已 DELETE → 第二次 201（stale evict 后新建）', async () => {
+    const app = createApp();
+    const first = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'session_to_close' },
+      }),
+    });
+    expect(first.status).toBe(201);
+    const firstId = ((await first.json()) as { id: string }).id;
+
+    // DELETE 第一个（commit 4 之前 DELETE handler 不会 evict sticky map，
+    // 但 POST 路径的双检会看到 row.status='closed' → 走 evict 路径）
+    const del = await app.request(`/v1/sessions/${firstId}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+
+    const second = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'session_to_close' },
+      }),
+    });
+    expect(second.status).toBe(201);
+    const secondId = ((await second.json()) as { id: string }).id;
+    expect(secondId).not.toBe(firstId);
+  });
+
+  it('POST keepAlive=true 配额满 → 429 pool.keepalive_saturated + Retry-After header', async () => {
+    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = '2';
+    resetEnvCache();
+    const app = createApp();
+
+    for (let i = 0; i < 2; i++) {
+      const resp = await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({
+          projectId: TEST_PROJECT_ID,
+          persona: { inline: PERSONA_FIXTURE },
+          keepAlive: true,
+        }),
+      });
+      expect(resp.status).toBe(201);
+    }
+
+    const overflow = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+      }),
+    });
+    expect(overflow.status).toBe(429);
+    expect(overflow.headers.get('Retry-After')).toBe('60');
+    const body = (await overflow.json()) as {
+      error: { code: string; detail: { activeCount: number; quota: number } };
+    };
+    expect(body.error.code).toBe('pool.keepalive_saturated');
+    expect(body.error.detail.activeCount).toBe(2);
+    expect(body.error.detail.quota).toBe(2);
+
+    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('KEEPALIVE_SESSIONS_PER_PROJECT_MAX=0 → 所有 keepAlive 请求即时 429（kill switch）', async () => {
+    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = '0';
+    resetEnvCache();
+    const app = createApp();
+
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+      }),
+    });
+    expect(resp.status).toBe(429);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('pool.keepalive_saturated');
+
+    // keepAlive=false 路径不受 kill switch 影响
+    const normal = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(normal.status).toBe(201);
+
+    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('POST keepAlive=true 不传 stickyKey → 201，sticky registry 仍为空', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+      }),
+    });
+    expect(resp.status).toBe(201);
+    expect(stickyRegistrySizeForTesting()).toBe(0);
+  });
+
+  it('POST keepAlive=false + userMetadata.stickyKey → 201，sticky 不生效（只 round-trip）', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        // 故意不传 keepAlive
+        userMetadata: { stickyKey: 'ignored_when_keepalive_false' },
+      }),
+    });
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as { keepAlive: boolean; userMetadata: Record<string, unknown> };
+    expect(body.keepAlive).toBe(false);
+    // stickyKey 仍 round-trip 在 userMetadata 里（客户端 GET 能取回）
+    expect(body.userMetadata['stickyKey']).toBe('ignored_when_keepalive_false');
+    // 但 registry 完全不记账
+    expect(stickyRegistrySizeForTesting()).toBe(0);
+
+    // 同一 stickyKey 再来一次（仍 keepAlive=false）→ 也 201，不命中 409
+    const second = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        userMetadata: { stickyKey: 'ignored_when_keepalive_false' },
+      }),
+    });
+    expect(second.status).toBe(201);
+  });
+
+  it('GET keepAlive session 返回 keepAlive=true', async () => {
+    const app = createApp();
+    const created = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+      }),
+    });
+    const id = ((await created.json()) as { id: string }).id;
+
+    const got = await app.request(`/v1/sessions/${id}`, { headers: authH() });
+    expect(got.status).toBe(200);
+    const body = (await got.json()) as { keepAlive: boolean };
+    expect(body.keepAlive).toBe(true);
+  });
+
+  it('Sticky 范围限定 (projectId, stickyKey) — 不同 project 同 stickyKey 互不冲突', async () => {
+    const app = createApp();
+    const a = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(TEST_API_KEY),
+      body: JSON.stringify({
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'shared:reddit:main' },
+      }),
+    });
+    expect(a.status).toBe(201);
+
+    // 同 stickyKey 但 OTHER_API_KEY → OTHER_PROJECT_ID 命名空间，不冲突
+    const b = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(OTHER_API_KEY),
+      body: JSON.stringify({
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'shared:reddit:main' },
+      }),
+    });
+    expect(b.status).toBe(201);
+    expect(stickyRegistrySizeForTesting()).toBe(2);
   });
 });
 

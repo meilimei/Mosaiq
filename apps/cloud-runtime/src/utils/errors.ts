@@ -16,9 +16,11 @@ export type ErrorCode =
   | 'request.not_found'
   | 'pool.exhausted'
   | 'pool.pod_unhealthy'
+  | 'pool.keepalive_saturated'
   | 'rate.limit_exceeded'
   | 'session.not_found'
   | 'session.closed'
+  | 'session.sticky_conflict'
   | 'persona.not_found'
   | 'persona.duplicate'
   | 'machine.spawn_failed'
@@ -33,9 +35,16 @@ const statusByCode: Record<ErrorCode, number> = {
   'request.not_found': 404,
   'pool.exhausted': 503,
   'pool.pod_unhealthy': 503,
+  // Phase 11.5: per-project keepAlive quota hit; client should either close an
+  // existing keepAlive session or wait (Retry-After header included in response).
+  'pool.keepalive_saturated': 429,
   'rate.limit_exceeded': 429,
   'session.not_found': 404,
   'session.closed': 410,
+  // Phase 11.5: same (projectId, stickyKey) already maps to a live session.
+  // Detail contains { existingSessionId, expiresAt, connectUrl } so client can
+  // one-step rejoin via chromium.connectOverCDP(detail.connectUrl).
+  'session.sticky_conflict': 409,
   'persona.not_found': 404,
   'persona.duplicate': 409,
   'machine.spawn_failed': 500,
