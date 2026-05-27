@@ -58,7 +58,14 @@ const STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS sessions_project_idx ON sessions (project_id, opened_at)`,
   `CREATE INDEX IF NOT EXISTS sessions_status_idx ON sessions (status)`,
   `CREATE INDEX IF NOT EXISTS sessions_machine_idx ON sessions (machine_id)`,
-  `CREATE INDEX IF NOT EXISTS sessions_keepalive_idle_idx ON sessions (status, keep_alive, last_seen_at)`,
+  // NOTE phase 11.5: sessions_keepalive_idle_idx is intentionally **not here**.
+  // It references the keep_alive column which was added via COLUMN_ADDITIONS in
+  // phase 11.5. STATEMENTS runs BEFORE COLUMN_ADDITIONS, so on an upgrade path
+  // (existing prod DB w/ old sessions table; CREATE TABLE IF NOT EXISTS is a
+  // no-op), the column doesn't exist yet at this point and `CREATE INDEX (...keep_alive...)`
+  // would fail with `no such column: keep_alive`. Index creation lives in
+  // INDEX_ADDITIONS below, which runs AFTER COLUMN_ADDITIONS adds the column.
+  // bootstrap.test.ts has a regression test for this upgrade ordering.
 
   // personas
   `CREATE TABLE IF NOT EXISTS personas (

@@ -35,6 +35,60 @@ describe('ensureSchema', () => {
       expect(names).toContain(t);
     }
   });
+
+  /**
+   * Phase 11.5 regression test (导致 v17 prod outage 的根因)：
+   *
+   * v16 prod DB 已经存在 sessions 表（无 keep_alive 列）→ 部署 v17 时
+   * `CREATE TABLE IF NOT EXISTS sessions (...keep_alive...)` 是 no-op，
+   * 老 schema 保留。如果新加的 `CREATE INDEX ... (status, keep_alive, ...)`
+   * 写在 STATEMENTS 里，会在 COLUMN_ADDITIONS 之前执行 → SQLite 报
+   * `no such column: keep_alive` → bootstrap 抛 → 容器 crash-loop。
+   *
+   * 这个测试模拟"v16 prod DB"：先建一个不带 keep_alive 列的 sessions 表，
+   * 然后 ensureSchema() 必须能优雅升级，且最终包含新列 + 新索引。
+   */
+  it('upgrade 路径：旧 sessions 表（无 keep_alive 列）→ ensureSchema 加列 + 加索引不报错', async () => {
+    // 1. 模拟 v16 schema：drop 后建一个没有 keep_alive / signing_key / user_metadata 的老表
+    const handle = await getDb();
+    handle.drizzle.run(sql`DROP TABLE IF EXISTS sessions`);
+    handle.drizzle.run(sql`CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      persona_id TEXT,
+      machine_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      cdp_internal_url TEXT NOT NULL,
+      cdp_public_url TEXT NOT NULL,
+      opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      closed_at TEXT,
+      expires_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      client_addr TEXT,
+      client_label TEXT,
+      error_message TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    )`);
+
+    // 2. 跑 ensureSchema —— 应当能 ALTER TABLE 加 user_metadata / signing_key / keep_alive
+    //    然后才 CREATE INDEX sessions_keepalive_idle_idx，不抛。
+    await ensureSchema();
+
+    // 3. 验证：keep_alive 列存在
+    const cols = handle.drizzle.all(
+      sql`PRAGMA table_info(sessions)`,
+    ) as Array<{ name: string }>;
+    const colNames = cols.map((c) => c.name);
+    expect(colNames).toContain('keep_alive');
+    expect(colNames).toContain('user_metadata');
+    expect(colNames).toContain('signing_key');
+
+    // 4. 索引存在
+    const idx = handle.drizzle.all(
+      sql`SELECT name FROM sqlite_master WHERE type='index' AND name='sessions_keepalive_idle_idx'`,
+    ) as Array<{ name: string }>;
+    expect(idx).toHaveLength(1);
+  });
 });
 
 describe('ensureDefaultPersonas (phase 11.4 commit 4a)', () => {
