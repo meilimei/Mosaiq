@@ -1114,6 +1114,45 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     expect(body.keepAlive).toBe(true);
   });
 
+  it('Phase 11.5 commit 4: DELETE keepAlive session 从 sticky registry evict entry', async () => {
+    const app = createApp();
+    const create = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'will_be_evicted_by_delete' },
+      }),
+    });
+    expect(create.status).toBe(201);
+    const id = ((await create.json()) as { id: string }).id;
+    expect(stickyRegistrySizeForTesting()).toBe(1);
+
+    const del = await app.request(`/v1/sessions/${id}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+    // sticky entry 应已 evict（commit 4 行为：DELETE 在 release + status 更新后扫 userMetadata）
+    expect(stickyRegistrySizeForTesting()).toBe(0);
+
+    // 同 stickyKey 立即再 POST 应直接 201（registry 空 + DB session closed）
+    const recreate = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+        userMetadata: { stickyKey: 'will_be_evicted_by_delete' },
+      }),
+    });
+    expect(recreate.status).toBe(201);
+    expect(stickyRegistrySizeForTesting()).toBe(1);
+  });
+
   it('Sticky 范围限定 (projectId, stickyKey) — 不同 project 同 stickyKey 互不冲突', async () => {
     const app = createApp();
     const a = await app.request('/v1/sessions', {

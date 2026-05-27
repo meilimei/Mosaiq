@@ -39,13 +39,17 @@
  *     tick 在 intervalMs 之后。
  */
 
-import { and, eq, inArray, lt } from 'drizzle-orm';
+import { and, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import type { Logger } from 'pino';
 
+import { loadEnv } from '../env.js';
 import { auditEvents, sessions as sessionsTable } from '../db/schema.js';
 import type { DbHandle } from '../db/client.js';
 import type { MachineManager } from '../machine/types.js';
 import { sessionsClosedTotal } from '../metrics.js';
+import {
+  stickyRegistryDelete,
+} from '../sticky/registry.js';
 import { newId } from '../utils/ids.js';
 
 /**
@@ -75,24 +79,61 @@ export async function reapExpiredSessions(deps: {
   logger: Logger;
   /** ISO timestamp 字符串。默认 new Date().toISOString()。测试可注入定值便于复现。 */
   nowIso?: string;
+  /**
+   * Phase 11.5: keepAlive=true session 的 idle 判定阈值（ISO timestamp）。
+   * 任何 keep_alive=1 且 last_seen_at < idleThresholdIso 的 session 会被连同
+   * TTL 过期的一起 reap。默认读 env.SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS
+   * 计算；production startSessionExpiryJob 每 tick 重新计算。传 null 可在测试里
+   * 关闭 idle 检查（只走 TTL 路径、保留 phase 11.4 行为）。
+   */
+  idleThresholdIso?: string | null;
 }): Promise<ReapResult> {
   const { db, mm, logger } = deps;
   const nowIso = deps.nowIso ?? new Date().toISOString();
 
+  // Phase 11.5: idle threshold 默认从 env 计算。显式传 null 关闭。
+  const idleThresholdIso = (() => {
+    if (deps.idleThresholdIso === null) return null;
+    if (deps.idleThresholdIso !== undefined) return deps.idleThresholdIso;
+    const env = loadEnv();
+    const idleMs = env.SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS * 1000;
+    return new Date(Date.parse(nowIso) - idleMs).toISOString();
+  })();
+
   // sqlite text(timestamp) 比较走字典序；ISO-8601 的好处就是字典序 = 时间序，
   // 所以 expiresAt < nowIso 就是 "过期了"。
+  //
+  // Phase 11.5: 选取条件变为 OR 两路：
+  //   (A) 硬 TTL 过期：expiresAt < nowIso。什么 session 都适用。
+  //   (B) keepAlive idle 超时：keep_alive = 1 AND last_seen_at < idleThresholdIso。
+  //       仅对 keepAlive=true session 生效（keepAlive=false session 在 WS 断后本就会
+  //       被 DELETE、或者被硬 TTL 接手，idle 维度不适用）。
+  //
+  // 查询上有 sessions_keepalive_idle_idx (status, keep_alive, last_seen_at) 索引，
+  // 路径 (B) 能走该索引 covering scan。
+  const idleCondition =
+    idleThresholdIso !== null
+      ? and(
+          eq(sessionsTable.keepAlive, true),
+          lt(sessionsTable.lastSeenAt, idleThresholdIso),
+        )
+      : sql`0`;  // 设为 always-false，等价只走 TTL 路径
+
   const expired = await db.drizzle
     .select({
       id: sessionsTable.id,
       machineId: sessionsTable.machineId,
       projectId: sessionsTable.projectId,
       expiresAt: sessionsTable.expiresAt,
+      lastSeenAt: sessionsTable.lastSeenAt,
+      keepAlive: sessionsTable.keepAlive,
+      userMetadata: sessionsTable.userMetadata,
     })
     .from(sessionsTable)
     .where(
       and(
         inArray(sessionsTable.status, ['live', 'requested']),
-        lt(sessionsTable.expiresAt, nowIso),
+        or(lt(sessionsTable.expiresAt, nowIso), idleCondition),
       ),
     );
 
@@ -107,8 +148,16 @@ export async function reapExpiredSessions(deps: {
   for (const row of expired) {
     sessionIds.push(row.id);
     let thisRowReleaseFailed = false;
+
+    // Phase 11.5: 区分 "硬 TTL 过期" 与 "keepAlive idle 超时"。
+    // 有 both 同时命中：优先 'expired-ttl'（它是更硬的上限信号，idle 超时是软选项）。
+    const isTtlExpired = row.expiresAt < nowIso;
+    const reaperReason: 'expired-ttl' | 'expired-idle' = isTtlExpired ? 'expired-ttl' : 'expired-idle';
+
     try {
-      await mm.release(row.machineId);
+      // 显式 hold: false：走完整销毁路径。这是 reaper 唯一逻辑——即使 row 是
+      // keepAlive=true，reaper 领取后也是 "到期 / idle 了，该销了"，不可能再 hold=true。
+      await mm.release(row.machineId, { hold: false });
       released++;
     } catch (err) {
       releaseFailed++;
@@ -133,7 +182,9 @@ export async function reapExpiredSessions(deps: {
       .set({
         status: 'closed',
         closedAt: nowIso,
-        errorMessage: 'expired',
+        // errorMessage 照实记 reason（'expired' 是 phase 11.4 之前的 lossy值）。
+        // 保留 'expired-...' 前缀让 prod log/db grep 源型快。
+        errorMessage: reaperReason,
       })
       .where(
         and(
@@ -151,6 +202,9 @@ export async function reapExpiredSessions(deps: {
     // 只有在乐观锁实际更新到这一行时才写 audit；如果 update no-op（DELETE
     // 抢先），则 DELETE handler 已经写过 'session.close' 了，不要重复写。
     if (updated.length > 0) {
+      // Phase 11.5: 临时保持 metrics label='expired' 不变——commit 5 会拆成
+      // {expired-ttl, expired-idle}。现阶段 audit_events.detailJson.reason 才带区分，
+      // 便于 prod grep 。
       sessionsClosedTotal.inc({ reason: 'expired' });
       await db.drizzle.insert(auditEvents).values({
         id: newId('aud'),
@@ -163,10 +217,25 @@ export async function reapExpiredSessions(deps: {
         detailJson: JSON.stringify({
           machineId: row.machineId,
           expiresAt: row.expiresAt,
+          lastSeenAt: row.lastSeenAt,
+          keepAlive: row.keepAlive,
+          reason: reaperReason,
           reapedAt: nowIso,
           ...(thisRowReleaseFailed ? { releaseFailed: true } : {}),
         }),
       });
+
+      // Phase 11.5: 读 row.userMetadata 取 stickyKey，从 sticky registry evict。
+      // 同 keepAlive=true 路径你才会有 stickyKey——keepAlive=false 的 row userMetadata
+      // 中即使含 stickyKey 也不会注入 registry，所以 evict 是 no-op（需宽容决定）。
+      try {
+        const meta = JSON.parse(row.userMetadata ?? '{}') as Record<string, unknown>;
+        if (typeof meta['stickyKey'] === 'string') {
+          stickyRegistryDelete(row.projectId, meta['stickyKey'] as string);
+        }
+      } catch {
+        /* invalid JSON; ignore */
+      }
     }
   }
 

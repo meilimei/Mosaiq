@@ -19,6 +19,12 @@ import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
 import { auditEvents, projects, sessions as sessionsTable } from '../db/schema.js';
 import { resetEnvCache } from '../env.js';
+import type { ReleaseOptions } from '../machine/types.js';
+import {
+  resetStickyRegistryForTesting,
+  stickyRegistryGet,
+  stickyRegistrySet,
+} from '../sticky/registry.js';
 import { reapExpiredSessions, startSessionExpiryJob } from './session-expiry.js';
 import type { Logger } from 'pino';
 
@@ -45,18 +51,23 @@ function makeFakeLogger(): Logger {
 }
 
 interface FakeMm {
-  release: (machineId: string) => Promise<void>;
+  release: (machineId: string, opts?: ReleaseOptions) => Promise<void>;
   released: string[];
+  /** Phase 11.5: 记录每次 release 的 opts，让测试断言 reaper 传 {hold: false}。 */
+  releaseOpts: Array<{ machineId: string; opts: ReleaseOptions | undefined }>;
   failOn: Set<string>;
 }
 
 function makeFakeMm(failOn: string[] = []): FakeMm {
   const released: string[] = [];
+  const releaseOpts: Array<{ machineId: string; opts: ReleaseOptions | undefined }> = [];
   const failSet = new Set(failOn);
   return {
     released,
+    releaseOpts,
     failOn: failSet,
-    async release(machineId: string) {
+    async release(machineId: string, opts?: ReleaseOptions) {
+      releaseOpts.push({ machineId, opts });
       if (failSet.has(machineId)) {
         throw new Error(`fake release failure for ${machineId}`);
       }
@@ -67,6 +78,9 @@ function makeFakeMm(failOn: string[] = []): FakeMm {
 
 /**
  * 直接往 sessions 表插入一行；绕过 POST /v1/sessions 的全流程，用最小列。
+ *
+ * Phase 11.5: 增加 keepAlive / lastSeenAt / userMetadata 参数让 idle-timeout 与
+ * sticky evict 路径可单测。
  */
 async function insertSession(opts: {
   id: string;
@@ -74,6 +88,9 @@ async function insertSession(opts: {
   status: 'live' | 'requested' | 'closed' | 'errored';
   expiresAt: string;
   openedAt?: string;
+  lastSeenAt?: string;
+  keepAlive?: boolean;
+  userMetadata?: string;
 }) {
   const handle = await getDb();
   await handle.drizzle.insert(sessionsTable).values({
@@ -86,8 +103,10 @@ async function insertSession(opts: {
     cdpPublicUrl: 'ws://fake/v1/sessions/u/cdp',
     openedAt: opts.openedAt ?? new Date(Date.now() - 60_000).toISOString(),
     expiresAt: opts.expiresAt,
-    lastSeenAt: new Date().toISOString(),
+    lastSeenAt: opts.lastSeenAt ?? new Date().toISOString(),
     metadataJson: '{}',
+    userMetadata: opts.userMetadata ?? '{}',
+    keepAlive: opts.keepAlive ?? false,
   });
 }
 
@@ -98,6 +117,7 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   resetEnvCache();
+  resetStickyRegistryForTesting();
   await ensureSchema();
 
   const handle = await getDb();
@@ -153,7 +173,8 @@ describe('reapExpiredSessions', () => {
       .where(eq(sessionsTable.id, 'ses_expired_1'));
     expect(row?.status).toBe('closed');
     expect(row?.closedAt).toBeTruthy();
-    expect(row?.errorMessage).toBe('expired');
+    // Phase 11.5: reason 区分 'expired-ttl'（硬 TTL 到期）与 'expired-idle'（keepAlive 闲置超时）
+    expect(row?.errorMessage).toBe('expired-ttl');
 
     // audit_events 行应该写入（result=ok，api_key_id=null 表明是 background job）
     const audits = await db.drizzle
@@ -242,7 +263,7 @@ describe('reapExpiredSessions', () => {
       .from(sessionsTable)
       .where(eq(sessionsTable.id, 'ses_release_fails'));
     expect(row?.status).toBe('closed');
-    expect(row?.errorMessage).toBe('expired');
+    expect(row?.errorMessage).toBe('expired-ttl');
 
     // audit row 必须 result=errored，detail 含 releaseFailed=true 让 ops 能 grep
     const [audit] = await db.drizzle
@@ -384,6 +405,218 @@ describe('reapExpiredSessions', () => {
     // result2 应该只 scan 已 closed 的 ses_boundary 之外的还活着的，但 ses_boundary
     // 已经在第一次跑里被 mark closed 了，所以 result2.scanned 应该是 0。
     expect(result2.scanned).toBe(0);
+  });
+
+  // ─── Phase 11.5: keepAlive idle-timeout + sticky evict + hold=false 显式 opts ────
+
+  it('Phase 11.5: keepAlive=true + lastSeenAt 早于 idleThreshold + expiresAt 未到 → reaped, reason=expired-idle', async () => {
+    const now = new Date('2026-05-28T10:00:00.000Z');
+    const ttlFuture = new Date(now.getTime() + 3600_000).toISOString(); // expiresAt 1h 后
+    const idleLastSeen = new Date(now.getTime() - 2 * 3600_000).toISOString(); // lastSeenAt 2h 前
+    const idleThreshold = new Date(now.getTime() - 3600_000).toISOString(); // 1h 前
+
+    await insertSession({
+      id: 'ses_idle_long',
+      machineId: 'mch_idle_long',
+      status: 'live',
+      expiresAt: ttlFuture,
+      lastSeenAt: idleLastSeen,
+      keepAlive: true,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    const result = await reapExpiredSessions({
+      db,
+      mm,
+      logger: makeFakeLogger(),
+      nowIso: now.toISOString(),
+      idleThresholdIso: idleThreshold,
+    });
+
+    expect(result.scanned).toBe(1);
+    expect(result.sessionIds).toEqual(['ses_idle_long']);
+    expect(mm.released).toEqual(['mch_idle_long']);
+
+    const [row] = await db.drizzle
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.id, 'ses_idle_long'));
+    expect(row?.status).toBe('closed');
+    expect(row?.errorMessage).toBe('expired-idle');
+
+    const [audit] = await db.drizzle
+      .select()
+      .from(auditEvents)
+      .where(eq(auditEvents.resource, 'session:ses_idle_long'));
+    const detail = JSON.parse(audit?.detailJson ?? '{}');
+    expect(detail.reason).toBe('expired-idle');
+    expect(detail.keepAlive).toBe(true);
+  });
+
+  it('Phase 11.5: keepAlive=true + lastSeenAt 最近 + expiresAt 未到 → 不动', async () => {
+    const now = new Date('2026-05-28T10:00:00.000Z');
+    const recent = new Date(now.getTime() - 5 * 60_000).toISOString(); // 5min 前
+    const idleThreshold = new Date(now.getTime() - 3600_000).toISOString(); // 1h 前
+
+    await insertSession({
+      id: 'ses_idle_short',
+      machineId: 'mch_idle_short',
+      status: 'live',
+      expiresAt: new Date(now.getTime() + 3600_000).toISOString(),
+      lastSeenAt: recent,
+      keepAlive: true,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    const result = await reapExpiredSessions({
+      db,
+      mm,
+      logger: makeFakeLogger(),
+      nowIso: now.toISOString(),
+      idleThresholdIso: idleThreshold,
+    });
+
+    expect(result.scanned).toBe(0);
+    expect(mm.released).toEqual([]);
+
+    const [row] = await db.drizzle
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.id, 'ses_idle_short'));
+    expect(row?.status).toBe('live');
+  });
+
+  it('Phase 11.5: keepAlive=true + 同时 TTL+idle 都过期 → reason=expired-ttl (TTL 优先)', async () => {
+    const now = new Date('2026-05-28T10:00:00.000Z');
+    const past = new Date(now.getTime() - 60_000).toISOString();
+    const idleThreshold = new Date(now.getTime() - 3600_000).toISOString();
+    const idleLastSeen = new Date(now.getTime() - 2 * 3600_000).toISOString();
+
+    await insertSession({
+      id: 'ses_both_expired',
+      machineId: 'mch_both_expired',
+      status: 'live',
+      expiresAt: past,            // TTL 已过
+      lastSeenAt: idleLastSeen,   // idle 也过
+      keepAlive: true,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    const result = await reapExpiredSessions({
+      db,
+      mm,
+      logger: makeFakeLogger(),
+      nowIso: now.toISOString(),
+      idleThresholdIso: idleThreshold,
+    });
+
+    expect(result.scanned).toBe(1);
+    const [row] = await db.drizzle
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.id, 'ses_both_expired'));
+    expect(row?.errorMessage).toBe('expired-ttl');
+  });
+
+  it('Phase 11.5: keepAlive=false + lastSeenAt 早于 idleThreshold → 不动（idle 仅对 keepAlive=true 生效）', async () => {
+    const now = new Date('2026-05-28T10:00:00.000Z');
+    const idleLastSeen = new Date(now.getTime() - 2 * 3600_000).toISOString();
+    const idleThreshold = new Date(now.getTime() - 3600_000).toISOString();
+
+    await insertSession({
+      id: 'ses_nonkeep_idle',
+      machineId: 'mch_nonkeep_idle',
+      status: 'live',
+      expiresAt: new Date(now.getTime() + 3600_000).toISOString(),
+      lastSeenAt: idleLastSeen,
+      keepAlive: false,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    const result = await reapExpiredSessions({
+      db,
+      mm,
+      logger: makeFakeLogger(),
+      nowIso: now.toISOString(),
+      idleThresholdIso: idleThreshold,
+    });
+
+    expect(result.scanned).toBe(0);
+    expect(mm.released).toEqual([]);
+  });
+
+  it('Phase 11.5: reaper 显式传 {hold: false} 给 mm.release', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    await insertSession({
+      id: 'ses_hold_check',
+      machineId: 'mch_hold_check',
+      status: 'live',
+      expiresAt: past,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    await reapExpiredSessions({ db, mm, logger: makeFakeLogger() });
+
+    expect(mm.releaseOpts).toHaveLength(1);
+    expect(mm.releaseOpts[0]?.machineId).toBe('mch_hold_check');
+    expect(mm.releaseOpts[0]?.opts).toEqual({ hold: false });
+  });
+
+  it('Phase 11.5: reap keepAlive session → 从 sticky registry evict 对应 stickyKey', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const stickyKey = 'reddit:user_99';
+    await insertSession({
+      id: 'ses_with_sticky',
+      machineId: 'mch_with_sticky',
+      status: 'live',
+      expiresAt: past, // TTL 已过 → 一定被 reap
+      keepAlive: true,
+      userMetadata: JSON.stringify({ stickyKey, other: 'val' }),
+    });
+    // 模拟 POST 路径之前注册过的 sticky entry
+    stickyRegistrySet(PROJECT_ID, stickyKey, {
+      sessionId: 'ses_with_sticky',
+      expiresAt: past,
+    });
+    expect(stickyRegistryGet(PROJECT_ID, stickyKey)).toBeDefined();
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    await reapExpiredSessions({ db, mm, logger: makeFakeLogger() });
+
+    // Reaper 应已 evict
+    expect(stickyRegistryGet(PROJECT_ID, stickyKey)).toBeUndefined();
+  });
+
+  it('Phase 11.5: idleThresholdIso=null → idle 检查关闭，等价 phase 11.4 行为（TTL only）', async () => {
+    const now = new Date('2026-05-28T10:00:00.000Z');
+    const idleLastSeen = new Date(now.getTime() - 24 * 3600_000).toISOString();
+    await insertSession({
+      id: 'ses_idle_disabled',
+      machineId: 'mch_idle_disabled',
+      status: 'live',
+      expiresAt: new Date(now.getTime() + 3600_000).toISOString(),
+      lastSeenAt: idleLastSeen,
+      keepAlive: true,
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    const result = await reapExpiredSessions({
+      db,
+      mm,
+      logger: makeFakeLogger(),
+      nowIso: now.toISOString(),
+      idleThresholdIso: null,
+    });
+
+    // 即使 idle 大到 24h，因为 idle 检查被关闭、TTL 也未到 → 不动
+    expect(result.scanned).toBe(0);
   });
 });
 

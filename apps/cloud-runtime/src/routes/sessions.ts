@@ -556,7 +556,10 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
 
   if (row.status !== 'closed') {
     const mm = getMachineManager();
-    await mm.release(row.machineId).catch((err) => {
+    // Phase 11.5: 显式 hold=false —— DELETE 是客户端"我要彻底关掉"的语义，
+    // 与 keepAlive=true session 的 WS 断开 (proxy 处不调 release) 形成对比。
+    // 即使 row.keepAlive=true，DELETE 也要 destroy；后者是 reaper / idle 的事。
+    await mm.release(row.machineId, { hold: false }).catch((err) => {
       getLogger().warn({ err, sessionId: id }, 'machine release failed (ignored)');
     });
     await handle.drizzle
@@ -564,6 +567,18 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
       .set({ status: 'closed', closedAt: new Date().toISOString() })
       .where(eq(sessionsTable.id, id));
     sessionsClosedTotal.inc({ reason: 'client' });
+
+    // Phase 11.5: evict sticky registry entry（如果有）。读 row.userMetadata 取 stickyKey，
+    // 失败 / 缺字段都 no-op。注意：keepAlive=false session 即使其 userMetadata 含 stickyKey
+    // 也不会注入 registry，所以这里 evict 是空操作，不需要额外的 row.keepAlive 判定。
+    try {
+      const meta = JSON.parse(row.userMetadata ?? '{}') as Record<string, unknown>;
+      if (typeof meta['stickyKey'] === 'string') {
+        stickyRegistryDelete(row.projectId, meta['stickyKey'] as string);
+      }
+    } catch {
+      /* invalid JSON; ignore */
+    }
   }
 
   audit(c, 'session.close', `session:${id}`, 'ok');
