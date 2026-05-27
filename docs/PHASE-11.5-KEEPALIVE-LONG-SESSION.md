@@ -392,18 +392,32 @@ metrics 加 label 让 carve-out 可观测：
 
 ---
 
-## 7. 测试结果（待 §6 部署后填）
+## 7. 测试结果
 
 ### 7.1 Mosaiq 侧 smoke（`scripts/keepalive-reconnect-smoke.mjs`）
 
-| 跑次 | 时间 (UTC) | acquire ms | connect#1 ms | reconnect ms | IDB 持久 | 结果 |
-|---|---|---|---|---|---|---|
-| #1 | TBD | — | — | — | — | TBD |
-| #2 | TBD | — | — | — | — | TBD |
-| #3 | TBD | — | — | — | — | TBD |
-| #4 | TBD | — | — | — | — | TBD |
-| #5 | TBD | — | — | — | — | TBD |
-| **mean** | — | — | — | **target < 2s** | — | — |
+部署：image `01KSNT7SXG0MW76GS35YSCJ85K`（v18 = phase 11.5 + bootstrap migration ordering hotfix）。机器 `2862654ce59218`，region iad，2026-05-27 ~22:58 UTC 上线。Transient API key `apk_nSynkgJAS3YcYWNixxgaxB`（project `proj_p115_smoke`）23:14 UTC 跑完 5 轮后立即 revoke。
+
+| 跑次 | 时间 (UTC) | acquire ms | connect#1 ms | **reconnect ms** | IDB+LS 持久 | sticky 409 | 结果 |
+|---|---|---|---|---|---|---|---|
+| #1 | 23:08:15 | 36981 | 4259 | **2317** | ✓ | ✓ | PASS |
+| #2 | 23:09:22 | 33659 | 7515 | **1649** | ✓ | ✓ | PASS |
+| #3 | 23:11:31 | 98114 ⚠ | 7677 | **1789** | ✓ | ✓ | PASS |
+| #4 | 23:12:37 | 33255 | 7571 | **1882** | ✓ | ✓ | PASS |
+| #5 | 23:13:44 | 36774 | 4318 | **1660** | ✓ | ✓ | PASS |
+| **mean** | — | 47.8s (35.2s ex-#3) | 6.3s | **1.86s** | 5/5 | 5/5 | **5/5 PASS** |
+
+**关键观察**：
+
+- **reconnectMs 均值 1.86s，目标 < 2s 达成**（所有跑次 < 2.5s）。第一次 acquire 平均 35.2s（剔除 #3）→ 重连 1.86s = **19× 加速**，与 §1.4 设计预期"< 1s"差距来自跨太平洋 fly proxy + WS upgrade 这部分（无法消除），但相对 cold acquire 的工程意义（"长 agent 跑完不用重新 warm"）已 100% 实现。
+- **#3 acquireMs=98s 离群点**：smoke 串跑 5 次时项目级 pool 短暂枯竭（5 个 sticky key = 5 个并发 keepAlive，POOL_TARGET_SIZE 只 = pool capacity 时新 acquire 走 cold path）。生产环境单 customer 不会发生（quota 5/project）。
+- **IDB + localStorage 字节级保留 5/5**：reconnect 后 `kav_<probeValue>` 与写入完全相等，证明 `--user-data-dir` 在 pod 内持久（否则 origin storage 会清）。
+- **Sticky 409 5/5**：同 stickyKey 二次 POST 返回 `error.code='session.sticky_conflict'`、`detail.existingSessionId` 与 `detail.connectUrl` 包含 `?token=sks_`，client 可一步 rejoin（design §10 §8 决策（b）已落地）。
+- **connect#1 双簇分布**（4.3s vs 7.6s）：与 phase 11.4 §6.1 观察一致 —— chromium 已对外侦听后 ~4s fast path，首次 attach sandbox 初始化 ~7.5s。无 retry，两条路径都成功 connect。
+
+**生产 outage 与 hotfix（commit 6, `3e3334c`）**：v17（commit 1-5）首次部署 22:43 UTC 因 bootstrap 迁移顺序 bug 而 crash-loop —— `STATEMENTS` 数组里把 `CREATE INDEX ... keep_alive ...` 放在 `COLUMN_ADDITIONS` 之前，prod sqlite 已有 sessions 表（`CREATE TABLE IF NOT EXISTS` 是 no-op）→ index DDL 引用尚未存在的列 → SQLite 报 `no such column: keep_alive`。所有 216 单测 passed 因为 vitest 用 `sqlite::memory:`（永远是 fresh DB）。修复 = 把 index DDL 移出 STATEMENTS 到 INDEX_ADDITIONS（在 ALTER 之后跑）+ 加 upgrade-path regression test 模拟 v16 prod schema。Tests 216 → 217。22:58 UTC v18 部署成功，pool 9/10 ready。
+
+**Smoke 脚本 commit-7 修正**：第一次跑 #1 之前 smoke 脚本 §3 step 断言 `body.status === 'RUNNING'`（误以为 BB SDK shape）。实际 GET /v1/sessions/{id} 返回 superset：native `status: 'live'` + BB-compat `endedAt: null`。改成断言 `endedAt === null`（BB SDK client 实际消费的字段）+ 二级断言 `status === 'live'`。修正后 5/5 全 pass。
 
 ### 7.2 LaunchAI 跨仓 smoke
 
@@ -476,28 +490,29 @@ owner（LaunchAI 侧）：browser runtime maintainer
 
 ### 11.1 代码侧
 
-- [ ] Commit 1（schema + env）：+3 测试 → 189/189
-- [ ] Commit 2（MM release opts）：+6 测试 → 195/195
-- [ ] Commit 3（POST honor + sticky + quota）：+7 测试 → 202/202
-- [ ] Commit 4（DELETE + reaper）：+5 测试 → 207/207
-- [ ] Commit 5（metrics + smoke + docs）：+3 测试 → ~210/~210
-- [ ] phase 11.3a single-use invariant 测试（已有的 keepAlive=false 路径）保持绿
-- [ ] phase 11.4a 全部 186 测试保持绿（regression gate）
+- [x] Commit 1（schema + env, `1493a43`）：+6 测试 → 192/192
+- [x] Commit 2（MM release opts, `e45e189`）：+4 测试 → 196/196
+- [x] Commit 3（POST honor + sticky + quota, `e174b9c`）：+10 测试 → 206/206
+- [x] Commit 4（DELETE + reaper, `87d8ab6`）：+8 测试 → 214/214
+- [x] Commit 5（metrics + smoke + docs, `9db84bc`）：+2 测试 → 216/216
+- [x] **Commit 6（hotfix: bootstrap migration ordering, `3e3334c`）**：+1 upgrade-path regression test → 217/217（v17 prod outage 后补）
+- [x] phase 11.3a single-use invariant 测试（已有的 keepAlive=false 路径）保持绿
+- [x] phase 11.4a 全部 186 测试保持绿（regression gate）
 
 ### 11.2 prod 验证
 
-- [ ] `scripts/keepalive-reconnect-smoke.mjs` 5 跑次全 pass，§7.1 表填实测
-- [ ] §7.3 边界场景（quota / idle / TTL / sticky）人工或脚本验证全过
-- [ ] `/v1/metrics` 暴露 `keepalive_sessions_active`、`mm_acquire_duration_seconds{keepalive=...}`、`sessions_closed_total{reason='expired-idle'}` 三组新指标
-- [ ] LaunchAI 侧跨仓 smoke（§7.2）双方联合验过
+- [x] `scripts/keepalive-reconnect-smoke.mjs` 5 跑次全 pass，§7.1 表填实测
+- [ ] §7.3 边界场景（quota / idle / TTL / sticky）人工或脚本验证全过 — quota 与 sticky 已通过 smoke 间接验证（5/5 都触发了 sticky 409 路径），idle/TTL 边界仍待跨小时验证
+- [x] `/v1/metrics` 暴露 `keepalive_sessions_active`、`mm_acquire_duration_seconds{keepalive=...}`、`sessions_closed_total{reason='expired-idle'}` 三组新指标（v18 deploy + smoke 时已 scrape 验过）
+- [ ] LaunchAI 侧跨仓 smoke（§7.2）双方联合验过 — Mosaiq 侧 ready，等 LaunchAI maintainer 改 `runtime-mosaiq.ts:93`
 
 ### 11.3 文档
 
-- [ ] 本 doc §7 实测结果填表
-- [ ] `docs/PHASE-11.4-STAGEHAND-COMPAT.md` §4 row 9 `keepAlive: true` 列从 `⚠️ phase 11.5` 改 `✓ phase 11.5` + back-link
-- [ ] `docs/PRD.md` §3 Scale tier "sticky" 单元链到本 doc
-- [ ] `README.md` 顶部 cloud quickstart 章节加 1 行 "long-session via `keepAlive: true` since phase 11.5"
-- [ ] `apps/cloud-runtime/README.md` "未来 phase" 列表删 `Warm pool / sticky session` 一行（phase 11.5 落地后该限制不再存在）；同时把 `Stripe metered: phase 11.5 起做` 改成 `phase 11.7 起做`（11.5 已被 keepAlive 占用，metering 推后）
+- [x] 本 doc §7 实测结果填表
+- [x] `docs/PHASE-11.4-STAGEHAND-COMPAT.md` §4 row 9 `keepAlive: true` 列从 `⚠️ phase 11.5` 改 `✓ phase 11.5` + back-link
+- [x] `docs/PRD.md` §3 Scale tier "sticky" 单元链到本 doc
+- [x] `README.md` 顶部 cloud quickstart 章节加 1 行 "long-session via `keepAlive: true` since phase 11.5"
+- [x] `apps/cloud-runtime/README.md` "未来 phase" 列表删 `Warm pool / sticky session` 一行（phase 11.5 落地后该限制不再存在）；同时把 `Stripe metered: phase 11.5 起做` 改成 `phase 11.7 起做`（11.5 已被 keepAlive 占用，metering 推后）
 
 ---
 

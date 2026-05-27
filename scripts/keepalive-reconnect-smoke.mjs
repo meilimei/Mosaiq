@@ -157,7 +157,10 @@ async function step2WriteState(connectUrl) {
 }
 
 async function step3VerifyStillLive(sessionId) {
-  // GET /v1/sessions/{id} via raw fetch — BB SDK's sessions.retrieve maps
+  // GET /v1/sessions/{id} returns superset shape: native status:'live'|'closed'
+  // + BB-compat endedAt:null|<iso>. We use endedAt as the source-of-truth
+  // aliveness check (matches what BB SDK clients consume) and ALSO assert on
+  // native status as a sanity check.
   await sleep(3000);
   const resp = await fetch(`${baseURL}/v1/sessions/${sessionId}`, {
     headers: { 'X-BB-API-Key': apiKey },
@@ -166,11 +169,13 @@ async function step3VerifyStillLive(sessionId) {
   if (resp.status !== 200) {
     throw new Error(`GET /v1/sessions/{id} returned ${resp.status}: ${JSON.stringify(body)}`);
   }
-  if (body.status !== 'RUNNING') {
-    throw new Error(`session.status=${body.status} after WS disconnect, expected RUNNING`);
-  }
   if (body.endedAt !== null) {
-    throw new Error(`session.endedAt=${body.endedAt} after WS disconnect, expected null`);
+    throw new Error(
+      `session.endedAt=${body.endedAt} after WS disconnect, expected null (still alive)`,
+    );
+  }
+  if (body.status !== 'live') {
+    throw new Error(`session.status=${body.status} after WS disconnect, expected 'live'`);
   }
   log('s3.still-running', { status: body.status, endedAt: body.endedAt });
 }
