@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { createApp } from './app.js';
 import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
 import { disposeDb, getDb } from './db/client.js';
-import { apiKeys, contexts as contextsTable, projects } from './db/schema.js';
+import { apiKeys, contexts as contextsTable, projects, usageEvents } from './db/schema.js';
 import { resetEnvCache } from './env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from './machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './machine/types.js';
@@ -425,6 +425,38 @@ describe('GET / DELETE /v1/sessions/:id', () => {
       headers: authH(),
     });
     expect(resp.status).toBe(204);
+  });
+
+  it('Phase 11.7: DELETE 恢一条 session.minute usage_event（立即关闭 → 最小 1 分钟）', async () => {
+    const id = await createOne();
+    const app = createApp();
+    const resp = await app.request(`/v1/sessions/${id}`, { method: 'DELETE', headers: authH() });
+    expect(resp.status).toBe(204);
+
+    const handle = await getDb();
+    const events = await handle.drizzle
+      .select()
+      .from(usageEvents)
+      .where(eq(usageEvents.sessionId, id));
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe('session.minute');
+    expect(events[0]?.value).toBe(1);
+    expect(events[0]?.projectId).toBe(TEST_PROJECT_ID);
+    expect(events[0]?.reportedAt).toBeNull();
+  });
+
+  it('Phase 11.7: 幂等 DELETE（已 closed 再删）不重复计费', async () => {
+    const id = await createOne();
+    const app = createApp();
+    await app.request(`/v1/sessions/${id}`, { method: 'DELETE', headers: authH() });
+    await app.request(`/v1/sessions/${id}`, { method: 'DELETE', headers: authH() });
+
+    const handle = await getDb();
+    const events = await handle.drizzle
+      .select()
+      .from(usageEvents)
+      .where(eq(usageEvents.sessionId, id));
+    expect(events).toHaveLength(1);
   });
 });
 

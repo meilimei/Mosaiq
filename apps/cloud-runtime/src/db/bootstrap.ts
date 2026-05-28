@@ -86,7 +86,8 @@ const STATEMENTS: string[] = [
     session_id TEXT,
     kind TEXT NOT NULL,
     value INTEGER NOT NULL,
-    ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reported_at TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS usage_events_project_ts_idx ON usage_events (project_id, ts)`,
   `CREATE INDEX IF NOT EXISTS usage_events_session_idx ON usage_events (session_id)`,
@@ -182,6 +183,15 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     column: 'context_persist',
     alterSql: `ALTER TABLE sessions ADD COLUMN context_persist INTEGER NOT NULL DEFAULT 0`,
   },
+  {
+    // Phase 11.7: usage-report watermark. NULL = not yet pushed to Stripe Metered.
+    // Pre-existing usage_events rows migrate to NULL — the report job will pick
+    // them up and push (or, with the default noop reporter, just mark them
+    // reported). See docs/PHASE-11.7-USAGE-METERING.md §2.
+    table: 'usage_events',
+    column: 'reported_at',
+    alterSql: `ALTER TABLE usage_events ADD COLUMN reported_at TEXT`,
+  },
 ];
 
 /**
@@ -210,6 +220,10 @@ const INDEX_ADDITIONS: ReadonlyArray<string> = [
   // way these indexes are safe to run after STATEMENTS.
   `CREATE INDEX IF NOT EXISTS contexts_project_idx ON contexts (project_id)`,
   `CREATE INDEX IF NOT EXISTS contexts_active_session_idx ON contexts (active_session_id)`,
+  // Phase 11.7: partial index for the usage-report job's "unreported" scan. Runs
+  // AFTER COLUMN_ADDITIONS so reported_at exists on upgrade DBs by now. Partial
+  // (WHERE reported_at IS NULL) keeps the index tiny — most rows end up reported.
+  `CREATE INDEX IF NOT EXISTS usage_events_unreported_idx ON usage_events (reported_at) WHERE reported_at IS NULL`,
 ];
 
 export async function ensureSchema(): Promise<void> {

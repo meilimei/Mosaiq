@@ -54,6 +54,7 @@ import { sessionsClosedTotal } from '../metrics.js';
 import {
   stickyRegistryDelete,
 } from '../sticky/registry.js';
+import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
 import { newId } from '../utils/ids.js';
 
 /**
@@ -128,6 +129,7 @@ export async function reapExpiredSessions(deps: {
       id: sessionsTable.id,
       machineId: sessionsTable.machineId,
       projectId: sessionsTable.projectId,
+      openedAt: sessionsTable.openedAt,
       expiresAt: sessionsTable.expiresAt,
       lastSeenAt: sessionsTable.lastSeenAt,
       keepAlive: sessionsTable.keepAlive,
@@ -256,6 +258,23 @@ export async function reapExpiredSessions(deps: {
               eq(contextsTable.activeSessionId, row.id),
             ),
           );
+      }
+
+      // Phase 11.7: 记 browser-minutes 计费埋点。只在乐观锁实际收掉这一行时记
+      // （updated.length>0），与 audit 一致——DELETE 抢先的话由 DELETE 路径记账。
+      // await 不丢账单；失败只 warn（session 已 closed，可事后补）。
+      try {
+        await recordUsage(db, {
+          projectId: row.projectId,
+          sessionId: row.id,
+          kind: 'session.minute',
+          value: computeBillableMinutes(row.openedAt, nowIso),
+        });
+      } catch (err) {
+        logger.warn(
+          { sessionId: row.id, projectId: row.projectId, cause: err instanceof Error ? err.message : String(err) },
+          'session-expiry: usage emit failed (billing event lost for this session)',
+        );
       }
     }
   }

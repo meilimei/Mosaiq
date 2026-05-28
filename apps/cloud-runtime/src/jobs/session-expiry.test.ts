@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm';
 
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
-import { auditEvents, projects, sessions as sessionsTable } from '../db/schema.js';
+import { auditEvents, projects, sessions as sessionsTable, usageEvents } from '../db/schema.js';
 import { resetEnvCache } from '../env.js';
 import type { ReleaseOptions } from '../machine/types.js';
 import {
@@ -191,6 +191,50 @@ describe('reapExpiredSessions', () => {
     const detail = JSON.parse(audit?.detailJson ?? '{}');
     expect(detail.machineId).toBe('mch_expired_1');
     expect(detail.releaseFailed).toBeUndefined();
+  });
+
+  it('Phase 11.7: reap 后恢一条 session.minute usage_event，value=ceil(时长/60)', async () => {
+    // opened 90s 前、已过期 → billable = ceil(90/60) = 2 分钟。nowIso 固定便于断言。
+    const nowIso = '2026-05-29T00:01:30.000Z';
+    const openedAt = '2026-05-29T00:00:00.000Z';
+    await insertSession({
+      id: 'ses_meter',
+      machineId: 'mch_meter',
+      status: 'live',
+      openedAt,
+      expiresAt: '2026-05-29T00:00:30.000Z', // 已过期
+    });
+
+    const db = await getDb();
+    const mm = makeFakeMm();
+    await reapExpiredSessions({ db, mm, logger: makeFakeLogger(), nowIso, idleThresholdIso: null });
+
+    const events = await db.drizzle
+      .select()
+      .from(usageEvents)
+      .where(eq(usageEvents.sessionId, 'ses_meter'));
+    expect(events).toHaveLength(1);
+    expect(events[0]?.kind).toBe('session.minute');
+    expect(events[0]?.value).toBe(2);
+    expect(events[0]?.projectId).toBe(PROJECT_ID);
+    // 未推送 Stripe → reported_at 为 NULL
+    expect(events[0]?.reportedAt).toBeNull();
+  });
+
+  it('Phase 11.7: 已 closed 的过期 session 不被重抢 → 不重复计费', async () => {
+    await insertSession({
+      id: 'ses_already_closed',
+      machineId: 'mch_ac',
+      status: 'closed',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const db = await getDb();
+    await reapExpiredSessions({ db, mm: makeFakeMm(), logger: makeFakeLogger(), idleThresholdIso: null });
+    const events = await db.drizzle
+      .select()
+      .from(usageEvents)
+      .where(eq(usageEvents.sessionId, 'ses_already_closed'));
+    expect(events).toHaveLength(0);
   });
 
   it('混合：live 未过期 + live 过期 + closed 过期 → 只处理 live 过期那条', async () => {

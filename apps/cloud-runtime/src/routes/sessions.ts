@@ -43,6 +43,7 @@ import {
   stickyRegistryGet,
   stickyRegistrySet,
 } from '../sticky/registry.js';
+import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
@@ -696,11 +697,31 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
       .catch((err) => {
         getLogger().warn({ err, sessionId: id }, 'machine release failed (ignored)');
       });
+    // 单个 closedAtIso 同时用于 row 更新与计费时长，保证账单时长 = 记录的 closedAt。
+    const closedAtIso = new Date().toISOString();
     await handle.drizzle
       .update(sessionsTable)
-      .set({ status: 'closed', closedAt: new Date().toISOString() })
+      .set({ status: 'closed', closedAt: closedAtIso })
       .where(eq(sessionsTable.id, id));
     sessionsClosedTotal.inc({ reason: 'client' });
+
+    // Phase 11.7: 记 browser-minutes 计费埋点。await 不丢账单；失败只 warn
+    // （session 已 closed，可事后补）。注意只在真实 live→closed 转换路径记账——
+    // POST 里 context-race rollback 也会把 status 改 closed，但走的是另一段代码、
+    // 不经过这里，所以那条内部失败不会被计费（design §1 决策）。
+    try {
+      await recordUsage(handle, {
+        projectId: row.projectId,
+        sessionId: id,
+        kind: 'session.minute',
+        value: computeBillableMinutes(row.openedAt, closedAtIso),
+      });
+    } catch (err) {
+      getLogger().warn(
+        { err, sessionId: id, projectId: row.projectId },
+        'usage emit failed on DELETE (billing event lost for this session)',
+      );
+    }
 
     // ── Phase 11.6: release the context lock ────────────────────────────
     // 无条件清锁 —— 即使 snapshot 失败 / pod release 失败，lock 也必须释放，否则

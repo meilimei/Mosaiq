@@ -166,6 +166,56 @@ describe('ensureSchema', () => {
       'sessions_context_idx',
     ]);
   });
+
+  /**
+   * Phase 11.7 upgrade-path regression test（延续 phase 11.5/11.6 的迁移纪律）：
+   *
+   * v19 prod DB 已有 usage_events 表（phase 11.1 起就在）但**没有** reported_at 列。
+   * 部署 v20 时：
+   *   - STATEMENTS 的 CREATE TABLE IF NOT EXISTS usage_events 是 no-op（表已存在），
+   *     所以老 schema（无 reported_at）保留 —— 不能靠它加列。
+   *   - COLUMN_ADDITIONS 必须 ALTER TABLE usage_events ADD COLUMN reported_at。
+   *   - INDEX_ADDITIONS 的 partial index `WHERE reported_at IS NULL` 必须在 COLUMN_ADDITIONS
+   *     之后跑，否则 SQLite 报 `no such column: reported_at` → crash-loop。
+   *
+   * 本测试模拟"v19 prod 现状"并验证优雅升级。
+   */
+  it('upgrade 路径：旧 usage_events 表（无 reported_at 列）→ ensureSchema 加列 + 加 partial 索引不报错', async () => {
+    const handle = await getDb();
+    handle.drizzle.run(sql`DROP TABLE IF EXISTS usage_events`);
+    handle.drizzle.run(sql`CREATE TABLE usage_events (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      session_id TEXT,
+      kind TEXT NOT NULL,
+      value INTEGER NOT NULL,
+      ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    // 放一行老数据（无 reported_at），验证 ALTER 后它的 reported_at 默认 NULL（待 report job 捞）。
+    handle.drizzle.run(
+      sql`INSERT INTO usage_events (id, project_id, kind, value) VALUES ('use_legacy', 'proj_x', 'session.minute', 5)`,
+    );
+
+    await ensureSchema();
+
+    // 1. reported_at 列已加
+    const cols = handle.drizzle.all(
+      sql`PRAGMA table_info(usage_events)`,
+    ) as Array<{ name: string }>;
+    expect(cols.map((c) => c.name)).toContain('reported_at');
+
+    // 2. 老行的 reported_at = NULL（会被 report job 拾起）
+    const legacy = handle.drizzle.all(
+      sql`SELECT reported_at FROM usage_events WHERE id = 'use_legacy'`,
+    ) as Array<{ reported_at: string | null }>;
+    expect(legacy[0]?.reported_at).toBeNull();
+
+    // 3. partial 索引就位
+    const idx = handle.drizzle.all(
+      sql`SELECT name FROM sqlite_master WHERE type='index' AND name='usage_events_unreported_idx'`,
+    ) as Array<{ name: string }>;
+    expect(idx).toHaveLength(1);
+  });
 });
 
 describe('ensureDefaultPersonas (phase 11.4 commit 4a)', () => {

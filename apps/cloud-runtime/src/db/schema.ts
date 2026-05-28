@@ -321,10 +321,22 @@ export const usageEvents = sqliteTable(
     ts: text('ts')
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
+    /**
+     * Phase 11.7: NULL = 还没推送给 Stripe Metered；非 NULL = 推送成功的时间戳。
+     * usage-report job 只捞 `reported_at IS NULL` 的行，推送成功后批量回填。
+     */
+    reportedAt: text('reported_at'),
   },
   (t) => ({
     projectTsIdx: index('usage_events_project_ts_idx').on(t.projectId, t.ts),
     sessionIdx: index('usage_events_session_idx').on(t.sessionId),
+    /**
+     * Phase 11.7: report job 的"未上报"扫描走这个 partial index —— 绝大多数行最终
+     * 都 reported（非 NULL），partial 让索引只保留待推送的小集合，扫描 O(backlog)。
+     */
+    unreportedIdx: index('usage_events_unreported_idx')
+      .on(t.reportedAt)
+      .where(sql`reported_at IS NULL`),
   }),
 );
 
