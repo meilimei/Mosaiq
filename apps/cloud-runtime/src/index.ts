@@ -26,6 +26,8 @@ import { loadEnv } from './env.js';
 import { getMachineManager, shutdownMachineManager } from './machine/factory.js';
 import { createCdpProxy } from './cdp/proxy.js';
 import { startSessionExpiryJob } from './jobs/session-expiry.js';
+import { startUsageReportJob } from './jobs/usage-report.js';
+import { getMeterReporter } from './usage/reporter.js';
 import { getLogger } from './utils/logger.js';
 
 async function bootstrap() {
@@ -108,11 +110,20 @@ async function bootstrap() {
     logger: log,
   });
 
+  // Phase 11.7: usage-report job —— 周期把未上报的 usage_events 推给 MeterReporter
+  // （默认 noop，STRIPE_API_KEY 非空时走 Stripe，phase 11.7b）。与 reaper 并列长跑。
+  const usageReportJob = startUsageReportJob({
+    intervalMs: env.USAGE_REPORT_INTERVAL_MS,
+    getDb,
+    getMeterReporter,
+    logger: log,
+  });
+
   const shutdown = async (sig: string) => {
     log.info({ sig }, 'shutdown initiated');
-    // 先停 reaper，避免 shutdown 中途 reap tick 调已 dispose 的 mm/db。
-    // expiryJob.stop() 会 await 当前 in-flight tick 完成。
-    await expiryJob.stop();
+    // 先停后台 job，避免 shutdown 中途某个 tick 调已 dispose 的 mm/db。
+    // 两个 stop() 都会 await 各自的 in-flight tick 完成。
+    await Promise.allSettled([expiryJob.stop(), usageReportJob.stop()]);
     server.close(() => log.info('http server closed'));
     await Promise.allSettled([shutdownMachineManager(), disposeDb()]);
     process.exit(0);

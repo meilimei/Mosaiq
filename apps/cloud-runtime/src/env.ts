@@ -238,6 +238,18 @@ const EnvSchema = z
      * 走 Stripe Metered（phase 11.7b）。范围 [0, 100]。
      */
     UNIT_PRICE_USD_PER_MINUTE: z.coerce.number().min(0).max(100).default(0.06),
+    /**
+     * usage-report job 轮询间隔 ms：每 tick 捞 reported_at IS NULL 的 usage_events，
+     * 聚合后推给 MeterReporter，成功则回填 reported_at。默认 60s。测试可调到最小 1000；
+     * < 1000 时 startUsageReportJob 抛错（同 session-expiry job 约定）。
+     */
+    USAGE_REPORT_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
+    /**
+     * Stripe secret key。留空（默认）→ NoopMeterReporter：report job 只把 events 标
+     * reported（验证管道，不外呼）。非空 → StripeMeterReporter（phase 11.7b 实现真
+     * Stripe Billing Meter Events 调用）。与 METRICS_TOKEN 同款 disable-by-default。
+     */
+    STRIPE_API_KEY: z.string().default(''),
 
     PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
   })
