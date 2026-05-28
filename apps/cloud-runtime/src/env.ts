@@ -229,6 +229,16 @@ const EnvSchema = z
     // 跟普通 API key 分离：scraper 只看指标，不应该有创建 session 的权限。
     METRICS_TOKEN: z.string().default(''),
 
+    // ─── Phase 11.7 usage metering ──────────────────────────────────────────
+    // 见 docs/PHASE-11.7-USAGE-METERING.md。session 关闭时 emit browser-minutes 到
+    // usage_events；GET /v1/usage 用单价做成本估算（真账单以 Stripe Metered 为准）。
+    /**
+     * GET /v1/usage 成本估算单价（USD / browser-minute）。默认 0.06 对齐 PRD 首发
+     * 定价（$0.06/min，较 Browserbase $0.10 低 40%）。仅供客户自查估算 —— 真实计费
+     * 走 Stripe Metered（phase 11.7b）。范围 [0, 100]。
+     */
+    UNIT_PRICE_USD_PER_MINUTE: z.coerce.number().min(0).max(100).default(0.06),
+
     PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
   })
   .superRefine((env, ctx) => {

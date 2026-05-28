@@ -15,6 +15,7 @@ import { internalContextsRoute } from './routes/internal-contexts.js';
 import { metricsRoute } from './routes/metrics.js';
 import { personasRoute } from './routes/personas.js';
 import { sessionsRoute } from './routes/sessions.js';
+import { usageRoute } from './routes/usage.js';
 import { handleApiError } from './utils/errors.js';
 
 export function createApp(): Hono {
@@ -45,6 +46,8 @@ export function createApp(): Hono {
   // sessions/personas); feature-gated by ensureContextsEnabled() inside the
   // handler when MOSAIQ_CONTEXT_MASTER_KEY is unset.
   authed.route('/contexts', contextsRoute);
+  // Phase 11.7: customer-visible usage query (browser-minutes + cost estimate).
+  authed.route('/usage', usageRoute);
   app.route('/v1', authed);
 
   app.get('/', (c) =>

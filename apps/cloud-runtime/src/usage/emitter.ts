@@ -40,7 +40,10 @@ export function computeBillableMinutes(openedAtIso: string, closedAtIso: string)
 /**
  * 写一条 usage_event。调用方必须 await —— 计费事件不可丢。
  *
- * `ts` 走 schema 默认 CURRENT_TIMESTAMP，`reported_at` 默认 NULL（待 report job）。
+ * `ts` **显式**写 ISO-8601（`toISOString()`），不依赖 sqlite 的 CURRENT_TIMESTAMP
+ * 默认（后者是 `YYYY-MM-DD HH:MM:SS` 空格分隔、无时区，字典序 ≠ 时间序，且无法
+ * 与 GET /v1/usage 的 ISO from/to 参数正确比较）。这与 sessions.openedAt 等全表
+ * 一致的"app 显式写 ISO"约定对齐。`reported_at` 默认 NULL（待 report job）。
  */
 export async function recordUsage(
   db: DbHandle,
@@ -58,5 +61,6 @@ export async function recordUsage(
     sessionId: opts.sessionId ?? null,
     kind: opts.kind,
     value: opts.value,
+    ts: new Date().toISOString(),
   });
 }
