@@ -39,6 +39,21 @@ export interface AcquireSpec {
   viewport?: { width: number; height: number };
   /** session ttl，pod 内部的看门狗超时使用。 */
   ttlSeconds: number;
+  /**
+   * Phase 11.6: Browserbase Contexts API。指定时 pod 在 chromium 启动**前**
+   * GET `loadUrl` 拿 encrypted blob，用 `projectId` 派生 AES key 解密，untar 进
+   * --user-data-dir，再启动 chromium —— 用户的 cookie / localStorage / IDB
+   * 跨 session 复用。无 context 时 pod 走 fresh user-data-dir（与 phase 11.5
+   * 之前完全等价）。
+   *
+   * 见 docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §6.1 (pod /control/start 扩展)。
+   */
+  context?: {
+    /** 签名的内部下载 URL（包含 ?token=...）。5min TTL。 */
+    loadUrl: string;
+    /** AES key 派生用 —— pod 用 master + projectId HKDF 派生 per-project key。 */
+    projectId: string;
+  };
 }
 
 /**
@@ -65,6 +80,19 @@ export interface ReleaseOptions {
    * 见 §3.2 lifecycle 图与 §3.5 reaper 扩展。
    */
   hold?: boolean;
+  /**
+   * Phase 11.6: 签名的内部 snapshot upload URL。指定时（hold=false 路径专属）
+   * pod 在 SIGKILL chromium **之后**、`rm sessionUserDir` **之前**做 tar +
+   * 加密 + PUT 到这个 URL。失败不阻止 pod 完成 /control/stop —— 错误隔离让
+   * lock 释放与 snapshot 成功解耦（design §5.4）。
+   *
+   * 仅 DELETE /v1/sessions w/ contextPersist=true 路径填充；其他路径（reaper /
+   * idle / sticky evict）一律不填，因为 chromium 已 SIGKILL，user-data-dir 状态
+   * 不一致，不应 snapshot。
+   *
+   * hold=true 时此字段被忽略 —— 真正销毁时机才是 snapshot 时机。
+   */
+  snapshotUrl?: string;
 }
 
 export interface MachineManager {

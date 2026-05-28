@@ -12,11 +12,21 @@
  */
 
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
+import {
+  contextsEnabled,
+  ensureContextsEnabled,
+  signContextDownloadUrl,
+  signContextSnapshotUrl,
+} from '../contexts/feature.js';
 import { getDb } from '../db/client.js';
-import { personas as personasTable, sessions as sessionsTable } from '../db/schema.js';
+import {
+  contexts as contextsTable,
+  personas as personasTable,
+  sessions as sessionsTable,
+} from '../db/schema.js';
 import { loadEnv } from '../env.js';
 import { getMachineManager } from '../machine/factory.js';
 import { audit } from '../middleware/audit.js';
@@ -81,13 +91,26 @@ const PersonaInputSchema = z
   });
 
 /**
- * Browserbase `browserSettings` 子结构 —— 我们只挑出 `viewport`（与原生同形），
- * 其他字段（fingerprint / blockAds / solveCaptchas / ...）一律收集到 unsupportedFields
- * 并 warn-log。passthrough 让未知 key 不被 strip 掉，方便后续记录。
+ * Phase 11.6: Browserbase `browserSettings.context` 子结构。
+ *   - `id`：要 reuse 的 context（必填；缺失整个 context 对象就当没传）
+ *   - `persist`：close 时是否 snapshot 回写。BB 默认 `true`（用户主动选 false 表
+ *     "只读模式"，隐式 persist 才符合直觉，见 design §9 decision 7）。
+ */
+const ContextInputSchema = z.object({
+  id: z.string().min(1),
+  persist: z.boolean().default(true),
+});
+
+/**
+ * Browserbase `browserSettings` 子结构 —— 我们挑出 `viewport`（与原生同形）与
+ * `context`（phase 11.6 honored），其他字段（fingerprint / blockAds / solveCaptchas
+ * / ...）一律收集到 unsupportedFields 并 warn-log。passthrough 让未知 key 不被
+ * strip 掉，方便后续记录。
  */
 const BrowserSettingsSchema = z
   .object({
     viewport: ViewportSchema.optional(),
+    context: ContextInputSchema.optional(),
   })
   .passthrough();
 
@@ -223,7 +246,8 @@ function shapeSession(
     connectUrl: cdpUrl,
     seleniumRemoteUrl: null as string | null,
     signingKey: row.signingKey,
-    contextId: null as string | null,
+    // Phase 11.6: 回真值（phase 11.4/11.5 是 stub null）。GET 与 POST 都走此函数。
+    contextId: row.contextId,
     userMetadata: userMetadataParsed,
   };
 }
@@ -271,9 +295,11 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   if (req.region !== undefined) unsupportedFields.push('region');
   if (req.timezone !== undefined) unsupportedFields.push('timezone');
   if (req.browserSettings) {
-    // browserSettings.viewport 会被 honor，其他子字段全归到 unsupported。
+    // browserSettings.viewport + context 会被 honor，其他子字段全归到 unsupported。
     for (const key of Object.keys(req.browserSettings)) {
-      if (key !== 'viewport') unsupportedFields.push(`browserSettings.${key}`);
+      if (key !== 'viewport' && key !== 'context') {
+        unsupportedFields.push(`browserSettings.${key}`);
+      }
     }
   }
   if (unsupportedFields.length > 0) {
@@ -426,6 +452,49 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   // viewport 优先级：native viewport > BB browserSettings.viewport（同形）。
   const viewport = req.viewport ?? req.browserSettings?.viewport;
 
+  // ── Phase 11.6: resolve browserSettings.context (validate + lock pre-check) ──
+  // 必须在 acquire 之前 fast-fail（404/409），避免无谓占用 pod。真正的并发安全锁
+  // 在 session row 落库之后用 OCC update 上（见下方）—— FK contexts.active_session_id
+  // → sessions.id 要求 session 行先存在（foreign_keys=ON），所以不能在此就锁。
+  const contextReq = req.browserSettings?.context;
+  let acquireContext: { loadUrl: string; projectId: string } | null = null;
+  if (contextReq) {
+    ensureContextsEnabled();
+    const ctxRow = (
+      await handle.drizzle
+        .select()
+        .from(contextsTable)
+        .where(
+          and(
+            eq(contextsTable.id, contextReq.id),
+            eq(contextsTable.projectId, auth.projectId),
+            isNull(contextsTable.deletedAt),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (!ctxRow) {
+      // 不存在 / 不属于本 project / 已 soft-deleted 一律 404（不区分防资源枚举）。
+      audit(c, 'session.create', `context:${contextReq.id}`, 'errored', { reason: 'not_found' });
+      throw new ApiError('context.not_found', `context ${contextReq.id} not found`);
+    }
+    if (ctxRow.activeSessionId) {
+      audit(c, 'session.create', `context:${contextReq.id}`, 'denied', {
+        reason: 'in_use',
+        activeSessionId: ctxRow.activeSessionId,
+      });
+      throw new ApiError(
+        'context.in_use',
+        `context ${contextReq.id} is currently held by session ${ctxRow.activeSessionId}`,
+        { activeSessionId: ctxRow.activeSessionId, acquiredAt: ctxRow.activeSessionAcquiredAt },
+      );
+    }
+    acquireContext = {
+      loadUrl: signContextDownloadUrl(contextReq.id),
+      projectId: auth.projectId,
+    };
+  }
+
   const mm = getMachineManager();
   let machine: Awaited<ReturnType<typeof mm.acquire>>;
   const acquireStart = process.hrtime.bigint();
@@ -440,6 +509,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       stealth,
       ttlSeconds: ttl,
       ...(viewport ? { viewport } : {}),
+      ...(acquireContext ? { context: acquireContext } : {}),
     });
     mmAcquireDurationSeconds.observe(
       { keepalive: keepaliveLabel },
@@ -479,7 +549,50 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     signingKey,
     // Phase 11.5: 持久化 keepAlive flag。reaper + release(hold) 都按它分支。
     keepAlive: effectiveKeepAlive,
+    // Phase 11.6: 绑定 context（若有）。contextId 落库后下方再 OCC 锁 contexts 行。
+    contextId: contextReq ? contextReq.id : null,
+    contextPersist: contextReq ? contextReq.persist : false,
   });
+
+  // ── Phase 11.6: atomic OCC lock on the context row ──────────────────────
+  // Pod 已 acquire + session 行已落库。现在原子地认领 context：rows-affected=0
+  // 说明 pre-check 之后、这里之前有并发 session 抢先锁了（TOCTOU race），需要
+  // 回滚本 session（release pod + 标 closed）并回 409。
+  if (contextReq) {
+    const locked = await handle.drizzle
+      .update(contextsTable)
+      .set({ activeSessionId: sessionId, activeSessionAcquiredAt: now.toISOString() })
+      .where(and(eq(contextsTable.id, contextReq.id), isNull(contextsTable.activeSessionId)))
+      .returning({ id: contextsTable.id });
+    if (locked.length === 0) {
+      await mm.release(machine.id, { hold: false }).catch((err) => {
+        log.warn({ err, sessionId }, 'release after lost context race failed (ignored)');
+      });
+      await handle.drizzle
+        .update(sessionsTable)
+        .set({ status: 'closed', closedAt: new Date().toISOString() })
+        .where(eq(sessionsTable.id, sessionId));
+      const holder = (
+        await handle.drizzle
+          .select({
+            activeSessionId: contextsTable.activeSessionId,
+            acquiredAt: contextsTable.activeSessionAcquiredAt,
+          })
+          .from(contextsTable)
+          .where(eq(contextsTable.id, contextReq.id))
+          .limit(1)
+      )[0];
+      audit(c, 'session.create', `context:${contextReq.id}`, 'denied', { reason: 'in_use_race' });
+      throw new ApiError(
+        'context.in_use',
+        `context ${contextReq.id} was claimed by another session concurrently`,
+        {
+          activeSessionId: holder?.activeSessionId ?? null,
+          acquiredAt: holder?.acquiredAt ?? null,
+        },
+      );
+    }
+  }
 
   // Phase 11.5: 注册 sticky entry。失败（同 key 已注册）会被 stickyRegistrySet
   // 覆盖 —— 设计上不应发生，因为上面 sticky lookup 已 evict 任何 stale entry。
@@ -566,17 +679,50 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
 
   if (row.status !== 'closed') {
     const mm = getMachineManager();
+    // ── Phase 11.6: snapshot trigger ────────────────────────────────────
+    // 仅 graceful DELETE w/ contextPersist=true 触发回写（design §5.5 decision 5：
+    // reaper/idle/crash 路径不 snapshot，因为 chromium 已 SIGKILL，user-data-dir
+    // 状态不一致）。snapshotUrl 透传给 pod /control/stop，pod 内部"先 snapshot 再
+    // kill"。snapshot 失败不阻止 lock 释放（见下方 finally 语义）。
+    const wantSnapshot =
+      Boolean(row.contextId) && row.contextPersist && contextsEnabled();
+    const snapshotUrl = wantSnapshot ? signContextSnapshotUrl(row.contextId!) : undefined;
+
     // Phase 11.5: 显式 hold=false —— DELETE 是客户端"我要彻底关掉"的语义，
     // 与 keepAlive=true session 的 WS 断开 (proxy 处不调 release) 形成对比。
     // 即使 row.keepAlive=true，DELETE 也要 destroy；后者是 reaper / idle 的事。
-    await mm.release(row.machineId, { hold: false }).catch((err) => {
-      getLogger().warn({ err, sessionId: id }, 'machine release failed (ignored)');
-    });
+    await mm
+      .release(row.machineId, { hold: false, ...(snapshotUrl ? { snapshotUrl } : {}) })
+      .catch((err) => {
+        getLogger().warn({ err, sessionId: id }, 'machine release failed (ignored)');
+      });
     await handle.drizzle
       .update(sessionsTable)
       .set({ status: 'closed', closedAt: new Date().toISOString() })
       .where(eq(sessionsTable.id, id));
     sessionsClosedTotal.inc({ reason: 'client' });
+
+    // ── Phase 11.6: release the context lock ────────────────────────────
+    // 无条件清锁 —— 即使 snapshot 失败 / pod release 失败，lock 也必须释放，否则
+    // 该 context 永久卡在 in_use（design §5.4 invariant：lock 释放与 snapshot 解耦）。
+    // WHERE active_session_id=id 保证只清本 session 持有的锁（防误清并发新锁）。
+    if (row.contextId) {
+      await handle.drizzle
+        .update(contextsTable)
+        .set({ activeSessionId: null, activeSessionAcquiredAt: null })
+        .where(
+          and(
+            eq(contextsTable.id, row.contextId),
+            eq(contextsTable.activeSessionId, id),
+          ),
+        )
+        .catch((err: unknown) => {
+          getLogger().warn(
+            { err, sessionId: id, contextId: row.contextId },
+            'context lock release failed (ignored; reaper backstop will retry)',
+          );
+        });
+    }
 
     // Phase 11.5: evict sticky registry entry（如果有）。读 row.userMetadata 取 stickyKey，
     // 失败 / 缺字段都 no-op。注意：keepAlive=false session 即使其 userMetadata 含 stickyKey

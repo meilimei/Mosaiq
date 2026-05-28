@@ -15,6 +15,7 @@
 import { Hono } from 'hono';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 
+import { ensureContextsEnabled } from '../contexts/feature.js';
 import { getDb } from '../db/client.js';
 import { contexts as contextsTable } from '../db/schema.js';
 import { loadEnv } from '../env.js';
@@ -26,22 +27,6 @@ import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
 
 export const contextsRoute = new Hono();
-
-/**
- * Phase 11.6: feature gate. POST/DELETE 只在 master key + HMAC secret 都已配置时启用；
- * 否则 503 context.disabled。这是与 phase 11.5 keepAlive 不同的 disable 模式 —
- * keepAlive 用 quota=0 兼任 kill switch；contexts 必须显式 secret 设上才允许，
- * 因为没有 secret 就根本无法加密落盘 / 签 internal token，硬启会落 plaintext blob。
- */
-function ensureContextsEnabled(): void {
-  const env = loadEnv();
-  if (!env.MOSAIQ_CONTEXT_MASTER_KEY || !env.MOSAIQ_INTERNAL_HMAC_SECRET) {
-    throw new ApiError(
-      'context.disabled',
-      'Contexts API is not enabled on this deployment. Set MOSAIQ_CONTEXT_MASTER_KEY and MOSAIQ_INTERNAL_HMAC_SECRET fly secrets to enable.',
-    );
-  }
-}
 
 // ─── POST /v1/contexts ──────────────────────────────────────────────────────
 //

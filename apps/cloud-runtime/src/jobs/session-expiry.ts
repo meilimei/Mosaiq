@@ -43,7 +43,11 @@ import { and, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import type { Logger } from 'pino';
 
 import { loadEnv } from '../env.js';
-import { auditEvents, sessions as sessionsTable } from '../db/schema.js';
+import {
+  auditEvents,
+  contexts as contextsTable,
+  sessions as sessionsTable,
+} from '../db/schema.js';
 import type { DbHandle } from '../db/client.js';
 import type { MachineManager } from '../machine/types.js';
 import { sessionsClosedTotal } from '../metrics.js';
@@ -128,6 +132,7 @@ export async function reapExpiredSessions(deps: {
       lastSeenAt: sessionsTable.lastSeenAt,
       keepAlive: sessionsTable.keepAlive,
       userMetadata: sessionsTable.userMetadata,
+      contextId: sessionsTable.contextId,
     })
     .from(sessionsTable)
     .where(
@@ -235,6 +240,22 @@ export async function reapExpiredSessions(deps: {
         }
       } catch {
         /* invalid JSON; ignore */
+      }
+
+      // Phase 11.6: 释放 context lock（**不** snapshot —— chromium 已被 SIGKILL，
+      // user-data-dir 状态不一致，design §5.5 decision 5 明确 reaper 路径不回写）。
+      // 不清锁的话该 context 会永久卡 in_use。WHERE active_session_id=row.id 确保
+      // 只清本 session 持有的锁。这是 DELETE handler 注释里说的 "reaper backstop"。
+      if (row.contextId) {
+        await db.drizzle
+          .update(contextsTable)
+          .set({ activeSessionId: null, activeSessionAcquiredAt: null })
+          .where(
+            and(
+              eq(contextsTable.id, row.contextId),
+              eq(contextsTable.activeSessionId, row.id),
+            ),
+          );
       }
     }
   }

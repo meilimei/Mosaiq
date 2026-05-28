@@ -260,7 +260,13 @@ export class FlyMachineManager implements MachineManager {
 
     if (podOrigin) {
       // best-effort 让 pod 干净停 chromium。pod-control 内部不抛错。
-      await callPodStop({ podOrigin, machineId, fetchImpl: this.#fetchImpl });
+      // Phase 11.6: 转发 snapshotUrl 让 pod 在 stop 前 snapshot context（若有）。
+      await callPodStop({
+        podOrigin,
+        machineId,
+        fetchImpl: this.#fetchImpl,
+        ...(opts?.snapshotUrl ? { snapshotUrl: opts.snapshotUrl } : {}),
+      });
       this.#alive.delete(machineId);
     } else {
       log.debug({ machineId }, 'release: machine unknown to fly manager, will still attempt destroy');

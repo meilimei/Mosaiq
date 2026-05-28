@@ -7,12 +7,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 
 import { createApp } from './app.js';
 import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
 import { disposeDb, getDb } from './db/client.js';
-import { apiKeys, projects } from './db/schema.js';
+import { apiKeys, contexts as contextsTable, projects } from './db/schema.js';
 import { resetEnvCache } from './env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from './machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './machine/types.js';
@@ -39,6 +40,8 @@ class FakeMachineManager implements MachineManager {
   readonly kind = 'static' as const;
   acquired: AcquireSpec[] = [];
   released: string[] = [];
+  /** Phase 11.6: records release opts (snapshotUrl) keyed by machineId. */
+  releaseOpts: Array<{ machineId: string; snapshotUrl?: string }> = [];
   capacityNow = { ready: 1, busy: 0, cap: 1 };
   shouldFailWith: string | null = null;
 
@@ -55,8 +58,12 @@ class FakeMachineManager implements MachineManager {
       cdpInternalUrl: 'ws://fake-pod:9223/devtools/browser/uuid-stub',
     };
   }
-  async release(machineId: string): Promise<void> {
+  async release(machineId: string, opts?: { snapshotUrl?: string }): Promise<void> {
     this.released.push(machineId);
+    this.releaseOpts.push({
+      machineId,
+      ...(opts?.snapshotUrl ? { snapshotUrl: opts.snapshotUrl } : {}),
+    });
     this.capacityNow = { ready: 1, busy: 0, cap: 1 };
   }
   async capacity() {
@@ -1288,5 +1295,251 @@ describe('Browserbase compat — default persona seed (phase 11.4 commit 4a)', (
     };
     expect(body.persona_id).toBe('pers_default_win11_chrome_us');
     expect(body.persona.metadata.id).toBe('win11-chrome-us-default');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 11.6 commit 4: browserSettings.context session integration
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('browserSettings.context — session lifecycle (phase 11.6)', () => {
+  // Contexts feature requires both secrets. The outer beforeEach already ran
+  // (DB seeded, fakeMm installed); we layer the secrets on + reset env cache.
+  beforeEach(() => {
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = randomBytes(32).toString('base64');
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = randomBytes(48).toString('base64');
+    resetEnvCache();
+  });
+  afterEach(() => {
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
+    resetEnvCache();
+  });
+
+  async function createContext(token = TEST_API_KEY): Promise<string> {
+    const app = createApp();
+    const resp = await app.request('/v1/contexts', {
+      method: 'POST',
+      headers: authH(token),
+      body: '{}',
+    });
+    expect(resp.status).toBe(201);
+    return ((await resp.json()) as { id: string }).id;
+  }
+
+  async function createSessionWithContext(
+    ctxId: string,
+    opts?: { persist?: boolean; token?: string },
+  ) {
+    const app = createApp();
+    const body: Record<string, unknown> = {
+      project_id: TEST_PROJECT_ID,
+      persona: { inline: PERSONA_FIXTURE },
+      browserSettings: {
+        context: {
+          id: ctxId,
+          ...(opts?.persist !== undefined ? { persist: opts.persist } : {}),
+        },
+      },
+    };
+    return app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(opts?.token ?? TEST_API_KEY),
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('POST with valid context → 201, contextId echoed, lock acquired, loadUrl passed to pod', async () => {
+    const ctxId = await createContext();
+    const resp = await createSessionWithContext(ctxId);
+    expect(resp.status).toBe(201);
+    const body = (await resp.json()) as { id: string; contextId: string };
+    expect(body.contextId).toBe(ctxId);
+
+    // acquire spec carried a signed download URL + projectId
+    expect(fakeMm.acquired).toHaveLength(1);
+    const spec = fakeMm.acquired[0]!;
+    expect(spec.context?.projectId).toBe(TEST_PROJECT_ID);
+    expect(spec.context?.loadUrl).toMatch(
+      new RegExp(`/v1/_internal/contexts/${ctxId}/download\\?token=v1\\.\\d+\\.[a-f0-9]{64}$`),
+    );
+
+    // contexts row locked to this session
+    const handle = await getDb();
+    const ctxRow = (
+      await handle.drizzle.select().from(contextsTable).where(eq(contextsTable.id, ctxId)).limit(1)
+    )[0]!;
+    expect(ctxRow.activeSessionId).toBe(body.id);
+    expect(ctxRow.activeSessionAcquiredAt).toBeTruthy();
+  });
+
+  it('GET session also echoes contextId', async () => {
+    const ctxId = await createContext();
+    const created = (await (await createSessionWithContext(ctxId)).json()) as { id: string };
+    const app = createApp();
+    const r = await app.request(`/v1/sessions/${created.id}`, { headers: authH() });
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { contextId: string };
+    expect(body.contextId).toBe(ctxId);
+  });
+
+  it('POST with nonexistent context → 404 context.not_found (no pod acquired)', async () => {
+    const resp = await createSessionWithContext('ctx_does_not_exist_xxxxx');
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('context.not_found');
+    expect(fakeMm.acquired).toHaveLength(0);
+  });
+
+  it('POST with cross-project context → 404 (not 403; no enumeration leak)', async () => {
+    const ctxId = await createContext(); // belongs to TEST_PROJECT_ID
+    // OTHER project tries to use it
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(OTHER_API_KEY),
+      body: JSON.stringify({
+        project_id: OTHER_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        browserSettings: { context: { id: ctxId } },
+      }),
+    });
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('context.not_found');
+  });
+
+  it('POST with already-locked context → 409 context.in_use (pre-check)', async () => {
+    const ctxId = await createContext();
+    const first = await createSessionWithContext(ctxId);
+    expect(first.status).toBe(201);
+
+    const second = await createSessionWithContext(ctxId);
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as {
+      error: { code: string; detail: { activeSessionId: string } };
+    };
+    expect(body.error.code).toBe('context.in_use');
+    const firstId = ((await first.json()) as { id: string }).id;
+    expect(body.error.detail.activeSessionId).toBe(firstId);
+  });
+
+  it('POST with soft-deleted context → 404 context.not_found', async () => {
+    const ctxId = await createContext();
+    const app = createApp();
+    const del = await app.request(`/v1/contexts/${ctxId}`, { method: 'DELETE', headers: authH() });
+    expect(del.status).toBe(204);
+    const resp = await createSessionWithContext(ctxId);
+    expect(resp.status).toBe(404);
+  });
+
+  it('POST with context but feature disabled → 503 context.disabled', async () => {
+    const ctxId = await createContext();
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
+    resetEnvCache();
+    const resp = await createSessionWithContext(ctxId);
+    expect(resp.status).toBe(503);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('context.disabled');
+  });
+
+  it('DELETE session w/ persist=true (default) → release gets snapshotUrl + lock cleared', async () => {
+    const ctxId = await createContext();
+    const created = (await (await createSessionWithContext(ctxId)).json()) as { id: string };
+
+    const app = createApp();
+    const del = await app.request(`/v1/sessions/${created.id}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+
+    // release was called with a signed snapshot URL
+    const opts = fakeMm.releaseOpts.find((o) => o.machineId === 'mch_fake_001');
+    expect(opts?.snapshotUrl).toMatch(
+      new RegExp(`/v1/_internal/contexts/${ctxId}/snapshot\\?token=v1\\.\\d+\\.[a-f0-9]{64}$`),
+    );
+
+    // lock cleared
+    const handle = await getDb();
+    const ctxRow = (
+      await handle.drizzle.select().from(contextsTable).where(eq(contextsTable.id, ctxId)).limit(1)
+    )[0]!;
+    expect(ctxRow.activeSessionId).toBeNull();
+    expect(ctxRow.activeSessionAcquiredAt).toBeNull();
+  });
+
+  it('DELETE session w/ persist=false → release WITHOUT snapshotUrl but lock still cleared', async () => {
+    const ctxId = await createContext();
+    const created = (await (
+      await createSessionWithContext(ctxId, { persist: false })
+    ).json()) as { id: string };
+
+    const app = createApp();
+    const del = await app.request(`/v1/sessions/${created.id}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+
+    const opts = fakeMm.releaseOpts.find((o) => o.machineId === 'mch_fake_001');
+    expect(opts?.snapshotUrl).toBeUndefined();
+
+    const handle = await getDb();
+    const ctxRow = (
+      await handle.drizzle.select().from(contextsTable).where(eq(contextsTable.id, ctxId)).limit(1)
+    )[0]!;
+    expect(ctxRow.activeSessionId).toBeNull();
+  });
+
+  it('after close, the same context can be reused by a new session (lock freed)', async () => {
+    const ctxId = await createContext();
+    const created = (await (await createSessionWithContext(ctxId)).json()) as { id: string };
+    const app = createApp();
+    await app.request(`/v1/sessions/${created.id}`, { method: 'DELETE', headers: authH() });
+
+    // second acquire on the freed context succeeds
+    const resp = await createSessionWithContext(ctxId);
+    expect(resp.status).toBe(201);
+  });
+
+  it('DELETE context now allowed after its holding session closed', async () => {
+    const ctxId = await createContext();
+    const created = (await (await createSessionWithContext(ctxId)).json()) as { id: string };
+    const app = createApp();
+
+    // while live, deleting the context is rejected
+    const blocked = await app.request(`/v1/contexts/${ctxId}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(blocked.status).toBe(409);
+
+    // close the session → lock freed
+    await app.request(`/v1/sessions/${created.id}`, { method: 'DELETE', headers: authH() });
+
+    const ok = await app.request(`/v1/contexts/${ctxId}`, { method: 'DELETE', headers: authH() });
+    expect(ok.status).toBe(204);
+  });
+
+  it('session without context → release gets no snapshotUrl (regression: plain path unchanged)', async () => {
+    const app = createApp();
+    const created = (await (
+      await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({ project_id: TEST_PROJECT_ID, persona: { inline: PERSONA_FIXTURE } }),
+      })
+    ).json()) as { id: string; contextId: string | null };
+    expect(created.contextId).toBeNull();
+
+    const del = await app.request(`/v1/sessions/${created.id}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+    const opts = fakeMm.releaseOpts.find((o) => o.machineId === 'mch_fake_001');
+    expect(opts?.snapshotUrl).toBeUndefined();
   });
 });

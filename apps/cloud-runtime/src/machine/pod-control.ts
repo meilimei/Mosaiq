@@ -98,6 +98,7 @@ export async function callPodStart(opts: {
     stealth: opts.spec.stealth,
     ttlSeconds: opts.spec.ttlSeconds,
     ...(opts.spec.viewport ? { viewport: opts.spec.viewport } : {}),
+    ...(opts.spec.context ? { context: opts.spec.context } : {}),
   };
 
   const ctrl = new AbortController();
@@ -148,17 +149,28 @@ export async function callPodStop(opts: {
   fetchImpl?: FetchLike;
   /** 默认 5s，比 /control/start 短得多 —— stop 不需要等 chromium boot。 */
   timeoutMs?: number;
+  /**
+   * Phase 11.6: 若提供，pod 在 SIGKILL chromium 之后 + 删除 user-data-dir 之
+   * 前，把 user-data-dir tar + AES-GCM 加密 + PUT 到此 URL。失败 log warn 但
+   * 不阻止 pod 返回 200 给 /control/stop —— snapshot 与 lock 释放解耦。
+   */
+  snapshotUrl?: string;
 }): Promise<void> {
   const log = getLogger();
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const timeoutMs = opts.timeoutMs ?? 5_000;
+  // Phase 11.6: 带 snapshot 路径要给 pod 多 ~3s 完成 tar + encrypt + PUT
+  // （typical 5–20MB context）。无 snapshot 维持原 5s 上限。
+  const timeoutMs = opts.timeoutMs ?? (opts.snapshotUrl ? 15_000 : 5_000);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     await fetchImpl(`${opts.podOrigin}/control/stop`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ machineId: opts.machineId }),
+      body: JSON.stringify({
+        machineId: opts.machineId,
+        ...(opts.snapshotUrl ? { snapshotUrl: opts.snapshotUrl } : {}),
+      }),
       signal: ctrl.signal,
     });
   } catch (err) {

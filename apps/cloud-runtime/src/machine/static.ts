@@ -119,7 +119,13 @@ export class StaticPoolMachineManager implements MachineManager {
     if (pod) pod.busyMachineId = null;
     this.#machineToPod.delete(machineId);
 
-    await callPodStop({ podOrigin, machineId, fetchImpl: this.#fetch });
+    // Phase 11.6: 传递 snapshotUrl 让 pod 在 stop 时先 snapshot context（若有）。
+    await callPodStop({
+      podOrigin,
+      machineId,
+      fetchImpl: this.#fetch,
+      ...(opts?.snapshotUrl ? { snapshotUrl: opts.snapshotUrl } : {}),
+    });
   }
 
   async capacity(): Promise<{ ready: number; busy: number; cap: number }> {

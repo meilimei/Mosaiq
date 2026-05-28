@@ -263,10 +263,12 @@ export class LocalDockerMachineManager implements MachineManager {
     }
 
     if (podOrigin) {
+      // Phase 11.6: 转发 snapshotUrl 让 pod 在 stop 前 snapshot context（若有）。
       await callPodStop({
         podOrigin,
         machineId: containerId,
         fetchImpl: this.#opts.podFetchImpl,
+        ...(opts?.snapshotUrl ? { snapshotUrl: opts.snapshotUrl } : {}),
       });
       this.#alive.delete(containerId);
     }
