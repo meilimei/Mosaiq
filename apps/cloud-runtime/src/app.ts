@@ -11,6 +11,7 @@ import { bearerAuth } from './middleware/auth.js';
 import { httpMetricsMiddleware } from './middleware/http-metrics.js';
 import { contextsRoute } from './routes/contexts.js';
 import { healthRoute } from './routes/health.js';
+import { internalContextsRoute } from './routes/internal-contexts.js';
 import { metricsRoute } from './routes/metrics.js';
 import { personasRoute } from './routes/personas.js';
 import { sessionsRoute } from './routes/sessions.js';
@@ -29,6 +30,11 @@ export function createApp(): Hono {
 
   // /v1/metrics 走独立 token（scraper 跟业务 key 解耦）
   app.route('/v1/metrics', metricsRoute);
+
+  // Phase 11.6: /v1/_internal/contexts/* 走 HMAC token（cloud-runtime ↔ pod 内
+  // 部端点）；不挂 bearerAuth，token 校验在 handler 内。Mount 在 authed 之前
+  // 让 Hono prefix matching 不撞 authed 的 catch-all。
+  app.route('/v1/_internal/contexts', internalContextsRoute);
 
   // 其余 /v1/* 都过 bearer auth
   const authed = new Hono();
