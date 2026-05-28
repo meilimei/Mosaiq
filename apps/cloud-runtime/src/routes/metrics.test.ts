@@ -16,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 
 import { createApp } from '../app.js';
 import { ensureSchema } from '../db/bootstrap.js';
@@ -314,5 +315,59 @@ describe('counter wiring', () => {
     );
     // 0 keepAlive 的 project 不应在 gauge 里（SQL GROUP BY 不返）
     expect(text).not.toMatch(/keepalive_sessions_active\{project_id="proj_other"\}/);
+  });
+
+  // ─── Phase 11.6 commit 6: contexts metrics ───────────────────────────────
+
+  it('Phase 11.6: POST /v1/contexts → contexts_total{op="create",outcome="success"} + contexts_active gauge', async () => {
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = randomBytes(32).toString('base64');
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = randomBytes(48).toString('base64');
+    resetEnvCache();
+    const app = createApp();
+    const create = await app.request('/v1/contexts', {
+      method: 'POST',
+      headers: authH(),
+      body: '{}',
+    });
+    expect(create.status).toBe(201);
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(/contexts_total\{op="create",outcome="success"\}\s+1/);
+    expect(text).toMatch(
+      new RegExp(`contexts_active\\{project_id="${PROJECT_ID}"\\}\\s+1`),
+    );
+
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
+    resetEnvCache();
+  });
+
+  it('Phase 11.6: DELETE context → contexts_total{op="delete",outcome="success"}, gauge drops', async () => {
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = randomBytes(32).toString('base64');
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = randomBytes(48).toString('base64');
+    resetEnvCache();
+    const app = createApp();
+    const ctxId = ((await (
+      await app.request('/v1/contexts', { method: 'POST', headers: authH(), body: '{}' })
+    ).json()) as { id: string }).id;
+
+    const del = await app.request(`/v1/contexts/${ctxId}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(/contexts_total\{op="delete",outcome="success"\}\s+1/);
+    // soft-deleted → not counted as active → gauge drops the project label (reset+GROUP BY)
+    expect(text).not.toMatch(
+      new RegExp(`contexts_active\\{project_id="${PROJECT_ID}"\\}`),
+    );
+
+    process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
+    process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
+    resetEnvCache();
   });
 });

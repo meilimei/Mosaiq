@@ -19,6 +19,7 @@ import { ensureContextsEnabled } from '../contexts/feature.js';
 import { getDb } from '../db/client.js';
 import { contexts as contextsTable } from '../db/schema.js';
 import { loadEnv } from '../env.js';
+import { contextsTotal } from '../metrics.js';
 import { audit } from '../middleware/audit.js';
 import { getAuth } from '../middleware/auth.js';
 import { rateLimitTier } from '../middleware/rate-limit.js';
@@ -59,6 +60,7 @@ contextsRoute.post('/', rateLimitTier('write'), async (c) => {
       activeCount,
       quota: env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX,
     });
+    contextsTotal.inc({ op: 'create', outcome: 'failed' });
     throw new ApiError(
       'pool.contexts_saturated',
       `project ${auth.projectId} has ${activeCount} active contexts (quota ${env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX}); DELETE an unused context before retrying`,
@@ -95,6 +97,7 @@ contextsRoute.post('/', rateLimitTier('write'), async (c) => {
   }
 
   audit(c, 'context.create', `context:${id}`, 'ok');
+  contextsTotal.inc({ op: 'create', outcome: 'success' });
   getLogger().info({ contextId: id, projectId: auth.projectId }, 'context created');
 
   return c.json(
@@ -148,6 +151,7 @@ contextsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
       reason: 'in_use',
       activeSessionId: row.activeSessionId,
     });
+    contextsTotal.inc({ op: 'delete', outcome: 'failed' });
     throw new ApiError(
       'context.in_use',
       `context ${id} is currently held by session ${row.activeSessionId}; close the session before deleting the context`,
@@ -164,6 +168,7 @@ contextsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
     .where(eq(contextsTable.id, id));
 
   audit(c, 'context.delete', `context:${id}`, 'ok');
+  contextsTotal.inc({ op: 'delete', outcome: 'success' });
   getLogger().info({ contextId: id, projectId: auth.projectId }, 'context soft-deleted');
   return c.body(null, 204);
 });

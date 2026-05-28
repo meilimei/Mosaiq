@@ -26,6 +26,7 @@ import { Hono } from 'hono';
 import { getDb } from '../db/client.js';
 import { loadEnv } from '../env.js';
 import {
+  contextsActiveGauge,
   keepaliveSessionsActiveGauge,
   machinePoolEntriesGauge,
   metricsRegistry,
@@ -103,6 +104,21 @@ metricsRoute.get('/', async (c) => {
     }
   } catch {
     // DB 抛错时保留 gauge 旧值；同 mm 路径同样不让 scrape 失败
+  }
+
+  // Phase 11.6: 刷新 contexts_active{project_id} gauge（未 soft-delete 的 context）。
+  // reset() 让消失的 project label 归零，避免陈旧值。DB 抛错保留旧值不失败 scrape。
+  try {
+    const handle = await getDb();
+    const rows = handle.drizzle.all(
+      sql`SELECT project_id AS projectId, COUNT(*) AS n FROM contexts WHERE deleted_at IS NULL GROUP BY project_id`,
+    ) as Array<{ projectId: string; n: number }>;
+    contextsActiveGauge.reset();
+    for (const r of rows) {
+      contextsActiveGauge.set({ project_id: r.projectId }, Number(r.n));
+    }
+  } catch {
+    // 同上：保留旧值，不让 scrape 失败
   }
 
   const text = await metricsRegistry.metrics();

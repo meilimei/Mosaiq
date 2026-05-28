@@ -649,3 +649,64 @@ phase 11.5 教会我们的（沿用到 phase 11.6）：
 4. **观察性优先**：metrics label 把生命周期阶段拆到位（load/snapshot/create/delete + outcome），dashboard 能直接画 funnel
 5. **Smoke script 是 verify 黄金标准**：单测 + prod smoke 两层；phase 11.5 单测 217 全绿但 prod 因迁移 bug crash-loop，smoke 是兜底
 6. **Internal-only endpoints 单独 prefix**：phase 11.6 `/v1/_internal/*` 不在 public OpenAPI，文档明确标"pod control plane only"
+
+---
+
+## 14. As-built（实际实现，2026-05-29）
+
+实现时与 §7 计划有几处刻意偏离，记录在此（计划是估算，as-built 是真相）：
+
+### 14.1 Commit 结构（实际）
+
+按"先全 cloud-runtime、后 pod、最后 metrics/docs"重排，让每个 commit 的 typecheck/test 边界更干净（cloud-runtime 与 browser-pod 是独立 app）：
+
+| Commit | 内容 | 测试 |
+|---|---|---|
+| 1 | schema + env + storage 抽象 + crypto（AES-GCM + HMAC token）| 217 → 243（+26）|
+| 2 | `POST/DELETE /v1/contexts` public surface | 243 → 258（+15）|
+| 3 | `/v1/_internal/contexts/{id}/{download,snapshot}` signed endpoints | 258 → 275（+17）|
+| 4 | `browserSettings.context` session 集成（lock/load/snapshot 编排）+ reaper lock 释放 | 275 → 287（+12）|
+| 5 | **pod-side** loadContext + snapshotContext（browser-pod）| pod 17 → 38（+21）|
+| 6 | metrics（`contexts_active` / `contexts_total` / `context_snapshot_bytes`）+ docs | 287 → 289（+2）|
+
+**最终**：cloud-runtime 289 测试、browser-pod 38 测试，全绿。比 §11 估算的 254 多——crypto / 内部端点 token / 流式 IO 的 edge case 远超原估。
+
+### 14.2 压缩：gzip 而非 zstd（decision 8 偏离）
+
+§9 decision 8 选 tar.zst，实现改用 **tar + gzip**（系统 `tar -czf -` / `-xzf -` 子进程）：
+
+- gzip 内建于所有 tar 实现（GNU tar / bsdtar），zstd 需 `--zstd` flag + GNU tar ≥ 1.31 或额外二进制，可用性不保证
+- blob 对 cloud-runtime **完全不透明**——它只存字节 + 读 12-byte nonce 头；pod 是唯一压/解方，所以压缩算法纯属 pod 内部细节
+- 典型 chromium profile 5–50MB，gzip vs zstd 解压差异 < 100ms，远低于 §2 的 < 2s 目标
+- `storage_key` 后缀仍叫 `.tar.zst.enc`（cosmetic，cloud-runtime 不解析）；未来若换 zstd 不需要 cloud-runtime 改动
+- **没加 npm `tar` 依赖**：避免 `@types/tar` 拉取；子进程方案跨 GNU/bsd tar 一致，`--exclude=` 子树裁剪两者都验证过
+
+### 14.3 projectId 传递（pod snapshot key 派生）
+
+§5.4 / §6.2 未明确 snapshot 时 pod 如何拿 projectId（AES key 派生必需）。实现选择：**pod 在 `/control/start` 时记下 `context.projectId`，`/control/stop` 只带 `snapshotUrl`**。好处是 commit 5 完全落在 browser-pod 内，不回头改 commit 4 已发的 wire 协议（ReleaseOptions 只加 snapshotUrl）。
+
+### 14.4 Feature gate 是 503 而非 quota=0
+
+contexts 必须 `MOSAIQ_CONTEXT_MASTER_KEY` + `MOSAIQ_INTERNAL_HMAC_SECRET` 都设上才启用（任一缺 → 公开端点 503 `context.disabled`、内部端点 401）。与 phase 11.5 keepAlive 用 quota=0 当 kill switch 不同——没 master key 就无法加密，硬启会落 plaintext blob，是安全回归。`MOSAIQ_CONTEXTS_PER_PROJECT_MAX=0` 仍可作 secrets 已配置下的 emergency kill switch。
+
+### 14.5 必需的 fly secrets（两个 app 同源）
+
+```bash
+# 同一对值注入 cloud-runtime 与 browser-pod 两个 app
+KEY=$(openssl rand -base64 32)
+HMAC=$(openssl rand -base64 64)
+
+flyctl secrets set -a mosaiq-cloud-runtime \
+  MOSAIQ_CONTEXT_MASTER_KEY="$KEY" MOSAIQ_INTERNAL_HMAC_SECRET="$HMAC"
+
+# browser-pod 只需 master key（它消费 pre-signed URL，不签 token）
+flyctl secrets set -a mosaiq-browser-pod POD_CONTEXT_MASTER_KEY="$KEY"
+```
+
+`MOSAIQ_CONTEXT_MASTER_KEY`（cloud-runtime）与 `POD_CONTEXT_MASTER_KEY`（pod）**必须同值**——HKDF 派生的 per-project key 才一致，否则 pod 解密 cloud-runtime 存的 blob 会 GCM auth 失败。
+
+### 14.6 仍 pending（部署后 / 后续）
+
+- §11.2 prod smoke（`scripts/contexts-persist-smoke.mjs` 真 pod E2E）+ §12 实测表：需 fly 部署后跑
+- pod-side load/snapshot **耗时** histogram：cloud-runtime 测不到（需 pod→runtime metrics push），本期省略；只留了它能真实观测的 `context_snapshot_bytes`（PUT 收到时记）
+- LaunchAI 跨仓 follow-up（§10）

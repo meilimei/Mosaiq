@@ -324,7 +324,7 @@ Pool 状态 `ready=9 busy=1 cap=10`（POOL_TARGET_SIZE=5 secret，replenish_conc
 | `keepAlive: true` 长 session | ✓ | ✓ phase 11.5（24h 默认 ceiling + sticky 路由，见 [doc](./PHASE-11.5-KEEPALIVE-LONG-SESSION.md)） |
 | `recording: true` | ✓ | ❌ 11.4a 不支持 |
 | Stagehand `act()` / `observe()` / `extract()` | ✓（依赖 LLM 调度，与 SDK 无关） | ✓（这部分是 Stagehand 本地模型调用，不走 BB 服务端） |
-| Contexts API（cookie/auth 持久化）| ✓ | ❌ phase 11.6 |
+| Contexts API（cookie/auth 持久化）| ✓ | ✓ phase 11.6（`POST/DELETE /v1/contexts` + `browserSettings.context`，AES-GCM at rest，见 [doc](./PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md)） |
 
 ---
 

@@ -25,6 +25,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { getDb } from '../db/client.js';
 import { contexts as contextsTable } from '../db/schema.js';
 import { loadEnv } from '../env.js';
+import { contextSnapshotBytes, contextsTotal } from '../metrics.js';
 import { getContextStorage } from '../contexts/storage.js';
 import { ApiError } from '../utils/errors.js';
 import { verifyInternalToken } from '../utils/crypto.js';
@@ -115,6 +116,7 @@ internalContextsRoute.get('/:id/download', async (c) => {
       { ctxId, storageKey: row.storageKey, dbBytes: row.bytes },
       'internal download: DB says present but storage missing',
     );
+    contextsTotal.inc({ op: 'download', outcome: 'failed' });
     return c.body(null, 404);
   }
 
@@ -122,6 +124,7 @@ internalContextsRoute.get('/:id/download', async (c) => {
   const webStream = Readable.toWeb(stream);
   c.header('Content-Type', 'application/octet-stream');
   c.header('Content-Length', String(row.bytes));
+  contextsTotal.inc({ op: 'download', outcome: 'success' });
   return c.body(webStream as unknown as ReadableStream<Uint8Array>, 200);
 });
 
@@ -144,6 +147,7 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
     // 4xx 而不是 404：pod tar 完了发现 context 没了 = 用户 race-deleted；pod 应该
     // log warn，但不要 retry。返 410 gone 比 404 更清晰，但保持简单先 404。
     log.warn({ ctxId }, 'internal snapshot: context not found / soft-deleted');
+    contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
     return c.body(null, 404);
   }
   const { row } = result;
@@ -158,6 +162,7 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
         { ctxId, declaredBytes, maxBytes },
         'internal snapshot: rejected oversize blob (Content-Length pre-check)',
       );
+      contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
       return c.body(null, 413);
     }
   }
@@ -176,6 +181,7 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
     bytes = await storage.write(row.storageKey, nodeStream);
   } catch (err) {
     log.error({ err, ctxId }, 'internal snapshot: storage write failed');
+    contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
     throw err;
   }
 
@@ -188,6 +194,7 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
     // Best-effort cleanup; the row keeps its old metadata (bytes/lastSnapshotAt
     // not updated below), so a subsequent download still gets the previous good blob.
     await storage.delete(row.storageKey).catch(() => undefined);
+    contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
     return c.body(null, 413);
   }
 
@@ -215,6 +222,8 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
     })
     .where(eq(contextsTable.id, ctxId));
 
+  contextsTotal.inc({ op: 'snapshot', outcome: 'success' });
+  contextSnapshotBytes.observe(bytes);
   log.info({ ctxId, bytes }, 'internal snapshot: blob persisted');
   return c.body(null, 204);
 });

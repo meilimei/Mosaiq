@@ -129,6 +129,51 @@ export const keepaliveSessionsActiveGauge = new Gauge({
   registers: [metricsRegistry],
 });
 
+// ─── Phase 11.6 Contexts (cookie/state persistence) observability ──────────
+//
+// 三个可被 cloud-runtime 真实观测的信号（pod-side tar/untar 耗时不在此——那需要
+// pod→runtime metrics push，本期 out-of-scope）：
+//   - contexts_active{project_id}：scrape 时从 contexts 表刷新，逼近 quota 报警
+//   - contexts_total{op,outcome}：create/delete/download/snapshot 的成功/失败计数
+//   - context_snapshot_bytes：snapshot 上传 blob 大小分布，size-limit 调参 + 容量规划
+
+export const contextsActiveGauge = new Gauge({
+  name: 'contexts_active',
+  help:
+    'phase 11.6: 当前未 soft-delete 的 context 数（按 project_id）。/v1/metrics scrape 时刷新。'
+    + ' 长期逼近 MOSAIQ_CONTEXTS_PER_PROJECT_MAX 说明该 customer 即将触限。',
+  labelNames: ['project_id'] as const,
+  registers: [metricsRegistry],
+});
+
+export const contextsTotal = new Counter({
+  name: 'contexts_total',
+  help:
+    'phase 11.6: context 操作计数。op=create|delete|download|snapshot，outcome=success|failed。'
+    + ' download/snapshot 由 pod 经 internal endpoint 触发；create/delete 是客户 API。',
+  labelNames: ['op', 'outcome'] as const,
+  registers: [metricsRegistry],
+});
+
+export const contextSnapshotBytes = new Histogram({
+  name: 'context_snapshot_bytes',
+  help:
+    'phase 11.6: snapshot 上传 blob 大小（compressed + encrypted bytes）。'
+    + ' 典型 chromium profile 5–20MB；上界对齐 MOSAIQ_CONTEXT_SIZE_MAX_MB(200MB default)。',
+  // 64KB → 200MB 跨 4 个数量级，覆盖空 profile 到重 IndexedDB 站点。
+  buckets: [
+    64 * 1024,
+    256 * 1024,
+    1024 * 1024,
+    5 * 1024 * 1024,
+    20 * 1024 * 1024,
+    50 * 1024 * 1024,
+    100 * 1024 * 1024,
+    200 * 1024 * 1024,
+  ],
+  registers: [metricsRegistry],
+});
+
 // ─── Phase 11.3a stopped-machine pool ──────────────────────────────────────
 //
 // 这些 counter/gauge 的目的：让 phased rollout（POOL_TARGET_SIZE 0 → 1 → 3）
