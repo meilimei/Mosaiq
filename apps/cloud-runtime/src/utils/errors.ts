@@ -17,12 +17,16 @@ export type ErrorCode =
   | 'pool.exhausted'
   | 'pool.pod_unhealthy'
   | 'pool.keepalive_saturated'
+  | 'pool.contexts_saturated'
   | 'rate.limit_exceeded'
   | 'session.not_found'
   | 'session.closed'
   | 'session.sticky_conflict'
   | 'persona.not_found'
   | 'persona.duplicate'
+  | 'context.not_found'
+  | 'context.in_use'
+  | 'context.disabled'
   | 'machine.spawn_failed'
   | 'internal.unknown';
 
@@ -34,11 +38,25 @@ const statusByCode: Record<ErrorCode, number> = {
   'request.invalid': 422,
   'request.not_found': 404,
   'pool.exhausted': 503,
+  // Phase 11.6: per-project contexts quota hit (MOSAIQ_CONTEXTS_PER_PROJECT_MAX).
+  // Client should DELETE an unused context before retrying. No Retry-After since
+  // the resource is purely customer-managed (we don't reclaim contexts on a timer).
+  'pool.contexts_saturated': 429,
   'pool.pod_unhealthy': 503,
   // Phase 11.5: per-project keepAlive quota hit; client should either close an
   // existing keepAlive session or wait (Retry-After header included in response).
   'pool.keepalive_saturated': 429,
   'rate.limit_exceeded': 429,
+  // Phase 11.6: contextId not found / not owned by caller's project / soft-deleted.
+  // Don't distinguish forbidden vs not-found here (avoid resource enumeration leak).
+  'context.not_found': 404,
+  // Phase 11.6: context is currently held by another live session
+  // (contexts.active_session_id != NULL). detail contains { activeSessionId,
+  // acquiredAt } so client can decide to wait, retry, or DELETE the holding session.
+  'context.in_use': 409,
+  // Phase 11.6: feature disabled (MOSAIQ_CONTEXT_MASTER_KEY not configured).
+  // Same disable-by-default safety pattern as METRICS_TOKEN.
+  'context.disabled': 503,
   'session.not_found': 404,
   'session.closed': 410,
   // Phase 11.5: same (projectId, stickyKey) already maps to a live session.
