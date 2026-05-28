@@ -51,6 +51,21 @@ const EnvSchema = z.object({
    * 后续若能定位到具体卡点（perf-counter + strace 分析），再缩短。
    */
   POD_CHROMIUM_BOOT_TIMEOUT_MS: z.coerce.number().int().min(1000).default(60_000),
+
+  // ─── Phase 11.6: Browserbase Contexts (cookie/state persistence) ──────────
+  /**
+   * AES-256 master key（base64 32 bytes），与 cloud-runtime 的
+   * MOSAIQ_CONTEXT_MASTER_KEY **同源** fly secret。pod 用它 + projectId HKDF 派生
+   * per-project key 来解密装载的 context blob / 加密 snapshot。空 = 该 pod 不支持
+   * context（loadContext / snapshotContext 会跳过或报错）；正常 prod 两侧都注入。
+   */
+  POD_CONTEXT_MASTER_KEY: z.string().default(''),
+  /**
+   * snapshot blob（compressed + encrypted）大小上限 MB，与 cloud-runtime 的
+   * MOSAIQ_CONTEXT_SIZE_MAX_MB 对齐。pod 在 PUT 前自检超限就不上传，保留
+   * cloud-runtime 上一版 good blob。
+   */
+  POD_CONTEXT_SIZE_MAX_MB: z.coerce.number().int().min(1).max(1024).default(200),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

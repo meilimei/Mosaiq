@@ -36,10 +36,19 @@ const StartSchema = z.object({
     })
     .optional(),
   ttlSeconds: z.number().int().min(60).max(86400),
+  // Phase 11.6: 若提供，chromium 启动前 GET context.loadUrl 装载 user-data-dir。
+  context: z
+    .object({
+      loadUrl: z.string().url(),
+      projectId: z.string().min(1),
+    })
+    .optional(),
 });
 
 const StopSchema = z.object({
   machineId: z.string().min(1),
+  // Phase 11.6: 若提供，kill 后、rm user-data-dir 前 tar+encrypt+PUT 回写 context。
+  snapshotUrl: z.string().url().optional(),
 });
 
 export function createApp(): Hono {
@@ -92,6 +101,7 @@ export function createApp(): Hono {
         persona,
         ttlSeconds: req.ttlSeconds,
         ...(req.viewport ? { viewport: req.viewport } : {}),
+        ...(req.context ? { context: req.context } : {}),
       });
     } catch (err) {
       log.error({ err, sessionId: req.sessionId }, 'spawnChromium failed');
@@ -119,7 +129,9 @@ export function createApp(): Hono {
     if (!parsed.success) {
       return c.json({ error: 'invalid body', issues: parsed.error.issues }, 422);
     }
-    await killChromium(parsed.data.machineId);
+    await killChromium(parsed.data.machineId, {
+      ...(parsed.data.snapshotUrl ? { snapshotUrl: parsed.data.snapshotUrl } : {}),
+    });
     return c.body(null, 204);
   });
 

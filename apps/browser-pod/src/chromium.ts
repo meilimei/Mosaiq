@@ -31,6 +31,7 @@ import { chromium } from 'playwright-core';
 
 import type { Persona } from '@mosaiq/persona-schema';
 
+import { loadContext, snapshotContext } from './context-io.js';
 import { loadEnv } from './env.js';
 import { getLogger } from './logger.js';
 import { buildChromiumFlags } from './persona-flags.js';
@@ -47,13 +48,47 @@ export interface ChromiumSpawnInput {
   persona: Persona;
   viewport?: { width: number; height: number };
   ttlSeconds: number;
+  /**
+   * Phase 11.6: 若提供，启动前 GET loadUrl 装载 context（decrypt + untar 进
+   * user-data-dir）。projectId 记入 `current`，供 killChromium 的 snapshot 复用
+   * （snapshot URL 只在 /control/stop 才到，但 projectId 在 start 时已知）。
+   */
+  context?: {
+    loadUrl: string;
+    projectId: string;
+  };
+}
+
+/** killChromium 的可选行为：snapshot 回写。 */
+export interface KillOptions {
+  /** cloud-runtime 签的 snapshot 上传 URL；提供则 kill 后、rm 前回写 context。 */
+  snapshotUrl?: string;
 }
 
 const VERSION_POLL_INTERVAL_MS = 200;
 /** 捕获 chromium stderr/stdout 最后多少字节以备诊断（spawn 失败时随 error 一起报）。 */
 const STD_TAIL_BYTES = 16 * 1024;
 
-let current: { proc: ChildProcess; info: RunningChromium; cleanupTimer: NodeJS.Timeout | null } | null = null;
+/**
+ * 单 pod 在跑的 chromium 状态。
+ *
+ * Phase 11.6 新增字段：
+ *   - sessionUserDir：snapshot + rm 都要这个路径（之前只活在 spawn 闭包里）
+ *   - contextProjectId：context 装载时记下的 project id，killChromium snapshot 复用
+ *   - managedKill：killChromium 设 true，让 exit handler **跳过** rm（由 killChromium
+ *     在 snapshot 之后才 rm）；unmanaged 退出（crash / TTL / self-death）保持 false，
+ *     exit handler 照常立即 rm（不 snapshot）。
+ */
+let current:
+  | {
+      proc: ChildProcess;
+      info: RunningChromium;
+      cleanupTimer: NodeJS.Timeout | null;
+      sessionUserDir: string;
+      contextProjectId: string | null;
+      managedKill: boolean;
+    }
+  | null = null;
 
 /**
  * Ring buffer式捕获 child process 输出。只保留最后的 STD_TAIL_BYTES，
@@ -149,6 +184,14 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
   const sessionUserDir = path.join(userDataDir, input.machineId);
   await mkdir(sessionUserDir, { recursive: true });
 
+  // Phase 11.6: 装载 context（若有）—— 必须在 chromium 启动**前**，让 chromium
+  // 一上来就读到已有的 cookie / localStorage / IndexedDB。loadContext 内部对 404
+  // （空 context）走 fresh boot；对网络 / decrypt / untar 失败抛错，让 spawn 失败
+  // 而不是静默用空 profile（用户期待自己的登录态，loud fail 更安全）。
+  if (input.context) {
+    await loadContext(input.context, sessionUserDir);
+  }
+
   const exe = resolveChromiumExecutable();
   const flags = buildChromiumFlags({
     persona: input.persona,
@@ -195,9 +238,14 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     log.info({ code, signal }, 'chromium exited');
     if (current && current.proc === proc) {
       if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
+      const wasManaged = current.managedKill;
       current = null;
-      // best-effort 清理 user-data-dir
-      rm(sessionUserDir, { recursive: true, force: true }).catch(() => undefined);
+      // Phase 11.6: managed kill（killChromium）会在 snapshot 之后自己 rm，这里
+      // 跳过避免在 snapshot 读取 user-data-dir 之前就把它删了。Unmanaged 退出
+      // （crash / TTL SIGTERM / chromium self-death）照常立即清理，不 snapshot。
+      if (!wasManaged) {
+        rm(sessionUserDir, { recursive: true, force: true }).catch(() => undefined);
+      }
     }
   });
   proc.stderr?.on('data', (chunk: Buffer) => {
@@ -268,33 +316,91 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     proc.kill('SIGTERM');
   }, input.ttlSeconds * 1000);
 
-  current = { proc, info, cleanupTimer };
+  current = {
+    proc,
+    info,
+    cleanupTimer,
+    sessionUserDir,
+    contextProjectId: input.context?.projectId ?? null,
+    managedKill: false,
+  };
   log.info({ machineId: info.machineId, pid: info.pid, cdpUrl }, 'chromium ready');
   return info;
 }
 
-export async function killChromium(machineId: string): Promise<void> {
-  const log = getLogger();
-  if (!current || current.info.machineId !== machineId) {
-    log.debug({ machineId, busyMachineId: current?.info.machineId ?? null }, 'killChromium: no match, idempotent skip');
-    return;
-  }
-  if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
-  const proc = current.proc;
-  proc.kill('SIGTERM');
-  // 给 chromium 5s 优雅退出
-  const killed = await new Promise<boolean>((resolve) => {
-    const tm = setTimeout(() => resolve(false), 5_000);
+/** 等 proc 退出，最多 ms 毫秒。已退出立即 true；超时 false。 */
+function waitForExit(proc: ChildProcess, ms: number): Promise<boolean> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve(true);
+  return new Promise<boolean>((resolve) => {
+    const tm = setTimeout(() => resolve(false), ms);
     proc.once('exit', () => {
       clearTimeout(tm);
       resolve(true);
     });
   });
+}
+
+/**
+ * 优雅停 chromium。
+ *
+ * Phase 11.6 流程（opts.snapshotUrl 提供时）：
+ *   1) 设 managedKill=true（让 exit handler 跳过 rm）
+ *   2) SIGTERM → 等 5s → 不退则 SIGKILL → 再等 3s 确保进程已死
+ *   3) snapshot user-data-dir 回写 cloud-runtime（best-effort，永不抛）
+ *   4) rm user-data-dir
+ *
+ * 无 snapshotUrl 时退化为 phase 11.5 行为（kill + 由本函数 rm），唯一区别是 rm
+ * 移到了 killChromium（因为 managedKill 让 exit handler 不再 rm）。
+ *
+ * 幂等：machineId 不匹配 current 直接返回（重复 /control/stop 安全）。
+ */
+export async function killChromium(machineId: string, opts: KillOptions = {}): Promise<void> {
+  const log = getLogger();
+  if (!current || current.info.machineId !== machineId) {
+    log.debug(
+      { machineId, busyMachineId: current?.info.machineId ?? null },
+      'killChromium: no match, idempotent skip',
+    );
+    return;
+  }
+  // 捕获 snapshot + rm 需要的状态（exit handler 即将把 current 置 null）。
+  const proc = current.proc;
+  const sessionUserDir = current.sessionUserDir;
+  const contextProjectId = current.contextProjectId;
+  current.managedKill = true; // exit handler 跳过 rm，交给本函数
+  if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
+
+  proc.kill('SIGTERM');
+  const killed = await waitForExit(proc, 5_000);
   if (!killed) {
     log.warn({ machineId }, 'chromium did not exit on SIGTERM, sending SIGKILL');
     proc.kill('SIGKILL');
+    await waitForExit(proc, 3_000);
   }
-  // exit handler 清空 current
+  // 此刻 exit handler 已跑（current=null），且因 managedKill 跳过了 rm。
+
+  // Phase 11.6: snapshot 回写（best-effort，在 rm 之前）。
+  if (opts.snapshotUrl) {
+    if (contextProjectId) {
+      const res = await snapshotContext(
+        { uploadUrl: opts.snapshotUrl, projectId: contextProjectId },
+        sessionUserDir,
+      );
+      if (!res.ok) {
+        log.warn(
+          { machineId, reason: res.reason, bytes: res.bytes ?? null },
+          'context snapshot did not succeed (lock will still be released by cloud-runtime)',
+        );
+      }
+    } else {
+      // snapshotUrl 来了但 start 时没带 context —— 不该发生（cloud-runtime 只在
+      // contextPersist 时发 snapshotUrl），防御性跳过。
+      log.warn({ machineId }, 'snapshotUrl provided but no contextProjectId; skipping snapshot');
+    }
+  }
+
+  // 清理 user-data-dir（snapshot 完成 / 跳过后才删）。
+  await rm(sessionUserDir, { recursive: true, force: true }).catch(() => undefined);
 }
 
 export function getRunning(): RunningChromium | null {
