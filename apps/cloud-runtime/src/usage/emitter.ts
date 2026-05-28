@@ -19,6 +19,7 @@
 
 import type { DbHandle } from '../db/client.js';
 import { usageEvents } from '../db/schema.js';
+import { usageMinutesTotal } from '../metrics.js';
 import { newId } from '../utils/ids.js';
 
 /** Phase 11.7a 只此一种 kind；11.7b 加 'persona.checkout' / 'proxy.gb'。 */
@@ -63,4 +64,9 @@ export async function recordUsage(
     value: opts.value,
     ts: new Date().toISOString(),
   });
+  // Phase 11.7 commit 4: 累加 billable 分钟 counter（仅 session.minute；其他 kind
+  // 走各自的 metric，11.7b 加）。inc 在 insert 之后——只有真落库的用量才计数。
+  if (opts.kind === 'session.minute') {
+    usageMinutesTotal.inc({ project_id: opts.projectId }, opts.value);
+  }
 }

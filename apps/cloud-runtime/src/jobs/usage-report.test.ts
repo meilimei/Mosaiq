@@ -13,6 +13,7 @@ import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
 import { projects, usageEvents } from '../db/schema.js';
 import { resetEnvCache } from '../env.js';
+import { resetMetricsForTesting, usageReportTotal } from '../metrics.js';
 import type { MeterReporter, UsageRecord } from '../usage/reporter.js';
 import { reportUsage, startUsageReportJob } from './usage-report.js';
 import type { Logger } from 'pino';
@@ -78,6 +79,7 @@ beforeEach(async () => {
   process.env.DATABASE_URL = 'sqlite::memory:';
   process.env.SEED_API_KEY = '';
   resetEnvCache();
+  resetMetricsForTesting();
   await ensureSchema();
   const handle = await getDb();
   await handle.drizzle.insert(projects).values([
@@ -192,6 +194,23 @@ describe('reportUsage', () => {
 
     const stillNull = await db.drizzle.select().from(usageEvents).where(isNull(usageEvents.reportedAt));
     expect(stillNull).toHaveLength(3);
+  });
+
+  it('usage_report_total{outcome} 计数 success / failed tick', async () => {
+    const db = await getDb();
+    // 成功 tick
+    await insertUsage({ id: 'use_m1', projectId: PROJECT_A, value: 1, ts: '2026-05-01T00:00:00.000Z' });
+    await reportUsage({ db, reporter: makeFakeReporter(), logger: makeFakeLogger() });
+    // 失败 tick（新行 + 一次性失败 reporter）
+    await insertUsage({ id: 'use_m2', projectId: PROJECT_A, value: 1, ts: '2026-05-01T00:01:00.000Z' });
+    await reportUsage({ db, reporter: makeFakeReporter({ failOnce: true }), logger: makeFakeLogger() });
+
+    const snapshot = await usageReportTotal.get();
+    const byOutcome = Object.fromEntries(
+      snapshot.values.map((v) => [v.labels.outcome, v.value]),
+    );
+    expect(byOutcome.success).toBe(1);
+    expect(byOutcome.failed).toBe(1);
   });
 });
 

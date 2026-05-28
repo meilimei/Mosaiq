@@ -31,6 +31,7 @@ import {
   machinePoolEntriesGauge,
   metricsRegistry,
   poolStateGauge,
+  usageEventsUnreported,
 } from '../metrics.js';
 import { getMachineManager } from '../machine/factory.js';
 
@@ -117,6 +118,19 @@ metricsRoute.get('/', async (c) => {
     for (const r of rows) {
       contextsActiveGauge.set({ project_id: r.projectId }, Number(r.n));
     }
+  } catch {
+    // 同上：保留旧值，不让 scrape 失败
+  }
+
+  // Phase 11.7: 刷新 usage_events_unreported gauge（待推送 Stripe 的积压）。
+  // 单值 COUNT(*) WHERE reported_at IS NULL，走 usage_events_unreported_idx partial index。
+  // DB 抛错保留旧值不失败 scrape。
+  try {
+    const handle = await getDb();
+    const rows = handle.drizzle.all(
+      sql`SELECT COUNT(*) AS n FROM usage_events WHERE reported_at IS NULL`,
+    ) as Array<{ n: number }>;
+    usageEventsUnreported.set(Number(rows[0]?.n ?? 0));
   } catch {
     // 同上：保留旧值，不让 scrape 失败
   }

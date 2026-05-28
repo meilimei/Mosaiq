@@ -174,6 +174,42 @@ export const contextSnapshotBytes = new Histogram({
   registers: [metricsRegistry],
 });
 
+// ─── Phase 11.7 usage metering observability ────────────────────────────────
+//
+// 三个信号串起计费管道的健康度：
+//   - usage_minutes_total{project_id}：emit 时累加的 billable 分钟数 counter，
+//     dashboard 看每个 customer 的实时计费速率 / 营收曲线。project_id label 只在
+//     有过用量的 customer 上增长（有界，同计费客户数），cardinality 安全。
+//   - usage_events_unreported：scrape 时刷新的未上报积压数 gauge。长期 > 0 且增长 =
+//     report job / Stripe push 卡住的报警信号（label-less，全局积压即健康信号）。
+//   - usage_report_total{outcome}：report job push tick 的成功/失败计数，监控
+//     pusher 健康度（outcome=success|failed）。
+
+export const usageMinutesTotal = new Counter({
+  name: 'usage_minutes_total',
+  help:
+    'phase 11.7: 累计 billable browser-minutes（按 project_id），session 关闭时 emit 累加。'
+    + ' dashboard 看实时计费速率；× UNIT_PRICE_USD_PER_MINUTE ≈ 营收估算（真账单以 Stripe 为准）。',
+  labelNames: ['project_id'] as const,
+  registers: [metricsRegistry],
+});
+
+export const usageEventsUnreported = new Gauge({
+  name: 'usage_events_unreported',
+  help:
+    'phase 11.7: 当前 reported_at IS NULL 的 usage_events 行数（待推送 Stripe 的积压）。'
+    + ' /v1/metrics scrape 时刷新。长期 > 0 且持续增长 = report job 或 Stripe push 卡住，需报警。',
+  registers: [metricsRegistry],
+});
+
+export const usageReportTotal = new Counter({
+  name: 'usage_report_total',
+  help:
+    'phase 11.7: usage-report job push tick 计数。outcome=success(本 tick 成功推送+回填) | failed(reporter 抛错，行保持未上报待重试)。',
+  labelNames: ['outcome'] as const,
+  registers: [metricsRegistry],
+});
+
 // ─── Phase 11.3a stopped-machine pool ──────────────────────────────────────
 //
 // 这些 counter/gauge 的目的：让 phased rollout（POOL_TARGET_SIZE 0 → 1 → 3）

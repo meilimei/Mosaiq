@@ -51,6 +51,10 @@ await browser.close();
 
 **长会话 / sticky pod**（phase 11.5 起）：`{ keepAlive: true, userMetadata: { stickyKey: "..." } }` —— WS 断开 pod 不销毁、`--user-data-dir` 保留、TTL ceiling 24h、配额 5 keepAlive/project；同 stickyKey 二次创建 409 含 `connectUrl` 让客户端一步 rejoin。LaunchAI Reddit 类长会话依赖此通路。
 
+**用量计费**（phase 11.7a 起）：session 关闭按 billable browser-minutes（`ceil(时长/60)`，最小 1）落 `usage_events`。`GET /v1/usage?from=&to=`（默认当前自然月）返回 `{ totals: { "session.minute": N }, estimated_cost_usd }`（单价 `$0.06/min`）。后台 usage-report job 周期把未上报用量推给可注入的 `MeterReporter`（11.7a 默认 noop；真 Stripe Metered 推送留 11.7b）。
+
+→ **[docs/PHASE-11.7-USAGE-METERING.md](./docs/PHASE-11.7-USAGE-METERING.md)** — browser-minutes 计费埋点 + GET /v1/usage + MeterReporter 抽象 + report job（11.7a 代码完成，真 Stripe 留 11.7b）
+→ **[docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md](./docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md)** — Browserbase Contexts API（跨 session 持久化加密 user-data-dir：cookies / localStorage / IndexedDB）
 → **[docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md](./docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md)** — keepAlive 长会话 + sticky pod 路由设计（pod lifecycle / sticky registry / quota / metrics labels）
 → **[docs/PHASE-11.4-STAGEHAND-COMPAT.md](./docs/PHASE-11.4-STAGEHAND-COMPAT.md)** — Stagehand-compat 设计稿 + §6.1 实测表 + commit 4c per-session signing key 根因拆解
 → **[docs/PHASE-11.3-MACHINE-POOL.md](./docs/PHASE-11.3-MACHINE-POOL.md)** — acquire 底层的 fly machine pool 设计 + Prometheus 应用仪表板上下文

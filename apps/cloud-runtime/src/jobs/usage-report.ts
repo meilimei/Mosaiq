@@ -23,6 +23,7 @@ import type { Logger } from 'pino';
 
 import type { DbHandle } from '../db/client.js';
 import { usageEvents } from '../db/schema.js';
+import { usageReportTotal } from '../metrics.js';
 import type { UsageKind } from '../usage/emitter.js';
 import type { MeterReporter, UsageRecord } from '../usage/reporter.js';
 
@@ -95,6 +96,7 @@ export async function reportUsage(deps: {
   try {
     await reporter.report(records);
   } catch (err) {
+    usageReportTotal.inc({ outcome: 'failed' });
     logger.warn(
       {
         scanned: unreported.length,
@@ -114,6 +116,7 @@ export async function reportUsage(deps: {
     .set({ reportedAt: nowIso })
     .where(inArray(usageEvents.id, ids));
 
+  usageReportTotal.inc({ outcome: 'success' });
   logger.info(
     { scanned: unreported.length, reported: ids.length, records: records.length, reporter: reporter.kind },
     'usage-report: pushed + marked reported',

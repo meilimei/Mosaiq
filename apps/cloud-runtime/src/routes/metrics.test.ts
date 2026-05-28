@@ -21,7 +21,7 @@ import { randomBytes } from 'node:crypto';
 import { createApp } from '../app.js';
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
-import { apiKeys, projects } from '../db/schema.js';
+import { apiKeys, projects, usageEvents } from '../db/schema.js';
 import { resetEnvCache } from '../env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from '../machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from '../machine/types.js';
@@ -341,6 +341,49 @@ describe('counter wiring', () => {
     process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
     process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
     resetEnvCache();
+  });
+
+  // ─── Phase 11.7 commit 4: usage metering metrics ───────────────────
+
+  it('Phase 11.7: DELETE session → usage_minutes_total{project_id} 自增（立即关 = 1 分钟）', async () => {
+    const app = createApp();
+    await app.request('/v1/personas', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify(PERSONA_FIXTURE),
+    });
+    const id = ((await (
+      await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({ project_id: PROJECT_ID, persona: { id: 'win11-chrome-us' } }),
+      })
+    ).json()) as { id: string }).id;
+    await app.request(`/v1/sessions/${id}`, { method: 'DELETE', headers: authH() });
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(
+      new RegExp(`usage_minutes_total\\{project_id="${PROJECT_ID}"\\}\\s+1`),
+    );
+  });
+
+  it('Phase 11.7: usage_events_unreported gauge 反映未上报积压（scrape 时刷新）', async () => {
+    const handle = await getDb();
+    for (let i = 0; i < 3; i++) {
+      await handle.drizzle.insert(usageEvents).values({
+        id: newId('use'),
+        projectId: PROJECT_ID,
+        sessionId: null,
+        kind: 'session.minute',
+        value: 1,
+        ts: new Date().toISOString(),
+      });
+    }
+    const app = createApp();
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(/usage_events_unreported\s+3/);
   });
 
   it('Phase 11.6: DELETE context → contexts_total{op="delete",outcome="success"}, gauge drops', async () => {

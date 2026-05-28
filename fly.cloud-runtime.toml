@@ -146,6 +146,16 @@ primary_region = "iad"
   RATE_LIMIT_READ_CAPACITY = "100"
   RATE_LIMIT_READ_REFILL_PER_SEC = "16"
 
+  # ─── Phase 11.7 usage metering ───────────────────────────────────────────
+  # 见 docs/PHASE-11.7-USAGE-METERING.md。session 关闭时 emit browser-minutes 到
+  # usage_events；usage-report job 周期推送 MeterReporter。
+  #   - UNIT_PRICE_USD_PER_MINUTE 0.06 = PRD 首发定价（GET /v1/usage 成本估算用）。
+  #   - USAGE_REPORT_INTERVAL_MS 60s = report job tick。
+  # STRIPE_API_KEY 不在这里（secret，必须 flyctl secrets set）。留空（当前 11.7a）→
+  # NoopMeterReporter（events 标 reported 但不外呼）；非空 → 11.7b StripeMeterReporter。
+  UNIT_PRICE_USD_PER_MINUTE = "0.06"
+  USAGE_REPORT_INTERVAL_MS = "60000"
+
   # ─── metrics ─────────────────────────────────────────────────────────────
   # METRICS_TOKEN 不在这里（secret，必须 flyctl secrets set）。
   # 留空 → /v1/metrics 返 404；prod 必须设置。
