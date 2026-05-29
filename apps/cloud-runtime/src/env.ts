@@ -68,7 +68,12 @@ const EnvSchema = z
     /** 单 tick 最多并发起几个 provision，默认 2（防 Fly API rate limit）。 */
     POOL_REPLENISH_CONCURRENCY: z.coerce.number().int().min(1).max(10).default(2),
     /** Pool entry 最大年龄秒数；超过则 evict + 补新。默认 86400 = 24h（避免镜像过期 / 节点漂移）。 */
-    POOL_MAX_AGE_SECONDS: z.coerce.number().int().min(60).max(7 * 86400).default(86_400),
+    POOL_MAX_AGE_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(60)
+      .max(7 * 86400)
+      .default(86_400),
     /** 单次 provision 硬超时 ms（含 POST create + waitForState=stopped）。默认 120s。 */
     POOL_PROVISION_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(120_000),
     /**
@@ -246,10 +251,21 @@ const EnvSchema = z
     USAGE_REPORT_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
     /**
      * Stripe secret key。留空（默认）→ NoopMeterReporter：report job 只把 events 标
-     * reported（验证管道，不外呼）。非空 → StripeMeterReporter（phase 11.7b 实现真
-     * Stripe Billing Meter Events 调用）。与 METRICS_TOKEN 同款 disable-by-default。
+     * reported（验证管道，不外呼）。非空 → StripeMeterReporter（phase 11.7b）调真
+     * Stripe Billing Meter Events API。与 METRICS_TOKEN 同款 disable-by-default。
      */
     STRIPE_API_KEY: z.string().default(''),
+    /**
+     * Phase 11.7b: Stripe API base URL。默认 prod。单测 / 录制回放可覆盖到 mock
+     * server。末尾斜杠会被 normalize 掉。
+     */
+    STRIPE_API_BASE_URL: z.string().default('https://api.stripe.com'),
+    /**
+     * Phase 11.7b: Stripe Billing Meter 的 `event_name`。必须与你在 Stripe Dashboard
+     * 建 meter 时设的 event_name 完全一致，否则事件被 Stripe 丢弃（无声不计费）。
+     * 默认 `mosaiq_browser_minutes`（对应 kind=session.minute）。
+     */
+    STRIPE_METER_EVENT_NAME: z.string().default('mosaiq_browser_minutes'),
 
     // ─── Phase 11.8 per-project quota enforcement ───────────────────────────
     // 见 docs/PHASE-11.8-QUOTA-ENFORCEMENT.md。11.7 测量用量，11.8 强制限额。
