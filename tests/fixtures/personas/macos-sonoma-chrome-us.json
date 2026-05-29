@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "macos-sonoma-chrome-us",
+    "displayName": "CI Fixture — macOS Sonoma Chrome US",
+    "tags": [
+      "template:macos-sonoma-chrome-us",
+      "fixture",
+      "ci"
+    ],
+    "notes": "Deterministic fixture for the v0.10 Detection Lab CI gate. Do not hand-edit — regenerate via `pnpm build-fixture-personas`.",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "updatedAt": "1970-01-01T00:00:00.000Z",
+    "lastLaunchedAt": null,
+    "launchCount": 0
+  },
+  "system": {
+    "os": {
+      "family": "macos",
+      "version": "14.6.1",
+      "arch": "arm64",
+      "platformLabel": "MacIntel"
+    },
+    "locale": "en-US",
+    "languages": [
+      "en-US",
+      "en"
+    ],
+    "timezone": "America/Los_Angeles",
+    "screen": {
+      "width": 1470,
+      "height": 956,
+      "availWidth": 1470,
+      "availHeight": 931,
+      "colorDepth": 30,
+      "pixelDepth": 30,
+      "devicePixelRatio": 2
+    }
+  },
+  "browser": {
+    "brand": "chrome",
+    "majorVersion": 130,
+    "fullVersion": "130.0.6723.117"
+  },
+  "hardware": {
+    "cpu": {
+      "cores": 8,
+      "modelName": "Apple M2"
+    },
+    "deviceMemoryGb": 8,
+    "gpu": {
+      "vendor": "apple",
+      "webglVendor": "Google Inc. (Apple)",
+      "webglRenderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)"
+    },
+    "audio": {
+      "sampleRate": 48000,
+      "outputLatencySec": 0.015,
+      "outputDeviceCount": 1,
+      "inputDeviceCount": 1
+    },
+    "maxTouchPoints": 0
+  },
+  "fingerprint": {
+    "canvas": {
+      "noiseSeed": "61ccde21",
+      "noiseStrength": 2
+    },
+    "webgl": {
+      "noiseSeed": "ed59234c",
+      "perturbReadPixels": true
+    },
+    "audio": {
+      "noiseSeed": "f381794c",
+      "noiseAmplitude": 1e-7,
+      "noiseAmplitudeDb": 0.001
+    },
+    "fontList": {
+      "fonts": [
+        "American Typewriter",
+        "Andale Mono",
+        "Apple Braille",
+        "Apple Chancery",
+        "Apple Color Emoji",
+        "Apple SD Gothic Neo",
+        "Apple Symbols",
+        "AppleGothic",
+        "AppleMyungjo",
+        "Arial",
+        "Arial Black",
+        "Arial Hebrew",
+        "Arial Narrow",
+        "Arial Rounded MT Bold",
+        "Arial Unicode MS",
+        "Avenir",
+        "Avenir Next",
+        "Avenir Next Condensed",
+        "Baskerville",
+        "Big Caslon",
+        "Bodoni 72",
+        "Brush Script MT",
+        "Chalkboard",
+        "Chalkduster",
+        "Charter",
+        "Cochin",
+        "Comic Sans MS",
+        "Copperplate",
+        "Courier",
+        "Courier New",
+        "DIN Alternate",
+        "Didot",
+        "Futura",
+        "Geneva",
+        "Georgia",
+        "Gill Sans",
+        "Helvetica",
+        "Helvetica Neue",
+        "Hiragino Kaku Gothic Pro",
+        "Hiragino Mincho Pro",
+        "Hoefler Text",
+        "Impact",
+        "Iowan Old Style",
+        "Kefa",
+        "Lucida Grande",
+        "Marker Felt",
+        "Menlo",
+        "Microsoft Sans Serif",
+        "Monaco",
+        "Noteworthy",
+        "Optima",
+        "Palatino",
+        "Papyrus",
+        "PingFang HK",
+        "PingFang SC",
+        "PingFang TC",
+        "Plantagenet Cherokee",
+        "San Francisco",
+        "Savoye LET",
+        "Seravek",
+        "SignPainter",
+        "Skia",
+        "Snell Roundhand",
+        "Songti SC",
+        "Songti TC",
+        "Symbol",
+        "Tahoma",
+        "Times",
+        "Times New Roman",
+        "Trattatello",
+        "Trebuchet MS",
+        "Verdana",
+        "Webdings",
+        "Wingdings",
+        "Zapf Dingbats",
+        "Zapfino"
+      ]
+    },
+    "webrtc": {
+      "mode": "proxy_only"
+    }
+  },
+  "network": {}
+}

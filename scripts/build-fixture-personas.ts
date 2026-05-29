@@ -37,8 +37,18 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { type NoiseSeed, type Persona, parsePersona } from '../packages/persona-schema/src/index.js';
-import { createWin11ChromeUsPersona } from '../packages/persona-schema/src/templates/index.js';
+import {
+  type NoiseSeed,
+  type Persona,
+  parsePersona,
+} from '../packages/persona-schema/src/index.js';
+import {
+  createMacosSonomaChromeUsPersona,
+  createUbuntu2204ChromeUsPersona,
+  createWin10ChromeUsPersona,
+  createWin11ChromeUsPersona,
+} from '../packages/persona-schema/src/templates/index.js';
+import type { randomNoiseSeed } from '../packages/persona-schema/src/utils/seed.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -62,25 +72,38 @@ interface Fixture {
   build: () => Persona;
 }
 
-const FIXTURES: Fixture[] = [
-  {
-    id: 'win11-chrome-us',
+/** Shared per-template input (every template factory takes the same shape). */
+interface TemplateInput {
+  id: string;
+  displayName: string;
+  tags?: string[];
+  notes?: string;
+  masterSeed?: ReturnType<typeof randomNoiseSeed>;
+}
+
+/**
+ * Build a deterministic CI fixture from a template factory: stamp the
+ * `template:<id>` tag (CLI `extractTemplateTag` reads it), pin the master
+ * seed, and overwrite createdAt/updatedAt with EPOCH so the JSON is
+ * byte-stable across regenerations.
+ */
+function makeFixture(
+  id: string,
+  displayName: string,
+  create: (input: TemplateInput) => Persona,
+): Fixture {
+  return {
+    id,
     build: () => {
-      const persona = createWin11ChromeUsPersona({
-        id: 'win11-chrome-us',
-        displayName: 'CI Fixture — Win11 Chrome US',
-        // 'template:<id>' tag is what CLI `extractTemplateTag` reads to stamp
-        // raw.persona.template. Keep it first so it's visible in `personas list`.
-        tags: ['template:win11-chrome-us', 'fixture', 'ci'],
+      const persona = create({
+        id,
+        displayName,
+        tags: [`template:${id}`, 'fixture', 'ci'],
         notes:
           'Deterministic fixture for the v0.10 Detection Lab CI gate. ' +
           'Do not hand-edit — regenerate via `pnpm build-fixture-personas`.',
-        masterSeed: MASTER_SEED as ReturnType<
-          typeof import('../packages/persona-schema/src/utils/seed.js').randomNoiseSeed
-        >,
+        masterSeed: MASTER_SEED as ReturnType<typeof randomNoiseSeed>,
       });
-      // Override createdAt / updatedAt — template factory uses `new Date()`
-      // and we need stable bytes across regenerations.
       return {
         ...persona,
         metadata: {
@@ -90,7 +113,26 @@ const FIXTURES: Fixture[] = [
         },
       };
     },
-  },
+  };
+}
+
+// One fixture per template in TEMPLATE_CATALOG — the persona matrix the
+// Detection Lab CI gate (.github/workflows/detection-lab.yml) runs against.
+// Each id needs a matching tests/fixtures/baseline-runs/<id>/baseline.json
+// (or the gate runs in bootstrap mode for that persona).
+const FIXTURES: Fixture[] = [
+  makeFixture('win11-chrome-us', 'CI Fixture — Win11 Chrome US', createWin11ChromeUsPersona),
+  makeFixture('win10-chrome-us', 'CI Fixture — Win10 Chrome US', createWin10ChromeUsPersona),
+  makeFixture(
+    'macos-sonoma-chrome-us',
+    'CI Fixture — macOS Sonoma Chrome US',
+    createMacosSonomaChromeUsPersona,
+  ),
+  makeFixture(
+    'ubuntu-2204-chrome-us',
+    'CI Fixture — Ubuntu 22.04 Chrome US',
+    createUbuntu2204ChromeUsPersona,
+  ),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────

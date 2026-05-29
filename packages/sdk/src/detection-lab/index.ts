@@ -81,6 +81,16 @@ export {
 } from './run-compare.js';
 
 export {
+  buildLeaderboard,
+  renderLeaderboardHtml,
+  type LeaderboardEntry,
+  type LeaderboardRow,
+  type LeaderboardModel,
+  type BuildLeaderboardOptions,
+  type RenderLeaderboardOptions,
+} from './leaderboard.js';
+
+export {
   stripRunForBaseline,
   BASELINE_RUN_ID,
   BASELINE_TIMESTAMP,

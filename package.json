@@ -26,6 +26,7 @@
     "check-sdk-patch-drift": "node scripts/check-sdk-patch-drift.mjs",
     "audit-tarballs": "node scripts/audit-tarballs.mjs",
     "build-fixture-personas": "tsx scripts/build-fixture-personas.ts",
+    "build-leaderboard": "tsx scripts/build-leaderboard.mts",
     "ci-compare-baseline": "node scripts/ci-compare-baseline.mjs",
     "refresh-baseline": "tsx scripts/refresh-baseline.mts",
     "test:refresh-baseline": "tsx scripts/refresh-baseline.test.mts",
