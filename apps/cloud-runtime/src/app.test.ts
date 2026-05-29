@@ -1400,6 +1400,166 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
   });
 });
 
+describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
+  it('MINUTES_PER_PROJECT_PER_MONTH_MAX=0 (默认) → 跳过检查，有历史用量仍成功', async () => {
+    // 默认关闭，即使有大量用量也不会被 block
+    const handle = await getDb();
+    const db = handle.drizzle;
+
+    // Insert 10,000 minutes of usage in current month window
+    await db.insert(usageEvents).values({
+      id: newId('use'),
+      projectId: TEST_PROJECT_ID,
+      sessionId: 'sess_large_usage_001',
+      kind: 'session.minute',
+      value: 10000,
+      ts: new Date().toISOString(),
+    });
+
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(201);
+
+    // Clean up
+    await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
+  });
+
+  it('当月累计已超 MINUTES_PER_PROJECT_PER_MONTH_MAX → 402 Payment Required (quota.minutes_exceeded)', async () => {
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = '60';
+    resetEnvCache();
+
+    const handle = await getDb();
+    const db = handle.drizzle;
+
+    // Insert 60 minutes of usage in current natural month UTC
+    const currentMonthMidIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0)).toISOString();
+    await db.insert(usageEvents).values({
+      id: newId('use'),
+      projectId: TEST_PROJECT_ID,
+      sessionId: 'sess_capped_001',
+      kind: 'session.minute',
+      value: 60,
+      ts: currentMonthMidIso,
+    });
+
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(402);
+
+    const body = (await resp.json()) as {
+      error: {
+        code: string;
+        detail: { usedMinutes: number; quotaMinutes: number; windowFrom: string; windowTo: string };
+      };
+    };
+    expect(body.error.code).toBe('quota.minutes_exceeded');
+    expect(body.error.detail.usedMinutes).toBe(60);
+    expect(body.error.detail.quotaMinutes).toBe(60);
+    expect(body.error.detail.windowFrom).toBeTypeOf('string');
+    expect(body.error.detail.windowTo).toBeTypeOf('string');
+
+    // Clean up
+    await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+  });
+
+  it('自然月窗口外的用量不计入当月 quota 计算', async () => {
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = '60';
+    resetEnvCache();
+
+    const handle = await getDb();
+    const db = handle.drizzle;
+
+    // Insert 100 minutes of usage in PREVIOUS natural month (outside current month window)
+    const prevMonthMid = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 15, 12, 0, 0, 0));
+    await db.insert(usageEvents).values({
+      id: newId('use'),
+      projectId: TEST_PROJECT_ID,
+      sessionId: 'sess_prev_month_001',
+      kind: 'session.minute',
+      value: 100,
+      ts: prevMonthMid.toISOString(),
+    });
+
+    // Create session should succeed since prev month usage doesn't count towards current month
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(201);
+
+    // Clean up
+    await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+  });
+
+  it('月度用量限制是 per-project 隔离的', async () => {
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = '60';
+    resetEnvCache();
+
+    const handle = await getDb();
+    const db = handle.drizzle;
+
+    // TEST project at quota limit
+    const currentMonthMidIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0)).toISOString();
+    await db.insert(usageEvents).values({
+      id: newId('use'),
+      projectId: TEST_PROJECT_ID,
+      sessionId: 'sess_capped_test_001',
+      kind: 'session.minute',
+      value: 60,
+      ts: currentMonthMidIso,
+    });
+
+    const app = createApp();
+
+    // TEST project POST blocked (402)
+    const testResp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(testResp.status).toBe(402);
+
+    // OTHER project has its own separate quota (starts at 0 used) and should succeed
+    const otherResp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(OTHER_API_KEY),
+      body: JSON.stringify({
+        projectId: OTHER_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(otherResp.status).toBe(201);
+
+    // Clean up
+    await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+  });
+});
+
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 11.4 commit 4a: 默认 persona seed 池（让 Stagehand bb.sessions.create({}) 绿）
 // ───────────────────────────────────────────────────────────────────────────

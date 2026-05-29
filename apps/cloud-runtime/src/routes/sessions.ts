@@ -45,6 +45,7 @@ import {
   stickyRegistrySet,
 } from '../sticky/registry.js';
 import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
+import { aggregateUsage, currentMonthWindowUtc } from '../usage/aggregate.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
@@ -400,6 +401,34 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
         retryAfterSeconds: 60,
       },
     );
+  }
+
+  // ── Phase 11.8: per-project monthly browser-minute cap ────────────────
+  // 仅在 MINUTES_PER_PROJECT_PER_MONTH_MAX 配置且 > 0 时启用检查。
+  // 通过 aggregateUsage 捞本自然月 (UTC) 历史已产生用量并比对。
+  if (env.MINUTES_PER_PROJECT_PER_MONTH_MAX > 0) {
+    const { fromIso, toIso } = currentMonthWindowUtc();
+    const totals = await aggregateUsage(handle, auth.projectId, fromIso, toIso);
+    const usedMinutes = totals['session.minute'] ?? 0;
+
+    if (usedMinutes >= env.MINUTES_PER_PROJECT_PER_MONTH_MAX) {
+      audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
+        reason: 'minutes_exceeded',
+        usedMinutes,
+        quotaMinutes: env.MINUTES_PER_PROJECT_PER_MONTH_MAX,
+      });
+      quotaDeniedTotal.inc({ reason: 'minutes' });
+      throw new ApiError(
+        'quota.minutes_exceeded',
+        `project ${auth.projectId} used ${usedMinutes} min this month (quota ${env.MINUTES_PER_PROJECT_PER_MONTH_MAX})`,
+        {
+          usedMinutes,
+          quotaMinutes: env.MINUTES_PER_PROJECT_PER_MONTH_MAX,
+          windowFrom: fromIso,
+          windowTo: toIso,
+        },
+      );
+    }
   }
 
   if (effectiveKeepAlive) {

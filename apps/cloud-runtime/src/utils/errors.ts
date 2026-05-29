@@ -19,6 +19,7 @@ export type ErrorCode =
   | 'pool.keepalive_saturated'
   | 'pool.contexts_saturated'
   | 'quota.sessions_exceeded'
+  | 'quota.minutes_exceeded'
   | 'rate.limit_exceeded'
   | 'session.not_found'
   | 'session.closed'
@@ -53,6 +54,11 @@ const statusByCode: Record<ErrorCode, number> = {
   // closes a live session, so 429 + Retry-After (not 402 like the monthly usage
   // cap). detail = { activeCount, quota, retryAfterSeconds }.
   'quota.sessions_exceeded': 429,
+  // Phase 11.8: per-project monthly browser-minute cap (MINUTES_PER_PROJECT_PER_MONTH_MAX)
+  // hit -- applies to ALL sessions when configured (> 0). Returns 402 Payment Required
+  // because releasing current resources doesn't solve it (user must wait for reset or upgrade).
+  // detail = { usedMinutes, quotaMinutes, windowFrom, windowTo }.
+  'quota.minutes_exceeded': 402,
   'rate.limit_exceeded': 429,
   // Phase 11.6: contextId not found / not owned by caller's project / soft-deleted.
   // Don't distinguish forbidden vs not-found here (avoid resource enumeration leak).
@@ -120,7 +126,7 @@ export function handleApiError(err: Error, c: Context): Response {
   if (isApiError(err)) {
     return c.json(
       apiErrorBody(err),
-      err.status as 400 | 401 | 403 | 404 | 409 | 410 | 422 | 429 | 500 | 503,
+      err.status as 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 500 | 503,
     );
   }
   // unexpected: 不泄漏 stack 给客户端，只在日志里留下
