@@ -210,6 +210,21 @@ export const usageReportTotal = new Counter({
   registers: [metricsRegistry],
 });
 
+// ─── Phase 11.8 per-project quota enforcement ───────────────────────────────
+//
+// createSession 因 per-project 配额被拒的计数。reason=sessions(并发活跃 session 上限,
+// SESSIONS_PER_PROJECT_MAX, 429) | minutes(月度 browser-minutes 上限,
+// MINUTES_PER_PROJECT_PER_MONTH_MAX, 402)。持续高 = 该客户该升档 / 滥用 / cap 设太紧。
+// 不加 project_id label（本期从简控 cardinality；需要分客户时 11.8b 加）。
+
+export const quotaDeniedTotal = new Counter({
+  name: 'quota_denied_total',
+  help:
+    'phase 11.8: createSession 被 per-project 配额拒绝的次数。reason=sessions(并发上限) | minutes(月度用量上限)。',
+  labelNames: ['reason'] as const,
+  registers: [metricsRegistry],
+});
+
 // ─── Phase 11.3a stopped-machine pool ──────────────────────────────────────
 //
 // 这些 counter/gauge 的目的：让 phased rollout（POOL_TARGET_SIZE 0 → 1 → 3）

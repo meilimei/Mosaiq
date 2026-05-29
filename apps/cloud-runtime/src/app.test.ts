@@ -1221,6 +1221,186 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+// Phase 11.8 — per-project quota enforcement
+// ───────────────────────────────────────────────────────────────────────────
+
+describe('Phase 11.8 — per-project concurrent session cap', () => {
+  it('POST session 满 SESSIONS_PER_PROJECT_MAX → 429 quota.sessions_exceeded', async () => {
+    process.env.SESSIONS_PER_PROJECT_MAX = '2';
+    resetEnvCache();
+    const app = createApp();
+
+    // Create 2 normal sessions (keepAlive=false)
+    for (let i = 0; i < 2; i++) {
+      const resp = await app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({
+          projectId: TEST_PROJECT_ID,
+          persona: { inline: PERSONA_FIXTURE },
+        }),
+      });
+      expect(resp.status).toBe(201);
+    }
+
+    // The third should be rejected with 429 quota.sessions_exceeded
+    const overflow = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(overflow.status).toBe(429);
+    expect(overflow.headers.get('Retry-After')).toBe('60');
+
+    const body = (await overflow.json()) as {
+      error: { code: string; detail: { activeCount: number; quota: number } };
+    };
+    expect(body.error.code).toBe('quota.sessions_exceeded');
+    expect(body.error.detail.activeCount).toBe(2);
+    expect(body.error.detail.quota).toBe(2);
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('SESSIONS_PER_PROJECT_MAX=0 → kill switch, 所有新 session 立即 429', async () => {
+    process.env.SESSIONS_PER_PROJECT_MAX = '0';
+    resetEnvCache();
+    const app = createApp();
+
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(429);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('quota.sessions_exceeded');
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('关闭一个 session 后，名额释放 → 下一个 201 成功', async () => {
+    process.env.SESSIONS_PER_PROJECT_MAX = '1';
+    resetEnvCache();
+    const app = createApp();
+
+    const first = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(first.status).toBe(201);
+    const firstId = ((await first.json()) as { id: string }).id;
+
+    // Overflow rejected
+    const overflow = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(overflow.status).toBe(429);
+
+    // DELETE first to free slot
+    const del = await app.request(`/v1/sessions/${firstId}`, {
+      method: 'DELETE',
+      headers: authH(),
+    });
+    expect(del.status).toBe(204);
+
+    // Now it should succeed
+    const retry = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(retry.status).toBe(201);
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('并发配额是 per-project 隔离的', async () => {
+    process.env.SESSIONS_PER_PROJECT_MAX = '1';
+    resetEnvCache();
+    const app = createApp();
+
+    // Fill TEST project quota
+    const a = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(a.status).toBe(201);
+
+    // OTHER project has its own separate quota and should succeed
+    const b = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(OTHER_API_KEY),
+      body: JSON.stringify({
+        projectId: OTHER_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(b.status).toBe(201);
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('keepAlive session 先走总 SESSIONS_PER_PROJECT_MAX，再走 keepAlive 子 cap', async () => {
+    // 总 cap 1，keepAlive 子 cap 5
+    process.env.SESSIONS_PER_PROJECT_MAX = '1';
+    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = '5';
+    resetEnvCache();
+    const app = createApp();
+
+    // Fill total cap with a non-keepAlive session
+    const normal = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(normal.status).toBe(201);
+
+    // Creating a keepAlive session should trigger total sessions cap first (quota.sessions_exceeded 429)
+    const keepAliveOverflow = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        projectId: TEST_PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+        keepAlive: true,
+      }),
+    });
+    expect(keepAliveOverflow.status).toBe(429);
+    const body = (await keepAliveOverflow.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('quota.sessions_exceeded');
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // Phase 11.4 commit 4a: 默认 persona seed 池（让 Stagehand bb.sessions.create({}) 绿）
 // ───────────────────────────────────────────────────────────────────────────
 

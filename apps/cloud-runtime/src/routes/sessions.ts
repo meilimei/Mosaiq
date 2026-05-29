@@ -34,6 +34,7 @@ import { getAuth } from '../middleware/auth.js';
 import { rateLimitTier } from '../middleware/rate-limit.js';
 import {
   mmAcquireDurationSeconds,
+  quotaDeniedTotal,
   sessionsClosedTotal,
   sessionsCreatedTotal,
 } from '../metrics.js';
@@ -364,6 +365,42 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       : null;
 
   const handle = await getDb();
+
+  // ── Phase 11.8: per-project concurrent live-session cap ───────────────
+  // 适用于**所有** session（keepAlive 与否）。补 11.5 只 cap keepAlive 的缺口——
+  // 否则单租户能开到全局 pool 上限、饿死其他客户 + 跑爆 Fly 成本。在 acquire 之前
+  // 拒绝 → 不拨 pod / 不计费 / 不占 slot。keepAlive 子 cap（下方）是更紧的附加限。
+  // 计数 WHERE project_id AND status='live'：sessions_project_idx 前缀命中 project_id，
+  // cap ≤ 1000 行扫描成本可忽略（同 keepAlive cap 论证）。
+  const liveSessions = await handle.drizzle
+    .select({ id: sessionsTable.id })
+    .from(sessionsTable)
+    .where(
+      and(
+        eq(sessionsTable.projectId, auth.projectId),
+        eq(sessionsTable.status, 'live'),
+      ),
+    );
+  const liveSessionCount = liveSessions.length;
+  if (liveSessionCount >= env.SESSIONS_PER_PROJECT_MAX) {
+    // c.header 必须在 throw 之前 set 才会被 Hono onError 路径保留（同 keepAlive cap）
+    c.header('Retry-After', '60');
+    audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
+      reason: 'sessions_exceeded',
+      activeCount: liveSessionCount,
+      quota: env.SESSIONS_PER_PROJECT_MAX,
+    });
+    quotaDeniedTotal.inc({ reason: 'sessions' });
+    throw new ApiError(
+      'quota.sessions_exceeded',
+      `project ${auth.projectId} has ${liveSessionCount} live sessions (quota ${env.SESSIONS_PER_PROJECT_MAX})`,
+      {
+        activeCount: liveSessionCount,
+        quota: env.SESSIONS_PER_PROJECT_MAX,
+        retryAfterSeconds: 60,
+      },
+    );
+  }
 
   if (effectiveKeepAlive) {
     // ── quota check ────────────────────────────────────────────

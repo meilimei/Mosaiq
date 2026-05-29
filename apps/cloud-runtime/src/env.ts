@@ -251,6 +251,29 @@ const EnvSchema = z
      */
     STRIPE_API_KEY: z.string().default(''),
 
+    // ─── Phase 11.8 per-project quota enforcement ───────────────────────────
+    // 见 docs/PHASE-11.8-QUOTA-ENFORCEMENT.md。11.7 测量用量，11.8 强制限额。
+    /**
+     * 每 project 同时 status='live' 的 session 上限（keepAlive 与否都算）。补上
+     * 11.5 只 cap keepAlive 的缺口——普通 session 此前只受全局 pool 约束，单租户能
+     * 独占整个池 + 跑爆 Fly 成本。默认 50 = 成本护栏（50 pods/project 已是 generous
+     * alpha 顶）。范围 [0, 1000]：
+     * - 0 = kill switch，该 project 所有新 session 立即 429 quota.sessions_exceeded
+     *       （暂停欠费 / 滥用租户）
+     * - 应 ≥ KEEPALIVE_SESSIONS_PER_PROJECT_MAX（总 cap 是 keepAlive 子 cap 的超集）。
+     *   不强制校验：若设得更小，总 cap 先触发、keepAlive 子 cap 形同虚设——仍是正确
+     *   行为（取两者更小值生效），只是冗余，故留作 advisory 而非 superRefine 硬约束。
+     */
+    SESSIONS_PER_PROJECT_MAX: z.coerce.number().int().min(0).max(1000).default(50),
+    /**
+     * 每 project 每自然月（UTC）billable browser-minutes 上限。复用 11.7 的
+     * aggregateUsage 在 createSession 时比对当月累计。默认 0 = 关闭（不设顶，且跳过
+     * SUM 查询；无 plan 定义前不 block 任何人）。范围 [0, 10_000_000]：
+     * - > 0 且本月累计 ≥ 上限 → 402 quota.minutes_exceeded（软上限：usage 在 session
+     *   关闭时才 emit，in-flight 未计入，客户可能小幅超额——见 phase doc §5）
+     */
+    MINUTES_PER_PROJECT_PER_MONTH_MAX: z.coerce.number().int().min(0).max(10_000_000).default(0),
+
     PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
   })
   .superRefine((env, ctx) => {

@@ -18,6 +18,7 @@ export type ErrorCode =
   | 'pool.pod_unhealthy'
   | 'pool.keepalive_saturated'
   | 'pool.contexts_saturated'
+  | 'quota.sessions_exceeded'
   | 'rate.limit_exceeded'
   | 'session.not_found'
   | 'session.closed'
@@ -46,6 +47,12 @@ const statusByCode: Record<ErrorCode, number> = {
   // Phase 11.5: per-project keepAlive quota hit; client should either close an
   // existing keepAlive session or wait (Retry-After header included in response).
   'pool.keepalive_saturated': 429,
+  // Phase 11.8: per-project concurrent live-session cap (SESSIONS_PER_PROJECT_MAX)
+  // hit -- applies to ALL sessions (the keepalive_saturated cap is a tighter
+  // sub-limit checked additionally for keepAlive). Retryable after the client
+  // closes a live session, so 429 + Retry-After (not 402 like the monthly usage
+  // cap). detail = { activeCount, quota, retryAfterSeconds }.
+  'quota.sessions_exceeded': 429,
   'rate.limit_exceeded': 429,
   // Phase 11.6: contextId not found / not owned by caller's project / soft-deleted.
   // Don't distinguish forbidden vs not-found here (avoid resource enumeration leak).
