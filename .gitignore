@@ -49,6 +49,8 @@ dist-electron/
 dist-tsc/
 build/
 out/
+# Generated Detection Lab leaderboard (built fresh by scripts/build-leaderboard.mts / CI).
+site/
 .next/
 .nuxt/
 .svelte-kit/

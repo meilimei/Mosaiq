@@ -1,0 +1,101 @@
+# Detection Lab Leaderboard — public static-site publish.
+#
+# Regenerates the public leaderboard (scripts/build-leaderboard.mts) from the
+# committed baseline runs under tests/fixtures/baseline-runs/ and publishes it
+# to GitHub Pages.
+#
+# Why a separate workflow from detection-lab.yml?
+#   - detection-lab.yml is the *regression gate*: it runs real Chromium against
+#     live sites and fails on regressions (~15 min, network-bound).
+#   - this workflow is *pure projection*: it reads already-committed baseline
+#     JSON and emits a static HTML page (<5s, no browser). Cheap enough to run
+#     on every relevant PR (build-only, no deploy) for validation.
+#
+# Trigger policy:
+#   - pull_request: build-only (validate the generator runs + uploads the page
+#     as an artifact); never deploys.
+#   - push:main: build + deploy to Pages (the canonical published board).
+#   - workflow_dispatch: manual rebuild/redeploy handle.
+#
+# NOTE: deploying requires GitHub Pages to be enabled for the repo
+# (Settings → Pages → Source: GitHub Actions). Until a baseline.json is
+# committed under tests/fixtures/baseline-runs/<persona>/, the page renders an
+# empty-state ("no runs yet"); see tests/fixtures/baseline-runs/README.md for
+# the bootstrap flow.
+
+name: Leaderboard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/sdk/src/detection-lab/leaderboard.ts'
+      - 'scripts/build-leaderboard.mts'
+      - 'tests/fixtures/baseline-runs/**'
+      - '.github/workflows/leaderboard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/sdk/src/detection-lab/leaderboard.ts'
+      - 'scripts/build-leaderboard.mts'
+      - 'tests/fixtures/baseline-runs/**'
+      - '.github/workflows/leaderboard.yml'
+  workflow_dispatch: {}
+
+# Cancel superseded builds on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build leaderboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Pure projection from committed baselines → ./_site/index.html.
+      # tsx imports the SDK + persona-schema sources directly (the leaderboard
+      # module is dependency-free), so no prior package build is needed.
+      - name: Build leaderboard
+        run: pnpm build-leaderboard --out ./_site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    name: deploy to Pages
+    # Only publish from main / manual dispatch — never from PRs.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Minimum scope for the Pages deploy action.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

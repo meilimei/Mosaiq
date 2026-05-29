@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "id": "ubuntu-2204-chrome-us",
+    "displayName": "CI Fixture — Ubuntu 22.04 Chrome US",
+    "tags": [
+      "template:ubuntu-2204-chrome-us",
+      "fixture",
+      "ci"
+    ],
+    "notes": "Deterministic fixture for the v0.10 Detection Lab CI gate. Do not hand-edit — regenerate via `pnpm build-fixture-personas`.",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "updatedAt": "1970-01-01T00:00:00.000Z",
+    "lastLaunchedAt": null,
+    "launchCount": 0
+  },
+  "system": {
+    "os": {
+      "family": "linux",
+      "version": "6.8.0-45-generic",
+      "arch": "x86_64",
+      "platformLabel": "Linux x86_64"
+    },
+    "locale": "en-US",
+    "languages": [
+      "en-US",
+      "en"
+    ],
+    "timezone": "America/New_York",
+    "screen": {
+      "width": 1920,
+      "height": 1080,
+      "availWidth": 1920,
+      "availHeight": 1052,
+      "colorDepth": 24,
+      "pixelDepth": 24,
+      "devicePixelRatio": 1
+    }
+  },
+  "browser": {
+    "brand": "chrome",
+    "majorVersion": 130,
+    "fullVersion": "130.0.6723.116"
+  },
+  "hardware": {
+    "cpu": {
+      "cores": 8,
+      "modelName": "Intel Core i7-12700H"
+    },
+    "deviceMemoryGb": 8,
+    "gpu": {
+      "vendor": "intel",
+      "webglVendor": "Google Inc. (Intel)",
+      "webglRenderer": "ANGLE (Intel, Mesa Intel(R) UHD Graphics (CML GT2) (0x00009BC4), OpenGL 4.6 (Core Profile) Mesa 23.2.1-1ubuntu3.1~22.04.2)"
+    },
+    "audio": {
+      "sampleRate": 48000,
+      "outputLatencySec": 0.012,
+      "outputDeviceCount": 1,
+      "inputDeviceCount": 1
+    },
+    "maxTouchPoints": 0
+  },
+  "fingerprint": {
+    "canvas": {
+      "noiseSeed": "61ccde21",
+      "noiseStrength": 2
+    },
+    "webgl": {
+      "noiseSeed": "ed59234c",
+      "perturbReadPixels": true
+    },
+    "audio": {
+      "noiseSeed": "f381794c",
+      "noiseAmplitude": 1e-7,
+      "noiseAmplitudeDb": 0.001
+    },
+    "fontList": {
+      "fonts": [
+        "Bitstream Charter",
+        "C059",
+        "D050000L",
+        "DejaVu Math TeX Gyre",
+        "DejaVu Sans",
+        "DejaVu Sans Mono",
+        "DejaVu Serif",
+        "Droid Sans Fallback",
+        "FreeMono",
+        "FreeSans",
+        "FreeSerif",
+        "KacstArt",
+        "KacstBook",
+        "KacstDecorative",
+        "KacstDigital",
+        "KacstFarsi",
+        "KacstLetter",
+        "KacstNaskh",
+        "KacstOffice",
+        "KacstOne",
+        "KacstPen",
+        "KacstPoster",
+        "KacstQurn",
+        "KacstScreen",
+        "KacstTitle",
+        "KacstTitleL",
+        "Khmer OS",
+        "Khmer OS System",
+        "Liberation Mono",
+        "Liberation Sans",
+        "Liberation Sans Narrow",
+        "Liberation Serif",
+        "Lohit Bengali",
+        "Lohit Devanagari",
+        "Lohit Gujarati",
+        "Lohit Punjabi",
+        "Lohit Tamil",
+        "Loma",
+        "Mukti Narrow",
+        "Nimbus Mono PS",
+        "Nimbus Roman",
+        "Nimbus Sans",
+        "Nimbus Sans Narrow",
+        "Noto Color Emoji",
+        "Noto Mono",
+        "Noto Sans",
+        "Noto Sans Mono",
+        "Noto Serif",
+        "OpenSymbol",
+        "P052",
+        "Padauk",
+        "Phetsarath OT",
+        "Sawasdee",
+        "Standard Symbols PS",
+        "Tibetan Machine Uni",
+        "Tlwg Mono",
+        "Tlwg Typewriter",
+        "Tlwg Typist",
+        "Tlwg Typo",
+        "URW Bookman",
+        "URW Gothic",
+        "Ubuntu",
+        "Ubuntu Condensed",
+        "Ubuntu Mono",
+        "Umpush",
+        "Waree",
+        "Z003"
+      ]
+    },
+    "webrtc": {
+      "mode": "proxy_only"
+    }
+  },
+  "network": {}
+}
