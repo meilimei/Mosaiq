@@ -460,6 +460,139 @@ describe('GET / DELETE /v1/sessions/:id', () => {
   });
 });
 
+describe('GET /v1/sessions — list (Browserbase sessions.list() compat, phase 11.9)', () => {
+  async function createOne(
+    opts: { token?: string; userMetadata?: Record<string, unknown> } = {},
+  ): Promise<string> {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(opts.token),
+      body: JSON.stringify({
+        persona: { inline: PERSONA_FIXTURE },
+        ...(opts.userMetadata ? { userMetadata: opts.userMetadata } : {}),
+      }),
+    });
+    expect(resp.status).toBe(201);
+    return ((await resp.json()) as { id: string }).id;
+  }
+
+  it('空 project → 裸数组 []', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', { headers: authH() });
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as unknown;
+    expect(Array.isArray(body)).toBe(true);
+    expect(body).toEqual([]);
+  });
+
+  it('返回本 project 全部 session，opened_at DESC（最新优先）', async () => {
+    const first = await createOne();
+    const second = await createOne();
+    const third = await createOne();
+
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', { headers: authH() });
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as Array<{ id: string }>;
+    expect(body).toHaveLength(3);
+    expect(body.map((s) => s.id)).toEqual([third, second, first]);
+  });
+
+  it('project 隔离：A 的 key 看不到 B 的 session', async () => {
+    await createOne(); // belongs to TEST_PROJECT
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', { headers: authH(OTHER_API_KEY) });
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as unknown[];
+    expect(body).toEqual([]);
+  });
+
+  it('列表元素形状 = GET /:id（含 BB-compat 字段）', async () => {
+    const id = await createOne();
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', { headers: authH() });
+    const body = (await resp.json()) as Array<Record<string, unknown>>;
+    expect(body).toHaveLength(1);
+    const s = body[0]!;
+    expect(s['id']).toBe(id);
+    expect(s['status']).toBe('live');
+    expect(s['connectUrl']).toMatch(/\?token=sks_/);
+    expect(s['signingKey']).toMatch(/^sks_[A-Za-z0-9_-]{22}$/);
+    expect(s['keepAlive']).toBe(false);
+    expect(s['cdp_url']).toBe(s['connectUrl']);
+    expect(s['stealth']).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
+  });
+
+  it('status=RUNNING 只返回 live；status=COMPLETED 只返回已关闭', async () => {
+    const liveId = await createOne();
+    const toClose = await createOne();
+    const app = createApp();
+    await app.request(`/v1/sessions/${toClose}`, { method: 'DELETE', headers: authH() });
+
+    const running = (await (
+      await app.request('/v1/sessions?status=RUNNING', { headers: authH() })
+    ).json()) as Array<{ id: string }>;
+    expect(running.map((s) => s.id)).toEqual([liveId]);
+
+    const completed = (await (
+      await app.request('/v1/sessions?status=COMPLETED', { headers: authH() })
+    ).json()) as Array<{ id: string }>;
+    expect(completed.map((s) => s.id)).toEqual([toClose]);
+  });
+
+  it('status=live（原生小写）等价 RUNNING', async () => {
+    const liveId = await createOne();
+    const app = createApp();
+    const body = (await (
+      await app.request('/v1/sessions?status=live', { headers: authH() })
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual([liveId]);
+  });
+
+  it('status=garbage → 422 request.invalid', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions?status=garbage', { headers: authH() });
+    expect(resp.status).toBe(422);
+    const body = (await resp.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('request.invalid');
+  });
+
+  it('q=key:value 过滤 userMetadata', async () => {
+    const prod = await createOne({ userMetadata: { env: 'prod' } });
+    await createOne({ userMetadata: { env: 'staging' } });
+    const app = createApp();
+    const body = (await (
+      await app.request('/v1/sessions?q=env:prod', { headers: authH() })
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual([prod]);
+  });
+
+  it('limit 截断结果（取最新的 N 条）', async () => {
+    await createOne();
+    const second = await createOne();
+    const app = createApp();
+    const body = (await (
+      await app.request('/v1/sessions?limit=1', { headers: authH() })
+    ).json()) as Array<{ id: string }>;
+    expect(body.map((s) => s.id)).toEqual([second]);
+  });
+
+  it('limit 越界（0 / 99999）→ 422 request.invalid', async () => {
+    const app = createApp();
+    const zero = await app.request('/v1/sessions?limit=0', { headers: authH() });
+    expect(zero.status).toBe(422);
+    const huge = await app.request('/v1/sessions?limit=99999', { headers: authH() });
+    expect(huge.status).toBe(422);
+  });
+
+  it('无 token → 401', async () => {
+    const app = createApp();
+    const resp = await app.request('/v1/sessions');
+    expect(resp.status).toBe(401);
+  });
+});
+
 describe('/v1/personas', () => {
   it('POST + GET 流程', async () => {
     const app = createApp();
