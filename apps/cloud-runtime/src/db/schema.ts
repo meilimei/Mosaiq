@@ -23,9 +23,14 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  createdAt: text('created_at')
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP`),
+  /**
+   * Phase 11.7b: Stripe customer id (`cus_...`) this project's billable usage is
+   * attributed to. NULL = not yet wired to billing; the StripeMeterReporter
+   * refuses to push usage for a project without a mapping (rather than silently
+   * dropping billable minutes). Set via the admin helper `setProjectStripeCustomer`.
+   */
+  stripeCustomerId: text('stripe_customer_id'),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -43,9 +48,7 @@ export const apiKeys = sqliteTable(
     keyHash: text('key_hash').notNull(),
     /** UI 显示用前缀，如 'msq_sk_live_xxxxxxxx' */
     prefix: text('prefix').notNull(),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     revokedAt: text('revoked_at'),
     lastUsedAt: text('last_used_at'),
   },
@@ -75,14 +78,10 @@ export const sessions = sqliteTable(
     cdpInternalUrl: text('cdp_internal_url').notNull(),
     /** 控制平面对外暴露的 URL，cached 在 session 创建时算好以便重发 */
     cdpPublicUrl: text('cdp_public_url').notNull(),
-    openedAt: text('opened_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    openedAt: text('opened_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     closedAt: text('closed_at'),
     expiresAt: text('expires_at').notNull(),
-    lastSeenAt: text('last_seen_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    lastSeenAt: text('last_seen_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     clientAddr: text('client_addr'),
     clientLabel: text('client_label'),
     errorMessage: text('error_message'),
@@ -165,11 +164,7 @@ export const sessions = sqliteTable(
      * still get index-only access; the trailing `last_seen_at` keeps the
      * range predicate sargable.
      */
-    keepAliveIdleIdx: index('sessions_keepalive_idle_idx').on(
-      t.status,
-      t.keepAlive,
-      t.lastSeenAt,
-    ),
+    keepAliveIdleIdx: index('sessions_keepalive_idle_idx').on(t.status, t.keepAlive, t.lastSeenAt),
     /**
      * Phase 11.6: locate sessions by their bound context (used at session
      * close to clear `contexts.active_session_id`, and on context delete to
@@ -247,9 +242,7 @@ export type ContextRow = typeof contexts.$inferSelect;
     }),
     activeSessionAcquiredAt: text('active_session_acquired_at'),
 
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     /** ISO timestamp of last successful snapshot. NULL = never snapshotted (empty). */
     lastSnapshotAt: text('last_snapshot_at'),
     /**
@@ -289,12 +282,8 @@ export const personas = sqliteTable(
     source: text('source').notNull(),
     /** 整个 Persona JSON，schema 由 @mosaiq/persona-schema parse 校验 */
     personaJson: text('persona_json').notNull(),
-    createdAt: text('created_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text('updated_at')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => ({
     projectIdx: index('personas_project_idx').on(t.projectId),
@@ -318,9 +307,7 @@ export const usageEvents = sqliteTable(
     kind: text('kind').notNull(),
     /** 数值，比如 minute 数；sqlite 没有 numeric，用 real */
     value: integer('value', { mode: 'number' }).notNull(),
-    ts: text('ts')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    ts: text('ts').notNull().default(sql`CURRENT_TIMESTAMP`),
     /**
      * Phase 11.7: NULL = 还没推送给 Stripe Metered；非 NULL = 推送成功的时间戳。
      * usage-report job 只捞 `reported_at IS NULL` 的行，推送成功后批量回填。
@@ -357,9 +344,7 @@ export const auditEvents = sqliteTable(
     /** 'ok' | 'denied' | 'errored' */
     result: text('result').notNull(),
     ip: text('ip'),
-    ts: text('ts')
-      .notNull()
-      .default(sql`CURRENT_TIMESTAMP`),
+    ts: text('ts').notNull().default(sql`CURRENT_TIMESTAMP`),
     /** JSON */
     detailJson: text('detail_json'),
   },

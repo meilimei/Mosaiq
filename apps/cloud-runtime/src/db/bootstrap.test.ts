@@ -75,9 +75,7 @@ describe('ensureSchema', () => {
     await ensureSchema();
 
     // 3. 验证：keep_alive 列存在
-    const cols = handle.drizzle.all(
-      sql`PRAGMA table_info(sessions)`,
-    ) as Array<{ name: string }>;
+    const cols = handle.drizzle.all(sql`PRAGMA table_info(sessions)`) as Array<{ name: string }>;
     const colNames = cols.map((c) => c.name);
     expect(colNames).toContain('keep_alive');
     expect(colNames).toContain('user_metadata');
@@ -135,18 +133,16 @@ describe('ensureSchema', () => {
     await ensureSchema();
 
     // 1. sessions 加了 context_id + context_persist 列
-    const sessionCols = handle.drizzle.all(
-      sql`PRAGMA table_info(sessions)`,
-    ) as Array<{ name: string }>;
+    const sessionCols = handle.drizzle.all(sql`PRAGMA table_info(sessions)`) as Array<{
+      name: string;
+    }>;
     const sessionColNames = sessionCols.map((c) => c.name);
     expect(sessionColNames).toContain('context_id');
     expect(sessionColNames).toContain('context_persist');
     expect(sessionColNames).toContain('keep_alive'); // 旧列保留
 
     // 2. contexts 表存在 + 关键列就位
-    const ctxCols = handle.drizzle.all(
-      sql`PRAGMA table_info(contexts)`,
-    ) as Array<{ name: string }>;
+    const ctxCols = handle.drizzle.all(sql`PRAGMA table_info(contexts)`) as Array<{ name: string }>;
     const ctxColNames = ctxCols.map((c) => c.name);
     expect(ctxColNames).toContain('id');
     expect(ctxColNames).toContain('project_id');
@@ -199,9 +195,9 @@ describe('ensureSchema', () => {
     await ensureSchema();
 
     // 1. reported_at 列已加
-    const cols = handle.drizzle.all(
-      sql`PRAGMA table_info(usage_events)`,
-    ) as Array<{ name: string }>;
+    const cols = handle.drizzle.all(sql`PRAGMA table_info(usage_events)`) as Array<{
+      name: string;
+    }>;
     expect(cols.map((c) => c.name)).toContain('reported_at');
 
     // 2. 老行的 reported_at = NULL（会被 report job 拾起）
@@ -215,6 +211,32 @@ describe('ensureSchema', () => {
       sql`SELECT name FROM sqlite_master WHERE type='index' AND name='usage_events_unreported_idx'`,
     ) as Array<{ name: string }>;
     expect(idx).toHaveLength(1);
+  });
+
+  /**
+   * Phase 11.7b upgrade-path regression：旧 projects 表（无 stripe_customer_id 列）。
+   * 老行迁移后 stripe_customer_id 默认 NULL（未接计费），StripeMeterReporter 会拒绝
+   * 推送其用量直到运维补上映射。
+   */
+  it('upgrade 路径：旧 projects 表（无 stripe_customer_id 列）→ ensureSchema 加列，老行默认 NULL', async () => {
+    const handle = await getDb();
+    handle.drizzle.run(sql`DROP TABLE IF EXISTS projects`);
+    handle.drizzle.run(sql`CREATE TABLE projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    handle.drizzle.run(sql`INSERT INTO projects (id, name) VALUES ('proj_legacy', 'legacy')`);
+
+    await ensureSchema();
+
+    const cols = handle.drizzle.all(sql`PRAGMA table_info(projects)`) as Array<{ name: string }>;
+    expect(cols.map((c) => c.name)).toContain('stripe_customer_id');
+
+    const legacy = handle.drizzle.all(
+      sql`SELECT stripe_customer_id FROM projects WHERE id = 'proj_legacy'`,
+    ) as Array<{ stripe_customer_id: string | null }>;
+    expect(legacy[0]?.stripe_customer_id).toBeNull();
   });
 });
 

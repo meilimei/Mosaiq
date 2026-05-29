@@ -18,6 +18,7 @@ const STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    stripe_customer_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
 
@@ -192,6 +193,14 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     column: 'reported_at',
     alterSql: `ALTER TABLE usage_events ADD COLUMN reported_at TEXT`,
   },
+  {
+    // Phase 11.7b: per-project Stripe customer mapping. Nullable — pre-existing
+    // projects migrate to NULL (not yet wired to billing). The StripeMeterReporter
+    // refuses to push usage for an unmapped project. See docs/PHASE-11.7-USAGE-METERING.md §11.7b.
+    table: 'projects',
+    column: 'stripe_customer_id',
+    alterSql: `ALTER TABLE projects ADD COLUMN stripe_customer_id TEXT`,
+  },
 ];
 
 /**
@@ -234,9 +243,9 @@ export async function ensureSchema(): Promise<void> {
   }
 
   for (const { table, column, alterSql } of COLUMN_ADDITIONS) {
-    const cols = handle.drizzle.all(
-      sql.raw(`PRAGMA table_info(${table})`),
-    ) as Array<{ name: string }>;
+    const cols = handle.drizzle.all(sql.raw(`PRAGMA table_info(${table})`)) as Array<{
+      name: string;
+    }>;
     if (!cols.some((c) => c.name === column)) {
       handle.drizzle.run(sql.raw(alterSql));
       log.info({ table, column }, 'schema migrated: column added');
