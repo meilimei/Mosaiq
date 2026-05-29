@@ -144,9 +144,17 @@ sessionsRoute.get('/', rateLimitTier('read'), async (c) => {
 
 ---
 
-## 7. 后续（留 future）
+## 7. 后续
+
+已交付（同 phase 11.9）：
+
+- `packages/cloud-sdk` 原生封装 `client.listSessions({ status?, q?, limit? })` → `SessionInfo[]`
+  （沿用现有扁平方法命名 `createSession` / `getSession` / `closeSession`，而非嵌套 `.sessions` 命名空间）。
+  状态过滤入参类型 `ListSessionsStatus` 同时接受原生小写与 BB 大写别名；映射与 `getSession` 共用同一套 snake_case → camelCase 规则。
+
+留 future：
 
 - 游标 / `offset` 分页（量级触发）
 - BB `q` 全语法（`user_metadata['key']:'value'` 引号嵌套解析）
-- `packages/cloud-sdk` 加原生 `client.sessions.list()` 封装 + e2e smoke
+- cloud-sdk `listSessions` 的 live e2e smoke（当前为 fake-fetch 单测覆盖）
 - `opened_at` / `expires_at` 范围过滤
