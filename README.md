@@ -55,6 +55,9 @@ await browser.close();
 
 **配额与限额强制**（phase 11.8 起）：在 pod 分配前拦截并阻断超额请求以防止滥用并控制 Fly 运营成本。(1) 并发活跃 session 上限 `SESSIONS_PER_PROJECT_MAX`（默认 50，设为 0 作为紧急 kill switch 阻断该 project 所有新请求，返回 429 + Retry-After: 60）；(2) 月度 browser-minutes 软上限 `MINUTES_PER_PROJECT_PER_MONTH_MAX`（默认 0 = 关闭，>0 触发月度额度拦截并返回 402 Payment Required）。
 
+**Session 列表**（phase 11.9 起）：`GET /v1/sessions` 补齐 Browserbase `bb.sessions.list()` 兼容——project 隔离、`opened_at` 倒序，支持 `status`（同时接受 BB 大写 `RUNNING`/`COMPLETED`/`ERROR`/`TIMED_OUT` 与原生 `live`/`closed`）、`q`（按 `userMetadata` 过滤）、`limit`（默认 100）。返回 BB SDK 期望的裸数组，元素形状与 `GET /v1/sessions/:id` 一致。
+
+→ **[docs/PHASE-11.9-SESSIONS-LIST.md](./docs/PHASE-11.9-SESSIONS-LIST.md)** — `GET /v1/sessions` 列表端点（Browserbase sessions.list() 兼容）设计
 → **[docs/PHASE-11.8-QUOTA-ENFORCEMENT.md](./docs/PHASE-11.8-QUOTA-ENFORCEMENT.md)** — per-project 并发 sessions + 自然月 browser-minutes 配额强制设计
 → **[docs/PHASE-11.7-USAGE-METERING.md](./docs/PHASE-11.7-USAGE-METERING.md)** — browser-minutes 计费埋点 + GET /v1/usage + MeterReporter 抽象 + report job（11.7a 代码完成，真 Stripe 留 11.7b）
 → **[docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md](./docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md)** — Browserbase Contexts API（跨 session 持久化加密 user-data-dir：cookies / localStorage / IndexedDB）

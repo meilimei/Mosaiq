@@ -3,6 +3,7 @@
  *
  * 设计稿 §5.1-5.4：
  *   POST   /v1/sessions          —— 创建 session（acquire machine + 入库）
+ *   GET    /v1/sessions          —— 列表（Browserbase sessions.list() 兼容，phase 11.9）
  *   GET    /v1/sessions/:id      —— 取详情
  *   DELETE /v1/sessions/:id      —— 幂等关闭
  *
@@ -12,7 +13,7 @@
  */
 
 import { Hono } from 'hono';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -253,6 +254,21 @@ function shapeSession(
     contextId: row.contextId,
     userMetadata: userMetadataParsed,
   };
+}
+
+/**
+ * 从 session row 的 `metadataJson` 解析出 stealth 选项。解析失败 / 缺字段 →
+ * 回退到默认（全开）。GET /:id 与 GET /（list）共用，保证两条路径 stealth
+ * 输出一致。
+ */
+function stealthFromRow(row: typeof sessionsTable.$inferSelect): StealthOpts {
+  const fallback: StealthOpts = { inject: true, humanize: true, rebrowserPatches: true };
+  try {
+    const meta = JSON.parse(row.metadataJson) as { stealth?: StealthOpts };
+    return meta.stealth ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 // ─── POST /v1/sessions ──────────────────────────────────────────────────────
@@ -696,6 +712,92 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   );
 });
 
+// ─── GET /v1/sessions ───────────────────────────────────────────────────────
+// Phase 11.9: Browserbase `sessions.list()` 兼容。project 隔离的 session 列表，
+// 支持 status / q / limit 过滤。详见 docs/PHASE-11.9-SESSIONS-LIST.md。
+
+const ListSessionsQuerySchema = z.object({
+  status: z.string().optional(),
+  q: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
+});
+
+/** Browserbase 大写 status 枚举 → Mosaiq 原生 status 的映射。 */
+const BB_STATUS_ALIASES: Record<string, string> = {
+  RUNNING: 'live',
+  COMPLETED: 'closed',
+  ERROR: 'errored',
+  TIMED_OUT: 'closed',
+};
+/** Mosaiq 原生 status（schema.ts sessions.status 注释）。 */
+const NATIVE_STATUSES = new Set(['requested', 'live', 'closed', 'errored']);
+
+/**
+ * 把客户传的 `status` query 归一到原生 status 值。
+ * 先试 BB 大写别名，再试原生小写；都不命中 → 抛 400。
+ */
+function resolveStatusFilter(status: string): string {
+  const alias = BB_STATUS_ALIASES[status.toUpperCase()];
+  if (alias) return alias;
+  const lower = status.toLowerCase();
+  if (NATIVE_STATUSES.has(lower)) return lower;
+  throw new ApiError('request.invalid', `unknown status filter "${status}"`);
+}
+
+/**
+ * `q` 过滤：`key:value` → 匹配 userMetadata[key] === value（字符串相等）；
+ * 无冒号 → 对 userMetadata 原始 JSON 文本做子串匹配。解析失败一律不匹配。
+ */
+function matchUserMetadata(rawUserMetadata: string, q: string): boolean {
+  const colon = q.indexOf(':');
+  if (colon === -1) return rawUserMetadata.includes(q);
+  const key = q.slice(0, colon);
+  const value = q.slice(colon + 1);
+  try {
+    const parsed = JSON.parse(rawUserMetadata) as Record<string, unknown>;
+    return parsed[key] === value;
+  } catch {
+    return false;
+  }
+}
+
+sessionsRoute.get('/', rateLimitTier('read'), async (c) => {
+  const auth = getAuth(c);
+  const parsed = ListSessionsQuerySchema.safeParse({
+    status: c.req.query('status'),
+    q: c.req.query('q'),
+    limit: c.req.query('limit'),
+  });
+  if (!parsed.success) {
+    throw new ApiError('request.invalid', 'invalid list-sessions query', {
+      issues: parsed.error.issues,
+    });
+  }
+  const { status, q, limit } = parsed.data;
+  const nativeStatus = status !== undefined ? resolveStatusFilter(status) : undefined;
+
+  const handle = await getDb();
+  // project 隔离硬编码在 WHERE 里 —— list 绝不跨租户泄漏。
+  const where = nativeStatus
+    ? and(eq(sessionsTable.projectId, auth.projectId), eq(sessionsTable.status, nativeStatus))
+    : eq(sessionsTable.projectId, auth.projectId);
+
+  const rows = await handle.drizzle
+    .select()
+    .from(sessionsTable)
+    .where(where)
+    .orderBy(desc(sessionsTable.openedAt));
+
+  // q 过滤在应用层（避免 sqlite JSON 函数移植性问题），limit 在 q 之后 slice。
+  const filtered = q ? rows.filter((r) => matchUserMetadata(r.userMetadata, q)) : rows;
+  const limited = filtered.slice(0, limit ?? 100);
+
+  // 裸数组 —— Browserbase SDK sessions.list() 期望 array，不是 { items } 信封。
+  // 这是与原生列表约定的有意分歧（本端点仅为 BB 兼容，无原生消费者）。详见
+  // docs/PHASE-11.9-SESSIONS-LIST.md §4。
+  return c.json(limited.map((row) => shapeSession(row, null, stealthFromRow(row))));
+});
+
 // ─── GET /v1/sessions/:id ───────────────────────────────────────────────────
 
 sessionsRoute.get('/:id', rateLimitTier('read'), async (c) => {
@@ -710,19 +812,11 @@ sessionsRoute.get('/:id', rateLimitTier('read'), async (c) => {
   const row = rows[0];
   if (!row) throw new ApiError('session.not_found', `session ${id} not found`);
 
-  const meta = (() => {
-    try {
-      return JSON.parse(row.metadataJson) as { stealth: StealthOpts; viewport?: { width: number; height: number } };
-    } catch {
-      return { stealth: { inject: true, humanize: true, rebrowserPatches: true } as StealthOpts };
-    }
-  })();
-
   // persona JSON 不存在 sessions 表里，从 personas 取或 metadata 不返回完整 persona
   // —— 这是 v0.11 phase 11.1 的简化：GET 时只返回 stealth + ids。完整 persona 仅在
   // POST 创建时一次返回（client 自己缓存）。Phase 11.4 后 GET 也走 shapeSession，
   // BB-compat 字段同步输出，persona=null。
-  return c.json(shapeSession(row, null, meta.stealth));
+  return c.json(shapeSession(row, null, stealthFromRow(row)));
 });
 
 // ─── DELETE /v1/sessions/:id ────────────────────────────────────────────────
