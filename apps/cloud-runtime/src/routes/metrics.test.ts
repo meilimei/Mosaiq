@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 
 import { createApp } from '../app.js';
 import { ensureSchema } from '../db/bootstrap.js';
@@ -412,5 +413,65 @@ describe('counter wiring', () => {
     process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
     process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
     resetEnvCache();
+  });
+
+  // ─── Phase 11.8: per-project quota metrics ─────────────────────────────────
+
+  it('Phase 11.8: concurrent session cap denied → quota_denied_total{reason="sessions"} increments', async () => {
+    process.env.SESSIONS_PER_PROJECT_MAX = '0'; // 0 = immediate reject
+    resetEnvCache();
+
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(429);
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(/quota_denied_total\{reason="sessions"\}\s+1/);
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('Phase 11.8: monthly minute cap denied → quota_denied_total{reason="minutes"} increments', async () => {
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = '1';
+    resetEnvCache();
+
+    const handle = await getDb();
+    const db = handle.drizzle;
+    const currentMonthMidIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0)).toISOString();
+    await db.insert(usageEvents).values({
+      id: newId('use'),
+      projectId: PROJECT_ID,
+      sessionId: 'sess_quota_metric_01',
+      kind: 'session.minute',
+      value: 5,
+      ts: currentMonthMidIso,
+    });
+
+    const app = createApp();
+    const resp = await app.request('/v1/sessions', {
+      method: 'POST',
+      headers: authH(),
+      body: JSON.stringify({
+        project_id: PROJECT_ID,
+        persona: { inline: PERSONA_FIXTURE },
+      }),
+    });
+    expect(resp.status).toBe(402);
+
+    const m = await app.request('/v1/metrics', { headers: metricsH() });
+    const text = await m.text();
+    expect(text).toMatch(/quota_denied_total\{reason="minutes"\}\s+1/);
+
+    // Clean up
+    await db.delete(usageEvents).where(eq(usageEvents.projectId, PROJECT_ID));
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
   });
 });

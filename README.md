@@ -53,6 +53,9 @@ await browser.close();
 
 **用量计费**（phase 11.7a 起）：session 关闭按 billable browser-minutes（`ceil(时长/60)`，最小 1）落 `usage_events`。`GET /v1/usage?from=&to=`（默认当前自然月）返回 `{ totals: { "session.minute": N }, estimated_cost_usd }`（单价 `$0.06/min`）。后台 usage-report job 周期把未上报用量推给可注入的 `MeterReporter`（11.7a 默认 noop；真 Stripe Metered 推送留 11.7b）。
 
+**配额与限额强制**（phase 11.8 起）：在 pod 分配前拦截并阻断超额请求以防止滥用并控制 Fly 运营成本。(1) 并发活跃 session 上限 `SESSIONS_PER_PROJECT_MAX`（默认 50，设为 0 作为紧急 kill switch 阻断该 project 所有新请求，返回 429 + Retry-After: 60）；(2) 月度 browser-minutes 软上限 `MINUTES_PER_PROJECT_PER_MONTH_MAX`（默认 0 = 关闭，>0 触发月度额度拦截并返回 402 Payment Required）。
+
+→ **[docs/PHASE-11.8-QUOTA-ENFORCEMENT.md](./docs/PHASE-11.8-QUOTA-ENFORCEMENT.md)** — per-project 并发 sessions + 自然月 browser-minutes 配额强制设计
 → **[docs/PHASE-11.7-USAGE-METERING.md](./docs/PHASE-11.7-USAGE-METERING.md)** — browser-minutes 计费埋点 + GET /v1/usage + MeterReporter 抽象 + report job（11.7a 代码完成，真 Stripe 留 11.7b）
 → **[docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md](./docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md)** — Browserbase Contexts API（跨 session 持久化加密 user-data-dir：cookies / localStorage / IndexedDB）
 → **[docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md](./docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md)** — keepAlive 长会话 + sticky pod 路由设计（pod lifecycle / sticky registry / quota / metrics labels）

@@ -192,10 +192,10 @@ quota_denied_total{reason}   counter   reason=sessions|minutes
 
 ## 11. 验收
 
-- [ ] 普通（keepAlive=false）session 满 `SESSIONS_PER_PROJECT_MAX` → 429 quota.sessions_exceeded；关一个即可再建
-- [ ] `SESSIONS_PER_PROJECT_MAX=0` → kill switch；per-project 独立
-- [ ] keepAlive session 计入总 cap（总 cap 先于 keepAlive 子 cap 触发）
-- [ ] `MINUTES_PER_PROJECT_PER_MONTH_MAX=0` → 不检查、不跑 SUM；>0 且本月超额 → 402；窗口外用量不计
-- [ ] 拒绝发生在 acquire 之前（不耗 pod / 不计费 / 不占 slot）
-- [ ] `quota_denied_total{reason}` 两路径自增
-- [ ] 既有 333 测试保持绿；typecheck clean
+- [x] 普通（keepAlive=false）session 满 `SESSIONS_PER_PROJECT_MAX` → 429 quota.sessions_exceeded；关一个即可再建
+- [x] `SESSIONS_PER_PROJECT_MAX=0` → kill switch；per-project 独立
+- [x] keepAlive session 计入总 cap（总 cap 先于 keepAlive 子 cap 触发）
+- [x] `MINUTES_PER_PROJECT_PER_MONTH_MAX=0` → 不检查、不跑 SUM；>0 且本月超额 → 402；窗口外用量不计
+- [x] 拒绝发生在 acquire 之前（不耗 pod / 不计费 / 不占 slot）
+- [x] `quota_denied_total{reason}` 两路径自增
+- [x] 既有 333 测试保持绿；typecheck clean

@@ -156,6 +156,16 @@ primary_region = "iad"
   UNIT_PRICE_USD_PER_MINUTE = "0.06"
   USAGE_REPORT_INTERVAL_MS = "60000"
 
+  # ─── Phase 11.8 per-project quota enforcement ────────────────────────────
+  # 见 docs/PHASE-11.8-QUOTA-ENFORCEMENT.md。11.7 测量用量，11.8 强制限额。
+  #   - SESSIONS_PER_PROJECT_MAX = 50: 所有 session（keepAlive 与否）的并发上限护栏。
+  #     设置为 0 可作为该 project 紧急 kill switch，阻断所有新 session（429）。
+  #   - MINUTES_PER_PROJECT_PER_MONTH_MAX = 0: 月度 browser-minutes 软上限。
+  #     默认 0 = 关闭（不设顶且跳过 SUM 查询；无 plan 定义前不 block 任何人）。
+  #     超额阻断并返回 402 Payment Required。
+  SESSIONS_PER_PROJECT_MAX = "50"
+  MINUTES_PER_PROJECT_PER_MONTH_MAX = "0"
+
   # ─── metrics ─────────────────────────────────────────────────────────────
   # METRICS_TOKEN 不在这里（secret，必须 flyctl secrets set）。
   # 留空 → /v1/metrics 返 404；prod 必须设置。
