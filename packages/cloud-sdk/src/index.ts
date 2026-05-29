@@ -38,6 +38,8 @@ export {
   type CreatedSession,
   type SessionInfo,
   type SessionStatus,
+  type ListSessionsInput,
+  type ListSessionsStatus,
 } from './client.js';
 
 export { ManagedCloudSession, type ManagedCloudSessionOptions } from './session.js';

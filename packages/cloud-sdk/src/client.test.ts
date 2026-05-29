@@ -136,6 +136,88 @@ describe('MosaiqCloudClient.createSession', () => {
   });
 });
 
+describe('MosaiqCloudClient.listSessions', () => {
+  const SESSION_RESPONSE = {
+    id: 'ses_001',
+    project_id: 'proj_test',
+    status: 'live' as const,
+    cdp_url: 'ws://api.test/v1/sessions/ses_001/cdp',
+    persona_id: 'pers_x',
+    stealth: { inject: true, humanize: true, rebrowserPatches: true },
+    expires_at: '2026-06-01T00:00:00Z',
+    last_seen_at: '2026-06-01T00:00:00Z',
+    opened_at: '2026-05-30T00:00:00Z',
+    closed_at: null,
+    client_label: 'test-runner',
+  };
+
+  it('GET /v1/sessions（无参数）→ SessionInfo[]', async () => {
+    let capturedUrl = '';
+    const fetchImpl = makeFakeFetch(async (url) => {
+      capturedUrl = url;
+      return new Response(JSON.stringify([SESSION_RESPONSE]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    const sessions = await client.listSessions();
+    expect(capturedUrl).toBe('http://api.test/v1/sessions');
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]!.id).toBe('ses_001');
+    expect(sessions[0]!.projectId).toBe('proj_test');
+    expect(sessions[0]!.status).toBe('live');
+    expect(sessions[0]!.cdpUrl).toBe(SESSION_RESPONSE.cdp_url);
+    expect(sessions[0]!.personaId).toBe('pers_x');
+    expect(sessions[0]!.openedAt).toBe(SESSION_RESPONSE.opened_at);
+    expect(sessions[0]!.closedAt).toBeNull();
+    expect(sessions[0]!.clientLabel).toBe('test-runner');
+  });
+
+  it('query params 正确拼接（status + q + limit）', async () => {
+    let capturedUrl = '';
+    const fetchImpl = makeFakeFetch(async (url) => {
+      capturedUrl = url;
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    await client.listSessions({ status: 'RUNNING', q: 'env:prod', limit: 10 });
+    const u = new URL(capturedUrl);
+    expect(u.searchParams.get('status')).toBe('RUNNING');
+    expect(u.searchParams.get('q')).toBe('env:prod');
+    expect(u.searchParams.get('limit')).toBe('10');
+  });
+
+  it('空数组正常返回', async () => {
+    const fetchImpl = makeFakeFetch(async () => {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    const sessions = await client.listSessions();
+    expect(sessions).toEqual([]);
+  });
+
+  it('服务端 422 → CloudApiError', async () => {
+    const fetchImpl = makeFakeFetch(async () => {
+      return new Response(
+        JSON.stringify({ error: { code: 'request.invalid', message: 'bad status' } }),
+        { status: 422, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    await expect(client.listSessions({ status: 'garbage' as 'live' })).rejects.toMatchObject({
+      code: 'request.invalid',
+      httpStatus: 422,
+    } as CloudApiError);
+  });
+});
+
 describe('MosaiqCloudClient.health', () => {
   it('不带 Authorization', async () => {
     let captured: RequestInit | undefined;
