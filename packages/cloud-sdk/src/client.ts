@@ -3,6 +3,7 @@
  *
  * v0.11 phase 11.1 surface：
  *   - createSession(input)        → ManagedCloudSession
+ *   - listSessions(opts?)         → SessionInfo[]（phase 11.9）
  *   - getSession(id)              → SessionInfo
  *   - closeSession(id)            幂等
  *   - listPersonas()              当前 project + 全局 seed
@@ -53,6 +54,24 @@ export interface CreateSessionInput {
 }
 
 export type SessionStatus = 'requested' | 'live' | 'closed' | 'errored';
+
+/** Status filter values accepted by listSessions. Includes both Mosaiq native
+ *  lowercase and Browserbase uppercase aliases (server normalizes). */
+export type ListSessionsStatus =
+  | SessionStatus
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'ERROR'
+  | 'TIMED_OUT';
+
+export interface ListSessionsInput {
+  /** Filter by session status. Accepts native lowercase or BB uppercase aliases. */
+  status?: ListSessionsStatus;
+  /** Filter by userMetadata. `key:value` matches userMetadata[key]; else substring. */
+  q?: string;
+  /** Max results (1–1000, default 100). */
+  limit?: number;
+}
 
 export interface CreatedSession {
   id: string;
@@ -182,6 +201,30 @@ export class MosaiqCloudClient {
       closedAt: resp.closed_at,
       clientLabel: resp.client_label,
     };
+  }
+
+  async listSessions(input?: ListSessionsInput): Promise<SessionInfo[]> {
+    const params = new URLSearchParams();
+    if (input?.status !== undefined) params.set('status', input.status);
+    if (input?.q !== undefined) params.set('q', input.q);
+    if (input?.limit !== undefined) params.set('limit', String(input.limit));
+    const qs = params.toString();
+    const path = qs ? `/v1/sessions?${qs}` : '/v1/sessions';
+
+    const resp = await this.#req<GetSessionApiResponse[]>('GET', path);
+    return resp.map((r) => ({
+      id: r.id,
+      projectId: r.project_id,
+      status: r.status,
+      cdpUrl: r.cdp_url,
+      personaId: r.persona_id,
+      stealth: r.stealth,
+      expiresAt: r.expires_at,
+      lastSeenAt: r.last_seen_at,
+      openedAt: r.opened_at,
+      closedAt: r.closed_at,
+      clientLabel: r.client_label,
+    }));
   }
 
   async closeSession(id: string): Promise<void> {
