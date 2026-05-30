@@ -325,7 +325,7 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
   const doInject = (input.stealthInject ?? true) && env.POD_SERVER_INJECT;
   const injectHandle = doInject
     ? await applyServerStealth({
-        internalCdpPort: env.POD_CDP_INTERNAL_PORT,
+        browserWSEndpoint: internalCdpUrl,
         persona: input.persona,
       })
     : null;
