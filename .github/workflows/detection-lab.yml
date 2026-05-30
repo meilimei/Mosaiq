@@ -152,20 +152,26 @@ jobs:
       # if a stale persona with the same id somehow ended up in the cache.
       - name: Seed fixture persona
         run: |
-          pnpm mosaiq personas import \
+          pnpm --silent mosaiq personas import \
             "tests/fixtures/personas/${{ steps.persona.outputs.id }}.json" \
             --on-conflict overwrite
 
       # The heart of the workflow. --quiet suppresses per-site progress
       # lines (would spam the Actions log); --json emits the full
       # DetectionRun to stdout, which we redirect to a file the next step
-      # consumes. --fail-on-hits=none because the comparator (next step)
-      # handles the regression policy; we don't want this step to fail
-      # just because the baseline already had a known hit.
+      # consumes.
+      #
+      # CRITICAL: `pnpm --silent` (NOT plain `pnpm mosaiq`). `pnpm run <script>`
+      # prints a `> mosaiq@0.1.0 mosaiq ...\n> tsx ...` lifecycle header to
+      # STDOUT, which the `>` redirect captures into the candidate file, making
+      # it invalid JSON (`Unexpected token '>'`). This was latent until the first
+      # baseline.json landed — before that, the compare step took the
+      # "baseline missing -> bootstrap, exit 0" path and never parsed the
+      # candidate. `--silent` suppresses the header so the file is pure JSON.
       - name: Run Detection Lab
         id: run
         run: |
-          pnpm mosaiq detection-lab run \
+          pnpm --silent mosaiq detection-lab run \
             "${{ steps.persona.outputs.id }}" \
             --json \
             --quiet \
