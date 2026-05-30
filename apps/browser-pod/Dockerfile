@@ -7,6 +7,11 @@
 FROM node:20.18-bookworm-slim AS build
 WORKDIR /repo
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+# @mosaiq/sdk 是 browser-pod 的依赖（Option A 服务端注入要 buildInjectionConfig +
+# injectAll）。它带一个 postinstall（给 playwright-core 打 rebrowser patch）——那个
+# patch 是给「客户端 playwright」用的，pod 不需要。这里全程跳过 sdk postinstall，
+# 既避免 install 阶段因 scripts/patches 拷贝时序触发的报错，也省掉无用的 patch 步骤。
+ENV MOSAIQ_SDK_SKIP_POSTINSTALL=1
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc tsconfig.base.json ./
 # root package.json 声明了 pnpm.patchedDependencies → patches/playwright-core@1.59.1.patch
@@ -15,22 +20,29 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc tsconfig.base.json .
 # 级的 patch 配置依然要 satisfied。13 KB，几乎免费。
 COPY patches patches/
 COPY packages/persona-schema/package.json packages/persona-schema/
+# @mosaiq/sdk：先拷 package.json + scripts（postinstall 文件需存在，即便被 SKIP env
+# 跳过也要能被 node 执行到再 return）。完整源码稍后 COPY，供 build。
+COPY packages/sdk/package.json packages/sdk/
+COPY packages/sdk/scripts packages/sdk/scripts/
 COPY apps/browser-pod/package.json apps/browser-pod/
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile \
-      --filter @mosaiq/persona-schema --filter @mosaiq/browser-pod
+      --filter @mosaiq/persona-schema --filter @mosaiq/sdk --filter @mosaiq/browser-pod
 
 COPY tsconfig.base.json ./
 COPY packages/persona-schema packages/persona-schema
+COPY packages/sdk packages/sdk
 COPY apps/browser-pod apps/browser-pod
 
 # 防御层：详见 apps/cloud-runtime/Dockerfile 同位置注释 + .dockerignore + commit df5447d。
 # 简言之：清掉 host 灌进来可能污染过的 node_modules，再用 cached pnpm-store 重 link 隔离结构。
+# 构建顺序：persona-schema → sdk（依赖 persona-schema）→ browser-pod（依赖二者）。
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    rm -rf packages/persona-schema/node_modules apps/browser-pod/node_modules && \
+    rm -rf packages/persona-schema/node_modules packages/sdk/node_modules apps/browser-pod/node_modules && \
     pnpm install --frozen-lockfile \
-      --filter @mosaiq/persona-schema --filter @mosaiq/browser-pod && \
+      --filter @mosaiq/persona-schema --filter @mosaiq/sdk --filter @mosaiq/browser-pod && \
     pnpm --filter @mosaiq/persona-schema build && \
+    pnpm --filter @mosaiq/sdk build && \
     pnpm --filter @mosaiq/browser-pod build
 
 # pnpm deploy 把目标 workspace 包 + 所有 prod deps 展平成 symlink-free 目录。

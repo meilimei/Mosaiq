@@ -17,6 +17,8 @@
  *   130 = SIGINT 取消
  */
 
+import { readFileSync } from 'node:fs';
+
 import { runDetectionLabCompare } from './commands/detection-lab/compare.js';
 import { runDetectionLabDeleteRun } from './commands/detection-lab/delete-run.js';
 import { runDetectionLabExportRun } from './commands/detection-lab/export-run.js';
@@ -35,7 +37,22 @@ import { runPersonasTemplatesList } from './commands/personas/templates.js';
 import { runPersonasUpdate } from './commands/personas/update.js';
 import { fmt } from './output.js';
 
-const CLI_VERSION = '0.9.0-dev.0';
+/**
+ * 从 package.json 动态读取版本，避免硬编码常量漂移。
+ * （历史 bug：常量写死 '0.9.0-dev.0' 而 package.json 已是 0.10.0，`mosaiq -v` 输出错版本。）
+ * dist/cli.js 与 src/cli.ts 相对 package.json 都是 '../package.json'，tsc 保结构 + tsx 直跑都成立。
+ */
+function resolveCliVersion(): string {
+  try {
+    const pkgUrl = new URL('../package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8')) as { version?: string };
+    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const CLI_VERSION = resolveCliVersion();
 
 const USAGE = `Mosaiq CLI v${CLI_VERSION}
 

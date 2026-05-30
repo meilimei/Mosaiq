@@ -28,6 +28,19 @@
 import type { InjectionConfig } from './types.js';
 
 export function injectAll(config: InjectionConfig): void {
+  // ── 幂等保护 / idempotency guard (v0.11) ──
+  // 同一 realm 内 injectAll 可能被注册并执行多次，典型来源：
+  //   - cloud 场景下服务端注入（pod 侧，规划中）与客户端 cloud-sdk injectInto()
+  //     可能都 addInitScript，同一文档会顺序执行两遍；
+  //   - 调用方误把 addInitScript 注册了两次。
+  // 重复执行会把已经 wrap 过的 prototype getter 再包一层 Proxy（浪费，且多层
+  // 包装更容易被高级检测器识破为 lie）。这里用 globalThis.__mosaiqStealthState__
+  // 作为「本 realm 已注入」信号：它在下方 stealthState 初始化时才创建，所以首
+  // 次运行不会命中，后续重复运行直接早退，保证每个 realm 只注入一次。
+  if ((globalThis as { __mosaiqStealthState__?: unknown }).__mosaiqStealthState__) {
+    return;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 内联工具：稳定 PRNG + 值覆盖辅助
   // ═══════════════════════════════════════════════════════════════════════════

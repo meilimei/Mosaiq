@@ -1,8 +1,9 @@
 # Releasing Mosaiq
 
-> Maintainer runbook for cutting an npm release of the three publishable
-> packages (`@mosaiq/persona-schema`, `@mosaiq/sdk`, `@mosaiq/cli`) and
-> shipping the Detection Lab CI baseline alongside.
+> Maintainer runbook for cutting an npm release of the publishable packages
+> (`@mosaiq/persona-schema`, `@mosaiq/sdk`, `@mosaiq/cli` on the lock-step 0.10
+> trio; `@mosaiq/cloud-sdk` on the independent 0.11 cloud track) and shipping the
+> Detection Lab CI baseline alongside. npm scope go-live checklist: [§8](#8-当前状态--go-live-checklistnpm-mosaiq-scope).
 >
 > 范围: 本文 = "我是 maintainer，怎么从一个 clean `main` 走到三包上 npm + git
 > tag + GitHub Release 页 + CI gate 生效" 的端到端清单。
@@ -473,17 +474,24 @@ npm deprecate @mosaiq/persona-schema@X.Y.Z "Critical bug, use X.Y.(Z+1) or later
 
 ---
 
-## 8. 当前状态 (2026-05-21)
+## 8. 当前状态 & go-live checklist（npm @mosaiq scope）
 
-✅ **代码完整**: Phase 10.1-10.9 全部 ship 到 `main` HEAD (`b1fd519`)。
+✅ **代码侧**: v0.10（persona-schema / sdk / cli）+ v0.11（cloud-sdk + 私有 cloud-runtime / browser-pod）均已 ship 到 `main`。`audit-tarballs` 现覆盖 **4** 个发包包（含 cloud-sdk）。
 
-⏳ **待 maintainer 操作**:
+⏳ **仍待 maintainer 一次性操作**（需真实 npm 账号 / 凭据，自动化 agent 做不了；这是「npm 上线」与「翻开自动发布」的完整清单）：
 
-1. [ ] CHANGELOG 合并 Track B 到 `## [0.10.0]`（[§3.1](#31-changelog-整理如走路径-x)）
-2. [ ] 第一次手工 publish 三包（[§3](#3-首次发版-v0100-手工)）
-3. [ ] `git tag v0.10.0` + GitHub Release 页（[§3.7](#37-tag--github-release)）
-4. [ ] Detection Lab baseline bootstrap（[§5.1](#51-一次性-bootstrap每个-fixture-persona-一次)）
-5. [ ] Optional: dummy PR 验证 CI gate（[§5.3](#53-detection-lab-ci-gate-真实生效的-end-to-end-验证)）
+1. [ ] 注册 npm `@mosaiq` org（[§1.2](#12-npm-org--2fa)）——目前 scope 未注册，任何 publish 返回 E404。
+2. [ ] 第一次手工 publish 0.10 三包（[§3](#3-首次发版-v0100-手工)）。
+3. [ ] 第一次手工 publish `@mosaiq/cloud-sdk@0.11.0`（**0.11 cloud track**，独立于三包 lock-step）：
+   ```bash
+   pnpm --filter "@mosaiq/cloud-sdk" publish --dry-run --access public
+   pnpm --filter "@mosaiq/cloud-sdk" publish --access public
+   ```
+   注意 cloud-sdk 的 `playwright-core` 是 **peerDependency**，消费者需自带（README 已说明）。
+4. [ ] `git tag` + GitHub Release 页（[§3.7](#37-tag--github-release)）。
+5. [ ] Detection Lab baseline bootstrap（[§5.1](#51-一次性-bootstrap每个-fixture-persona-一次)）+ 完整实测见 [`docs/EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md)。
+6. [ ] **翻开自动发布**：以上都 OK 后，去掉 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 顶部 `push: branches: [main]` 注释 + 配 `NPM_TOKEN`（或 trusted publishing）。之后走 changesets 自动化（[§4](#4-后续发布-via-changesets)）。
+   - cloud-sdk **不在** `fixed` lock-step 组（它在 0.11 cloud track、独立 bump），但 `changeset publish` 仍会发它（public + 不在 ignore）；release.yml 已 build 4 包。
 
 估时: 全跑通 ~2-4h（含 detection-lab.yml 首跑 10-15 min 等待）。
 

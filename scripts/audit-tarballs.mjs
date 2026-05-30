@@ -2,9 +2,10 @@
 // =============================================================================
 // scripts/audit-tarballs.mjs
 //
-// Verify that the npm tarballs for our three publishable packages
-// (@mosaiq/persona-schema, @mosaiq/sdk, @mosaiq/cli) contain exactly the
-// expected files: all REQUIRED entries present, no FORBIDDEN entries leaked.
+// Verify that the npm tarballs for our four publishable packages
+// (@mosaiq/persona-schema, @mosaiq/sdk, @mosaiq/cli, @mosaiq/cloud-sdk)
+// contain exactly the expected files: all REQUIRED entries present, no
+// FORBIDDEN entries leaked.
 //
 // Why this exists:
 //   - Each package's `files` field in package.json is a whitelist, but
@@ -89,6 +90,27 @@ const PACKAGES = [
     required: ['package.json', 'README.md', 'LICENSE', 'bin/mosaiq.js', 'dist/cli.js'],
     forbidden: [
       'src/',
+      'tsconfig.json',
+      'vitest.config',
+      '.test.',
+      'chromium-fork',
+      'node_modules',
+    ],
+  },
+  {
+    name: '@mosaiq/cloud-sdk',
+    dir: 'packages/cloud-sdk',
+    required: [
+      'package.json',
+      'README.md',
+      'LICENSE',
+      'dist/index.js',
+      'dist/index.d.ts',
+    ],
+    forbidden: [
+      'src/',
+      // e2e-smoke / register-persona 等运维脚本不应进 tarball（files 只列 dist/README/LICENSE）。
+      'scripts/',
       'tsconfig.json',
       'vitest.config',
       '.test.',

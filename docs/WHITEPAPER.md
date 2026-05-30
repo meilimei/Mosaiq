@@ -5,6 +5,8 @@
 > **受众**：产品用户 / 工程师 / 投资人 / 行业观察者  
 > **阅读时长**：约 35 分钟
 
+> ⚠️ **愿景 vs 现实（2026-05 更新，先读这条）**：本白皮书描述的是 Mosaiq 的**长期产品愿景**（双引擎、Chromium fork、$60–115M ARR）。**当前真实状态**是单人 + AI agent、约 20 天构建出的注入路径 SDK + CLI + 桌面应用 + cloud-runtime alpha（Chromium fork 已冷藏，见 [`chromium-fork/STATUS.md`](../chromium-fork/STATUS.md)）。未来 90 天的**务实**优先级见 [`docs/ROADMAP-90D.md`](./ROADMAP-90D.md)。请把宏大叙事与近期可执行项分开看。
+
 ---
 
 ## 阅读指南

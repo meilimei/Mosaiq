@@ -1,19 +1,24 @@
 # CI — runs on every PR + push to main
 #
 # Guards:
-#   1. typecheck across the whole workspace (persona-schema, sdk, cli, desktop)
-#   2. unit tests for all 4 packages (persona-schema, sdk, cli, desktop) via vitest
+#   1. typecheck across the whole workspace (persona-schema, sdk, cli, desktop,
+#      cloud-sdk, cloud-runtime, browser-pod) via `pnpm -r typecheck`
+#   2. unit tests for every package with a vitest surface (persona-schema, sdk,
+#      cli, desktop, cloud-sdk, cloud-runtime, browser-pod)
 #   3. captured-WebGL-profiles drift check — bench/captured-profiles/*.json
 #      must stay in lock-step with src/injection/webgl-profiles-captured.ts
 #      (Phase 7.0 contributor pipeline). Re-run
 #      `pnpm --filter @mosaiq/sdk run bench:integrate-profiles` locally and
 #      commit the regenerated TS to fix a drift failure.
+#   4. biome lint on CHANGED files (separate `lint` job, PR-only, NON-BLOCKING) —
+#      see below.
 #
-# Biome lint is NOT enforced here yet — project convention is "clean on
-# changed files only" and full-repo `pnpm lint` currently reports 147
-# legacy errors on pre-v0.8 bench scripts + a few renderer pages. The
-# cleanup + CI gate is tracked as a separate follow-up so v0.9 release
-# isn't blocked on it.
+# Biome lint: the `lint` job runs `biome ci --changed` against the PR base and
+# emits inline annotations so new / AI-generated lint debt is visible on every
+# PR. It is currently NON-BLOCKING (continue-on-error) because `--changed` lints
+# whole changed files and the repo still has ~500 legacy findings — touching a
+# legacy file would otherwise false-fail on pre-existing issues. Flip to blocking
+# after the full-repo cleanup (tracked in DEVELOPMENT.md "Known follow-ups").
 #
 # We run on ubuntu-latest. Mosaiq desktop runs on Windows, but the test
 # surface (pure functions, vitest) is platform-agnostic. Windows-specific
@@ -82,6 +87,51 @@ jobs:
           if failed:
               sys.exit(f'\n{len(failed)} workflow file(s) failed YAML parse: {failed}')
           PY
+
+  # Biome lint VISIBILITY gate on CHANGED files (PR-only, NON-BLOCKING for now).
+  #
+  # `biome ci --changed` lints whole changed files (not just diff hunks). The
+  # repo still carries ~500 legacy findings, many in large files like the 2k-line
+  # injection runner — so the moment a PR legitimately edits one of those files a
+  # HARD gate would false-fail on pre-existing issues nobody touched. To avoid
+  # that footgun we run this as `continue-on-error` and emit GitHub annotations:
+  # reviewers see new lint issues inline on changed files, but the check never
+  # blocks merge. Flip to blocking (drop continue-on-error) after the full-repo
+  # legacy cleanup tracked in DEVELOPMENT.md "Known follow-ups". PR-only because
+  # `--changed` needs a base ref to diff against.
+  lint:
+    name: biome lint (changed files, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request'
+    # Non-blocking: surfaces lint debt without false-failing on legacy files.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so `--since=<base sha>` can resolve the diff base.
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # biome.json has vcs.enabled=true, so `--changed --since=<ref>` scopes to
+      # files that differ from the PR base. --reporter=github emits inline PR
+      # annotations. Docs-only PR (no lintable changes) = clean.
+      - name: Biome lint changed files
+        run: pnpm exec biome ci --changed --since=${{ github.event.pull_request.base.sha }} --reporter=github .
 
   test:
     name: typecheck + test + drift check
@@ -162,15 +212,18 @@ jobs:
       #   cloud-runtime 63 tests — env / db / persona / sessions / health routes,
       #                 static / fly / local-docker machine managers
       #                 (mocked Fly + Docker Engine APIs), pod-control wire helpers
-      #   browser-pod   0 tests — no unit surface (control HTTP server is exercised
-      #                 transitively through cloud-runtime fly/local-docker manager
-      #                 tests via mocked pod responses). Kept as a typecheck-only
-      #                 gate so `pnpm -r typecheck` still covers it.
+      #   browser-pod   6 tests — env / persona-flags / relay / crypto / context-io
+      #                 / app route smoke. Pure logic + mocked child_process; no
+      #                 real chromium spawned (the real-browser path is covered by
+      #                 cloud-runtime-e2e.yml). Now run as a first-class gate.
       - name: Test — cloud-sdk
         run: pnpm --filter @mosaiq/cloud-sdk test
 
       - name: Test — cloud-runtime
         run: pnpm --filter @mosaiq/cloud-runtime test
+
+      - name: Test — browser-pod
+        run: pnpm --filter @mosaiq/browser-pod test
 
       # Phase 7.0 drift detection: regenerate the captured-profiles TS in
       # `--check` mode and fail if the on-disk file differs. This is the

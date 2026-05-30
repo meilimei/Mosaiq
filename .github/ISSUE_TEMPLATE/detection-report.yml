@@ -1,0 +1,107 @@
+name: 反检测命中报告 / Detection report
+description: 报告 Mosaiq 在某个检测站或真实站点被识破的指纹 / 信号。这是 v0.11 最高优先级的反馈通路。
+title: "[detection] <站点/检测器>: <被识破的 surface 一句话>"
+labels: ["detection", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈实测命中——这类 issue 直接决定 `packages/sdk/src/injection/runner.ts` 的修补优先级。
+        请尽量填具体：**哪个指纹/信号被识破**比「整体被判 bot」有用得多。
+        截图 / score / 具体字段值是金标准。
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 命中检测器 / 站点
+      options:
+        - sannysoft (bot.sannysoft.com)
+        - CreepJS
+        - IPHey
+        - BrowserScan
+        - Pixelscan
+        - amiunique
+        - deviceandbrowserinfo / dbi-bot
+        - fingerprint-scan / 商业风控
+        - Cloudflare 保护的真实站点
+        - DataDome / Akamai / PerimeterX 保护的真实站点
+        - 真实账号登录（Reddit / X / Google 等）
+        - 其他（在下方说明）
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: 目标 URL / 站点
+      placeholder: https://example.com/login
+    validations:
+      required: true
+  - type: dropdown
+    id: path
+    attributes:
+      label: 使用的 Mosaiq 路径
+      description: 注意——云端「裸 connectOverCDP / BB-SDK baseURL swap」目前不含深层注入（见 README 云端口径）。
+      options:
+        - Desktop（launchPersona）
+        - CLI（mosaiq detection-lab run）
+        - SDK（@mosaiq/sdk launchPersona，自写脚本）
+        - Cloud + @mosaiq/cloud-sdk injectInto()
+        - Cloud 裸 connectOverCDP / @browserbasehq/sdk（无 injectInto）
+        - 其他
+    validations:
+      required: true
+  - type: dropdown
+    id: persona
+    attributes:
+      label: Persona 模板
+      options:
+        - win11-chrome-us
+        - win10-chrome-us
+        - macos-sonoma-chrome-us
+        - ubuntu-2204-chrome-us
+        - 自定义 persona
+    validations:
+      required: true
+  - type: textarea
+    id: detected
+    attributes:
+      label: 被识破的具体 surface / 信号
+      description: 例如「WebGL UNMASKED_RENDERER 与声称 GPU 不一致」「navigator.hardwareConcurrency 未 spoof」「Cloudflare BotScore 直接 block」。
+      placeholder: |
+        - surface:
+        - detector/字段:
+        - 期望值 vs 实测值:
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据（score / hits / 截图 / 具体值）
+      description: 贴 Detection Lab 的 score、hits 列表、截图，或 DevTools 里读到的字段值。
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: 版本
+      placeholder: "@mosaiq/sdk 0.10.0 / playwright-core 1.59.1 / chromium <从 /json/version 读>"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. mosaiq personas create ... --template win11-chrome-us
+        2. mosaiq detection-lab run ...
+        3. 观察 ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已确认走的是带深层注入的路径（Desktop / CLI / SDK / cloud-sdk injectInto），而非裸 connectOverCDP。
+          required: false
+        - label: 我用的是当前版本（已 `npm i` 最新 / 已 rebuild SDK）。
+          required: false

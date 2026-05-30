@@ -39,6 +39,27 @@ beforeAll(() => {
   injectAll(config);
 });
 
+describe('幂等保护 (idempotency guard)', () => {
+  it('已注入的 realm 上 __mosaiqStealthState__ 存在（守卫信号）', () => {
+    expect(
+      (globalThis as { __mosaiqStealthState__?: unknown }).__mosaiqStealthState__,
+    ).toBeDefined();
+  });
+
+  it('重复调用 injectAll 是 no-op：不抛错且不会用新 config 覆盖已 spoof 值', () => {
+    // 构造一个与初始 config 不同的 config（16 核 / 2GB，初始是 8 核 / 8GB）。
+    // 若守卫失效、第二次注入真的重跑，navigator 字段会被改成新值；守卫生效时
+    // 第二次直接早退，保持初始值。这同时验证了未来 cloud 服务端注入 + 客户端
+    // injectInto 双重注册时不会互相打架。
+    const second: InjectionConfig = { ...config, hardwareConcurrency: 16, deviceMemory: 2 };
+    expect(() => injectAll(second)).not.toThrow();
+    expect(navigator.hardwareConcurrency).toBe(config.hardwareConcurrency);
+    expect((navigator as Navigator & { deviceMemory?: number }).deviceMemory).toBe(
+      config.deviceMemory,
+    );
+  });
+});
+
 describe('navigator identity', () => {
   it('overrides userAgent / platform / vendor', () => {
     expect(navigator.userAgent).toBe(config.userAgent);

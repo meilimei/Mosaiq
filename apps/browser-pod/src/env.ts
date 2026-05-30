@@ -44,6 +44,17 @@ const EnvSchema = z.object({
     .transform((v) => (typeof v === 'boolean' ? v : v.toLowerCase() === 'true')),
 
   /**
+   * Option A 服务端深层注入的总开关（kill-switch）。默认 true：pod 在 chromium 起好后
+   * 用自带 playwright connectOverCDP + addInitScript 注册 injectAll，使裸 connectOverCDP
+   * 也带深层 stealth。设 'false' 可在不改逻辑的情况下线上即时回退到「仅进程级加固」
+   * （客户端仍可用 cloud-sdk injectInto 自行注入）。每 session 还受 stealth.inject 约束。
+   */
+  POD_SERVER_INJECT: z
+    .union([z.boolean(), z.string()])
+    .default('true')
+    .transform((v) => (typeof v === 'boolean' ? v : v.toLowerCase() === 'true')),
+
+  /**
    * Chromium spawn 后等 /json/version 就绪的超时。30s 在 LocalDocker 测试足够，但
    * Fly firecracker microVM 上 chromium 内部有 15s+ 的初始化静默期（推测是
    * NetworkService DNS resolver init + 字体配置扫描的组合，看不到 stderr log），

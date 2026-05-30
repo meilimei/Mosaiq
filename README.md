@@ -47,6 +47,12 @@ console.log(await page.title());                       // → "Example Domain"
 await browser.close();
 ```
 
+> ✅ **反指纹注入口径（v0.11 起：服务端注入默认开启）**：上面这条「改一行 baseURL」路径现在**就能拿到深层 stealth**——pod 在 chromium 起好后服务端注入与 desktop launcher 完全相同的 `injectAll`（canvas / WebGL / audio / UA-CH / 字体 / worker scope），裸 `connectOverCDP`（含 `@browserbasehq/sdk` 无脑迁移路径）的页面一加载就带全套深层伪装。本地实测：raw `connectOverCDP`（**不调** `injectInto`）即得 `navigator.hardwareConcurrency=8` / WebGL renderer = persona GPU 等深层 spoof 值。
+>
+> - 每 session 受 `stealth.inject` 约束（设 `false` = raw chromium 模式）；pod 侧 `POD_SERVER_INJECT` 是总 kill-switch。
+> - `@mosaiq/cloud-sdk` 的 `session.injectInto(context)` 仍可用（客户端注入），且与服务端注入**幂等**（`injectAll` 自带 realm 级守卫，双重注册同一文档只生效一次）。当默认服务端注入开启时，客户端无需再调。
+> - 机制与验证细节见 [docs/CLOUD-RUNTIME-ARCH.md](./docs/CLOUD-RUNTIME-ARCH.md) §2.5。⚠️ 生产（Fly）侧建议先用 `cloud-runtime-e2e.yml` 的 e2e smoke 跑绿再依赖（本仓库已本地 + Docker build 验证）。
+
 验证路径：`scripts/stagehand-compat-smoke.mjs`。5 跑次 × 3 场景（空 body / userMetadata / browserSettings.viewport）= 15/15 sessions all-pass，mean acquire 35.5s / mean connect 6.3s / 0 retry。
 
 **长会话 / sticky pod**（phase 11.5 起）：`{ keepAlive: true, userMetadata: { stickyKey: "..." } }` —— WS 断开 pod 不销毁、`--user-data-dir` 保留、TTL ceiling 24h、配额 5 keepAlive/project；同 stickyKey 二次创建 409 含 `connectUrl` 让客户端一步 rejoin。LaunchAI Reddit 类长会话依赖此通路。
