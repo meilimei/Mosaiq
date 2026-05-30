@@ -51,6 +51,13 @@ export class ManagedCloudSession {
   /**
    * 把 persona 的 JS-level spoof 注入到 connectOverCDP 之后拿到的 context。
    *
+   * 口径（v0.11 起）：cloud 端 pod **默认已服务端注入**深层 stealth（canvas /
+   * WebGL / audio / UA-CH / 字体 / worker scope），所以纯 `connectOverCDP`（含
+   * `@browserbasehq/sdk` baseURL swap）也能拿到深层伪装，**不一定需要本方法**。
+   * 本方法保留用于：(a) 想在客户端显式控制注入；(b) 服务端注入被关（session
+   * `stealth.inject=false` 或 pod `POD_SERVER_INJECT=false`）时由客户端补注入。
+   * 见 `docs/CLOUD-RUNTIME-ARCH.md` §2.5。
+   *
    * 流程：
    *   1) 用 persona 派生 InjectionConfig（与 desktop launcher 完全相同）
    *   2) `context.addInitScript({ content })` —— 每个 page / iframe 加载前
@@ -60,6 +67,9 @@ export class ManagedCloudSession {
    * 任何 `page.goto()` 之前。否则首屏指纹会用 raw chromium 值。
    *
    * 如果 `stealth.inject === false`，本方法 no-op（用户显式关闭）。
+   *
+   * 幂等：injectAll 自带 realm 级幂等保护（见 sdk runner.ts），即使服务端注入
+   * 上线后与本方法同时生效、同一文档跑两遍，也只会注入一次，不会双重包装。
    */
   async injectInto(context: BrowserContext): Promise<void> {
     if (!this.stealth.inject) return;

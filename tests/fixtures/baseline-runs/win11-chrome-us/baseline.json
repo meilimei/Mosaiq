@@ -1,0 +1,3269 @@
+{
+  "id": "baseline",
+  "personaId": "win11-chrome-us",
+  "startedAt": "1970-01-01T00:00:00.000Z",
+  "finishedAt": "1970-01-01T00:00:00.000Z",
+  "status": "completed",
+  "sitesAttempted": [
+    "sannysoft",
+    "browserleaks-js",
+    "browserleaks-canvas",
+    "browserleaks-webgl",
+    "iphey",
+    "dbi-bot",
+    "amiunique",
+    "pixelscan",
+    "creepjs",
+    "arh-antoinevastel",
+    "incolumitas",
+    "fingerprint-scan"
+  ],
+  "durationMs": 0,
+  "score": {
+    "sitesOk": 12,
+    "sitesFail": 0,
+    "creepjsLies": 0,
+    "creepjsBoldFail": 1,
+    "sannysoftPass": 31,
+    "sannysoftTotal": 57,
+    "dbiBotFlagsTriggered": 0,
+    "amiuniqueOutliers": 0,
+    "fpScannerInconsistent": 0,
+    "incolumitasBadFlags": 0,
+    "weightedHits": 0.5,
+    "hits": [
+      {
+        "surface": "other",
+        "site": "creepjs",
+        "detector": "creepjs bold-fail: WebGL",
+        "evidence": "hash=6108b922 (GPU 不在 CreepJS 白名单；liesCount=0，真实同款 GPU 用户同样如此，非伪装失败)",
+        "severity": "low"
+      }
+    ],
+    "hitsBySurface": {
+      "canvas": 0,
+      "webgl": 0,
+      "audio": 0,
+      "font": 0,
+      "webrtc": 0,
+      "navigator": 0,
+      "screen": 0,
+      "permissions": 0,
+      "timezone": 0,
+      "plugins": 0,
+      "webdriver": 0,
+      "other": 1
+    }
+  },
+  "raw": {
+    "timestamp": "1970-01-01T00:00:00.000Z",
+    "overallMs": 0,
+    "sitesAttempted": 12,
+    "sitesOk": 12,
+    "sitesFail": 0,
+    "sitesWithRetry": 0,
+    "totalRetries": 0,
+    "persona": {
+      "id": "win11-chrome-us",
+      "template": "win11-chrome-us",
+      "browser": {
+        "brand": "chrome",
+        "majorVersion": 130,
+        "fullVersion": "130.0.6723.117"
+      },
+      "system": {
+        "os": {
+          "family": "windows",
+          "version": "10.0.22631",
+          "arch": "x86_64",
+          "platformLabel": "Win32"
+        },
+        "locale": "en-US",
+        "languages": [
+          "en-US",
+          "en"
+        ],
+        "timezone": "America/New_York",
+        "screen": {
+          "width": 1920,
+          "height": 1080,
+          "availWidth": 1920,
+          "availHeight": 1040,
+          "colorDepth": 24,
+          "pixelDepth": 24,
+          "devicePixelRatio": 1
+        }
+      },
+      "hardware": {
+        "cpu": {
+          "cores": 8,
+          "modelName": "Intel Core i5-12400"
+        },
+        "deviceMemoryGb": 8,
+        "gpu": {
+          "vendor": "intel",
+          "webglVendor": "Google Inc. (Intel)",
+          "webglRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+        },
+        "audio": {
+          "sampleRate": 48000,
+          "outputLatencySec": 0.01,
+          "outputDeviceCount": 1,
+          "inputDeviceCount": 1
+        },
+        "maxTouchPoints": 0
+      },
+      "fingerprint": {
+        "canvas": {
+          "noiseSeed": "61ccde21",
+          "noiseStrength": 2
+        },
+        "webgl": {
+          "noiseSeed": "ed59234c",
+          "perturbReadPixels": true
+        },
+        "audio": {
+          "noiseSeed": "f381794c",
+          "noiseAmplitude": 1e-7,
+          "noiseAmplitudeDb": 0.001
+        },
+        "fontList": {
+          "fonts": [
+            "Arial",
+            "Arial Black",
+            "Bahnschrift",
+            "Calibri",
+            "Cambria",
+            "Cambria Math",
+            "Candara",
+            "Comic Sans MS",
+            "Consolas",
+            "Constantia",
+            "Corbel",
+            "Courier New",
+            "Ebrima",
+            "Franklin Gothic Medium",
+            "Gabriola",
+            "Gadugi",
+            "Georgia",
+            "HoloLens MDL2 Assets",
+            "Impact",
+            "Ink Free",
+            "Javanese Text",
+            "Leelawadee UI",
+            "Lucida Console",
+            "Lucida Sans Unicode",
+            "Malgun Gothic",
+            "Marlett",
+            "Microsoft Himalaya",
+            "Microsoft JhengHei",
+            "Microsoft New Tai Lue",
+            "Microsoft PhagsPa",
+            "Microsoft Sans Serif",
+            "Microsoft Tai Le",
+            "Microsoft YaHei",
+            "Microsoft Yi Baiti",
+            "MingLiU-ExtB",
+            "Mongolian Baiti",
+            "MS Gothic",
+            "MV Boli",
+            "Myanmar Text",
+            "Nirmala UI",
+            "Palatino Linotype",
+            "Segoe MDL2 Assets",
+            "Segoe Print",
+            "Segoe Script",
+            "Segoe UI",
+            "Segoe UI Emoji",
+            "Segoe UI Historic",
+            "Segoe UI Symbol",
+            "SimSun",
+            "Sitka",
+            "Sylfaen",
+            "Symbol",
+            "Tahoma",
+            "Times New Roman",
+            "Trebuchet MS",
+            "Verdana",
+            "Webdings",
+            "Wingdings",
+            "Yu Gothic"
+          ]
+        },
+        "webrtc": {
+          "mode": "proxy_only"
+        }
+      }
+    },
+    "results": [
+      {
+        "id": "sannysoft",
+        "name": "bot.sannysoft.com",
+        "url": "https://bot.sannysoft.com/",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "rows": [
+            {
+              "name": "User Agent (Old)",
+              "result": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
+              "status": "pass"
+            },
+            {
+              "name": "WebDriver (New)",
+              "result": "missing (passed)",
+              "status": "pass"
+            },
+            {
+              "name": "WebDriver Advanced",
+              "result": "passed",
+              "status": "pass"
+            },
+            {
+              "name": "Chrome (New)",
+              "result": "present (passed)",
+              "status": "pass"
+            },
+            {
+              "name": "Permissions (New)",
+              "result": "prompt",
+              "status": "pass"
+            },
+            {
+              "name": "Plugins Length (Old)",
+              "result": "5",
+              "status": "pass"
+            },
+            {
+              "name": "Plugins is of type PluginArray",
+              "result": "passed",
+              "status": "pass"
+            },
+            {
+              "name": "Languages (Old)",
+              "result": "en-US,en",
+              "status": "pass"
+            },
+            {
+              "name": "WebGL Vendor",
+              "result": "Google Inc. (Intel)",
+              "status": "pass"
+            },
+            {
+              "name": "WebGL Renderer",
+              "result": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+              "status": "pass"
+            },
+            {
+              "name": "Broken Image Dimensions",
+              "result": "16x16",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_UA",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_PROPERTIES",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_ETSL",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_LANGUAGE",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_WEBSOCKET",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "MQ_SCREEN",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_OVERFLOW",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "PHANTOM_WINDOW_HEIGHT",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "HEADCHR_UA",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "HEADCHR_CHROME_OBJ",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "HEADCHR_PERMISSIONS",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "HEADCHR_PLUGINS",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "HEADCHR_IFRAME",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "CHR_DEBUG_TOOLS",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "SELENIUM_DRIVER",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "CHR_BATTERY",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "CHR_MEMORY",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "TRANSPARENT_PIXEL",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "SEQUENTUM",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "VIDEO_CODECS",
+              "result": "ok",
+              "status": "pass"
+            },
+            {
+              "name": "navigator.cookieEnabled",
+              "result": "document.write(navigator.cookieEnabled);\n            true",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.doNotTrack",
+              "result": "document.write(navigator.doNotTrack);\n            null",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.msDoNotTrack",
+              "result": "document.write(navigator.msDoNotTrack);\n            undefined",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.sendBeacon",
+              "result": "document.write(navigator.sendBeacon());",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.cookieEnabled",
+              "result": "document.write(navigator.cookieEnabled);\n            true",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.userAgent",
+              "result": "document.write(navigator.userAgent);\n            Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.appName",
+              "result": "document.write(navigator.appName);\n            Netscape",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.vendor",
+              "result": "document.write(navigator.vendor);\n            Google Inc.",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.appCodeName",
+              "result": "document.write(navigator.appCodeName);\n            Mozilla",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.getUserMedia",
+              "result": "document.write(navigator.getUserMedia());",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.sayswho",
+              "result": "document.write(navigator.sayswho);\n            undefined",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.javaEnabled",
+              "result": "document.write(navigator.javaEnabled());\n            false",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.plugins",
+              "result": "document.write(JSON.stringify(navigator.plugins));\n            {\"0\":{\"0\":{},\"1\":{}},\"1\":{\"0\":{},\"1\":{}},\"2\":{\"0\":{},\"1\":{}},\"3\":{\"0\":{},\"1\":{}},\"4\":{\"0\":{},\"1\":{}}}",
+              "status": "unknown"
+            },
+            {
+              "name": "screen.width",
+              "result": "document.write(screen.width);\n            1920",
+              "status": "unknown"
+            },
+            {
+              "name": "screen.height",
+              "result": "document.write(screen.height);\n            1080",
+              "status": "unknown"
+            },
+            {
+              "name": "screen.colorDepth",
+              "result": "document.write(screen.colorDepth);\n            24",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.language",
+              "result": "document.write(navigator.language);\n            en-US",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.loadPurpose",
+              "result": "document.write(navigator.loadPurpose);\n            undefined",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.platform",
+              "result": "document.write(navigator.platform);\n            Win32",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.mediaDevices",
+              "result": "audioinput:  id = videoinput:  id = audiooutput:  id =",
+              "status": "unknown"
+            },
+            {
+              "name": "navigator.getBattery details",
+              "result": "Charging: trueLevel: 1",
+              "status": "unknown"
+            },
+            {
+              "name": "Canvas1",
+              "result": "Hash: -1075423749",
+              "status": "unknown"
+            },
+            {
+              "name": "Canvas2",
+              "result": "Hash: -1075423749",
+              "status": "unknown"
+            },
+            {
+              "name": "Canvas3 (iframe sandbox)",
+              "result": "Hash: -1075423749",
+              "status": "unknown"
+            },
+            {
+              "name": "Canvas4 (iframe sandbox)",
+              "result": "Hash: -1075423749",
+              "status": "unknown"
+            },
+            {
+              "name": "Canvas5 (iframe)",
+              "result": "Hash: -1075423749",
+              "status": "unknown"
+            }
+          ],
+          "passes": 31,
+          "fails": 0,
+          "unknown": 26,
+          "total": 57
+        }
+      },
+      {
+        "id": "browserleaks-js",
+        "name": "BrowserLeaks JavaScript",
+        "url": "https://browserleaks.com/javascript",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "pairs": [
+            {
+              "name": "JavaScript Enabled",
+              "value": "✔ True<span class=\"false\">✖</span> False<style type=\"text/css\">#js-enabled{display:none}</style>"
+            },
+            {
+              "name": "Inline Scripts",
+              "value": "✔ True"
+            },
+            {
+              "name": "Same-Origin Scripts",
+              "value": "✔ True"
+            },
+            {
+              "name": "Third-Party Scripts",
+              "value": "✔ True"
+            },
+            {
+              "name": "Document Referrer",
+              "value": "empty [recheck]"
+            },
+            {
+              "name": "Screen Resolution",
+              "value": "1920×1080 16:9 24-bit TrueColor (viewport: 1920×1080)"
+            },
+            {
+              "name": "Fullscreen Leak Test",
+              "value": "[click to test]"
+            },
+            {
+              "name": "width",
+              "value": "1920"
+            },
+            {
+              "name": "height",
+              "value": "1080"
+            },
+            {
+              "name": "availWidth",
+              "value": "1920"
+            },
+            {
+              "name": "availHeight",
+              "value": "1040"
+            },
+            {
+              "name": "colorDepth",
+              "value": "24"
+            },
+            {
+              "name": "pixelDepth",
+              "value": "24"
+            },
+            {
+              "name": "availTop",
+              "value": "0"
+            },
+            {
+              "name": "availLeft",
+              "value": "0"
+            },
+            {
+              "name": "orientation.type",
+              "value": "landscape-primary"
+            },
+            {
+              "name": "orientation.angle",
+              "value": "0"
+            },
+            {
+              "name": "window.devicePixelRatio",
+              "value": "1"
+            },
+            {
+              "name": "window.innerWidth",
+              "value": "1920"
+            },
+            {
+              "name": "window.innerHeight",
+              "value": "1080"
+            },
+            {
+              "name": "window.outerWidth",
+              "value": "1920"
+            },
+            {
+              "name": "window.outerHeight",
+              "value": "1080"
+            },
+            {
+              "name": "div.clientWidth",
+              "value": "1920"
+            },
+            {
+              "name": "div.clientHeight",
+              "value": "1080"
+            },
+            {
+              "name": "isExtended",
+              "value": "false"
+            },
+            {
+              "name": "System Time",
+              "value": "Fri May 29 2026 23:30:32 GMT-0400 (Eastern Daylight Time)"
+            },
+            {
+              "name": "toLocaleString",
+              "value": "5/29/2026, 11:30:32 PM"
+            },
+            {
+              "name": "toLocaleFormat",
+              "value": "undefined"
+            },
+            {
+              "name": "DateTimeFormat",
+              "value": "Friday, May 29, 2026 at 11:30:32 PM Eastern Daylight Time"
+            },
+            {
+              "name": "hourCycle",
+              "value": "h12"
+            },
+            {
+              "name": "locale",
+              "value": "en-US"
+            },
+            {
+              "name": "calendar",
+              "value": "gregory"
+            },
+            {
+              "name": "numberingSystem",
+              "value": "latn"
+            },
+            {
+              "name": "timeZone",
+              "value": "America/New_York"
+            },
+            {
+              "name": "year",
+              "value": "numeric"
+            },
+            {
+              "name": "month",
+              "value": "numeric"
+            },
+            {
+              "name": "day",
+              "value": "numeric"
+            },
+            {
+              "name": "userAgent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "appVersion",
+              "value": "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "appName",
+              "value": "Netscape"
+            },
+            {
+              "name": "appCodeName",
+              "value": "Mozilla"
+            },
+            {
+              "name": "product",
+              "value": "Gecko"
+            },
+            {
+              "name": "productSub",
+              "value": "20030107"
+            },
+            {
+              "name": "vendor",
+              "value": "Google Inc."
+            },
+            {
+              "name": "vendorSub",
+              "value": "empty"
+            },
+            {
+              "name": "buildID",
+              "value": "undefined"
+            },
+            {
+              "name": "platform",
+              "value": "Win32"
+            },
+            {
+              "name": "oscpu",
+              "value": "undefined"
+            },
+            {
+              "name": "hardwareConcurrency",
+              "value": "8"
+            },
+            {
+              "name": "deviceMemory",
+              "value": "8"
+            },
+            {
+              "name": "devicePosture.type",
+              "value": "continuous"
+            },
+            {
+              "name": "language",
+              "value": "en-US"
+            },
+            {
+              "name": "languages",
+              "value": "[\"en-US\",\"en\"]"
+            },
+            {
+              "name": "onLine",
+              "value": "true"
+            },
+            {
+              "name": "doNotTrack",
+              "value": "null"
+            },
+            {
+              "name": "cookieEnabled",
+              "value": "true"
+            },
+            {
+              "name": "maxTouchPoints",
+              "value": "0"
+            },
+            {
+              "name": "webdriver",
+              "value": "false"
+            },
+            {
+              "name": "pdfViewerEnabled",
+              "value": "true"
+            },
+            {
+              "name": "globalPrivacyControl",
+              "value": "undefined"
+            },
+            {
+              "name": "API Status",
+              "value": "✔ Enabled"
+            },
+            {
+              "name": "brands",
+              "value": "[{\"brand\":\"Google Chrome\",\"version\":\"147\"},{\"brand\":\"Not.A/Brand\",\"version\":\"8\"},{\"brand\":\"Chromium\",\"version\":\"147\"}]"
+            },
+            {
+              "name": "mobile",
+              "value": "false"
+            },
+            {
+              "name": "platform",
+              "value": "Windows"
+            },
+            {
+              "name": "platformVersion",
+              "value": "15.0.0"
+            },
+            {
+              "name": "architecture",
+              "value": "x86"
+            },
+            {
+              "name": "bitness",
+              "value": "64"
+            },
+            {
+              "name": "wow64",
+              "value": "false"
+            },
+            {
+              "name": "model",
+              "value": "empty"
+            },
+            {
+              "name": "uaFullVersion",
+              "value": "undefined"
+            },
+            {
+              "name": "fullVersionList",
+              "value": "[{\"brand\":\"Google Chrome\",\"version\":\"147.0.7727.15\"},{\"brand\":\"Not.A/Brand\",\"version\":\"8.0.0.0\"},{\"brand\":\"Chromium\",\"version\":\"147.0.7727.15\"}]"
+            },
+            {
+              "name": "formFactors",
+              "value": "[\"Desktop\"]"
+            },
+            {
+              "name": "plugins",
+              "value": "PDF Viewer, internal-pdf-viewer, Portable Document FormatChrome PDF Viewer, internal-pdf-viewer, Portable Document FormatChromium PDF Viewer, internal-pdf-viewer, Portable Document FormatMicrosoft Edge PDF Viewer, internal-pdf-viewer, Portable Document FormatWebKit built-in PDF, internal-pdf-viewer, Portable Document Format"
+            },
+            {
+              "name": "mimeTypes",
+              "value": "application/pdf, pdf, Portable Document Formattext/pdf, pdf, Portable Document Format"
+            },
+            {
+              "name": "API Status",
+              "value": "✔ Enabled"
+            },
+            {
+              "name": "charging",
+              "value": "true"
+            },
+            {
+              "name": "chargingTime",
+              "value": "0"
+            },
+            {
+              "name": "dischargingTime",
+              "value": "Infinity"
+            },
+            {
+              "name": "level",
+              "value": "1"
+            },
+            {
+              "name": "API Status",
+              "value": "✔ Enabled"
+            },
+            {
+              "name": "type",
+              "value": "undefined"
+            },
+            {
+              "name": "effectiveType",
+              "value": "4g"
+            },
+            {
+              "name": "downlink",
+              "value": "9.4"
+            },
+            {
+              "name": "downlinkMax",
+              "value": "undefined"
+            },
+            {
+              "name": "rtt",
+              "value": "0"
+            },
+            {
+              "name": "saveData",
+              "value": "false"
+            },
+            {
+              "name": "API Status",
+              "value": "✔ Enabled"
+            },
+            {
+              "name": "Bluetooth Adapter",
+              "value": "true"
+            },
+            {
+              "name": "API Status",
+              "value": "✔ Enabled"
+            },
+            {
+              "name": "State",
+              "value": "suspended"
+            },
+            {
+              "name": "Sample Rate",
+              "value": "48000"
+            },
+            {
+              "name": "Max Channel Count",
+              "value": "2"
+            },
+            {
+              "name": "Number of Inputs",
+              "value": "1"
+            },
+            {
+              "name": "Number of Outputs",
+              "value": "0"
+            },
+            {
+              "name": "Channel Count",
+              "value": "2"
+            },
+            {
+              "name": "Channel Count Mode",
+              "value": "explicit"
+            },
+            {
+              "name": "Channel Interpretation",
+              "value": "speakers"
+            },
+            {
+              "name": "FFT Size",
+              "value": "2048"
+            },
+            {
+              "name": "Frequency Bin Count",
+              "value": "1024"
+            },
+            {
+              "name": "Min Decibels",
+              "value": "-100"
+            },
+            {
+              "name": "Max Decibels",
+              "value": "-30"
+            },
+            {
+              "name": "Smoothing Time Constant",
+              "value": "0.8"
+            },
+            {
+              "name": "API Status",
+              "value": "✔ Enabled"
+            },
+            {
+              "name": "Speech Voices",
+              "value": "Microsoft David Desktop - English (United States)Microsoft Zira Desktop - English (United States)Google US English"
+            },
+            {
+              "name": "scheduling",
+              "value": "[object Scheduling]"
+            },
+            {
+              "name": "userActivation",
+              "value": "[object UserActivation]"
+            },
+            {
+              "name": "geolocation",
+              "value": "[object Geolocation]"
+            },
+            {
+              "name": "webkitTemporaryStorage",
+              "value": "[object DeprecatedStorageQuota]"
+            },
+            {
+              "name": "webkitPersistentStorage",
+              "value": "[object DeprecatedStorageQuota]"
+            },
+            {
+              "name": "getGamepads",
+              "value": "function getGamepads() { [native code] }"
+            },
+            {
+              "name": "javaEnabled",
+              "value": "function javaEnabled() { [native code] }"
+            },
+            {
+              "name": "sendBeacon",
+              "value": "function sendBeacon() { [native code] }"
+            },
+            {
+              "name": "vibrate",
+              "value": "function vibrate() { [native code] }"
+            },
+            {
+              "name": "windowControlsOverlay",
+              "value": "[object WindowControlsOverlay]"
+            },
+            {
+              "name": "deprecatedRunAdAuctionEnforcesKAnonymity",
+              "value": "false"
+            },
+            {
+              "name": "protectedAudience",
+              "value": "[object ProtectedAudience]"
+            },
+            {
+              "name": "clipboard",
+              "value": "[object Clipboard]"
+            },
+            {
+              "name": "credentials",
+              "value": "[object CredentialsContainer]"
+            },
+            {
+              "name": "keyboard",
+              "value": "[object Keyboard]"
+            },
+            {
+              "name": "managed",
+              "value": "[object NavigatorManagedData]"
+            },
+            {
+              "name": "mediaDevices",
+              "value": "[object MediaDevices]"
+            },
+            {
+              "name": "serviceWorker",
+              "value": "[object ServiceWorkerContainer]"
+            },
+            {
+              "name": "virtualKeyboard",
+              "value": "[object VirtualKeyboard]"
+            },
+            {
+              "name": "wakeLock",
+              "value": "[object WakeLock]"
+            },
+            {
+              "name": "userAgentData",
+              "value": "[object NavigatorUAData]"
+            },
+            {
+              "name": "locks",
+              "value": "[object LockManager]"
+            },
+            {
+              "name": "storage",
+              "value": "[object StorageManager]"
+            },
+            {
+              "name": "gpu",
+              "value": "[object GPU]"
+            },
+            {
+              "name": "login",
+              "value": "[object NavigatorLogin]"
+            },
+            {
+              "name": "ink",
+              "value": "[object Ink]"
+            },
+            {
+              "name": "mediaCapabilities",
+              "value": "[object MediaCapabilities]"
+            },
+            {
+              "name": "hid",
+              "value": "[object HID]"
+            },
+            {
+              "name": "mediaSession",
+              "value": "[object MediaSession]"
+            },
+            {
+              "name": "presentation",
+              "value": "[object Presentation]"
+            },
+            {
+              "name": "serial",
+              "value": "[object Serial]"
+            },
+            {
+              "name": "usb",
+              "value": "[object USB]"
+            },
+            {
+              "name": "xr",
+              "value": "[object XRSystem]"
+            },
+            {
+              "name": "storageBuckets",
+              "value": "[object StorageBucketManager]"
+            },
+            {
+              "name": "adAuctionComponents",
+              "value": "function adAuctionComponents() { [native code] }"
+            },
+            {
+              "name": "runAdAuction",
+              "value": "function runAdAuction() { [native code] }"
+            },
+            {
+              "name": "canLoadAdAuctionFencedFrame",
+              "value": "function canLoadAdAuctionFencedFrame() { [native code] }"
+            },
+            {
+              "name": "clearAppBadge",
+              "value": "function clearAppBadge() { [native code] }"
+            },
+            {
+              "name": "getBattery",
+              "value": "function getBattery() { [native code] }"
+            },
+            {
+              "name": "getUserMedia",
+              "value": "function getUserMedia() { [native code] }"
+            },
+            {
+              "name": "requestMIDIAccess",
+              "value": "function requestMIDIAccess() { [native code] }"
+            },
+            {
+              "name": "requestMediaKeySystemAccess",
+              "value": "function requestMediaKeySystemAccess() { [native code] }"
+            },
+            {
+              "name": "setAppBadge",
+              "value": "function setAppBadge() { [native code] }"
+            },
+            {
+              "name": "webkitGetUserMedia",
+              "value": "function webkitGetUserMedia() { [native code] }"
+            },
+            {
+              "name": "clearOriginJoinedAdInterestGroups",
+              "value": "function clearOriginJoinedAdInterestGroups() { [native code] }"
+            },
+            {
+              "name": "createAuctionNonce",
+              "value": "function createAuctionNonce() { [native code] }"
+            },
+            {
+              "name": "joinAdInterestGroup",
+              "value": "function joinAdInterestGroup() { [native code] }"
+            },
+            {
+              "name": "leaveAdInterestGroup",
+              "value": "function leaveAdInterestGroup() { [native code] }"
+            },
+            {
+              "name": "updateAdInterestGroups",
+              "value": "function updateAdInterestGroups() { [native code] }"
+            },
+            {
+              "name": "deprecatedReplaceInURN",
+              "value": "function deprecatedReplaceInURN() { [native code] }"
+            },
+            {
+              "name": "deprecatedURNToURL",
+              "value": "function deprecatedURNToURL() { [native code] }"
+            },
+            {
+              "name": "getInstalledRelatedApps",
+              "value": "function getInstalledRelatedApps() { [native code] }"
+            },
+            {
+              "name": "getInterestGroupAdAuctionData",
+              "value": "function getInterestGroupAdAuctionData() { [native code] }"
+            },
+            {
+              "name": "registerProtocolHandler",
+              "value": "function registerProtocolHandler() { [native code] }"
+            },
+            {
+              "name": "unregisterProtocolHandler",
+              "value": "function unregisterProtocolHandler() { [native code] }"
+            },
+            {
+              "name": "Document Mode",
+              "value": "False"
+            },
+            {
+              "name": "Conditional Comments via JavaScript",
+              "value": "False"
+            },
+            {
+              "name": "Conditional Comments via HTML",
+              "value": "False"
+            },
+            {
+              "name": "JavaScript Engine Version",
+              "value": "False"
+            },
+            {
+              "name": "VBScript Engine Version",
+              "value": "False"
+            },
+            {
+              "name": "ActiveX Supported",
+              "value": "False"
+            },
+            {
+              "name": "ActiveX Plug-Ins",
+              "value": "0"
+            }
+          ],
+          "total": 166
+        }
+      },
+      {
+        "id": "browserleaks-canvas",
+        "name": "BrowserLeaks Canvas",
+        "url": "https://browserleaks.com/canvas",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "pairs": [
+            {
+              "name": "Canvas 2D API",
+              "value": "✔ True"
+            },
+            {
+              "name": "Text API for Canvas",
+              "value": "✔ True"
+            },
+            {
+              "name": "Canvas toDataURL",
+              "value": "✔ True"
+            },
+            {
+              "name": "Signature",
+              "value": "df77c7be7e59d27b21a7cd5bfa92c617"
+            },
+            {
+              "name": "Uniqueness",
+              "value": "100% (The signature is unique to our database)"
+            },
+            {
+              "name": "File Size",
+              "value": "7891 bytes"
+            },
+            {
+              "name": "Number of Colors",
+              "value": "498"
+            }
+          ],
+          "total": 7,
+          "canvasHash": "df77c7be7e59d27b21a7cd5bfa92c617",
+          "uniqueness": "100% (The signature is unique to our database)"
+        }
+      },
+      {
+        "id": "browserleaks-webgl",
+        "name": "BrowserLeaks WebGL",
+        "url": "https://browserleaks.com/webgl",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "pairs": [
+            {
+              "name": "HTTP User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "This browser supports WebGL",
+              "value": "✔ True"
+            },
+            {
+              "name": "This browser supports WebGL 2",
+              "value": "✔ True"
+            },
+            {
+              "name": "WebGL Report Hash",
+              "value": "ef6e8350eba6edd9bc475e91f70bf8abPretty-print"
+            },
+            {
+              "name": "WebGL Image Hash",
+              "value": "5f72324b79e619bea91fea43b6622487"
+            },
+            {
+              "name": "Supported Context Name(s)",
+              "value": "webgl2, webgl"
+            },
+            {
+              "name": "GL Version",
+              "value": "WebGL 2.0 (OpenGL ES 3.0 Chromium)"
+            },
+            {
+              "name": "Shading Language Version",
+              "value": "WebGL GLSL ES 3.00 (OpenGL ES GLSL ES 3.0 Chromium)"
+            },
+            {
+              "name": "Vendor",
+              "value": "WebKit"
+            },
+            {
+              "name": "Renderer",
+              "value": "WebKit WebGL"
+            },
+            {
+              "name": "Unmasked Vendor",
+              "value": "! Google Inc. (Intel)"
+            },
+            {
+              "name": "Unmasked Renderer",
+              "value": "! ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+            },
+            {
+              "name": "Alpha Buffer",
+              "value": "true"
+            },
+            {
+              "name": "Depth Buffer",
+              "value": "true"
+            },
+            {
+              "name": "Stencil Buffer",
+              "value": "false"
+            },
+            {
+              "name": "Desynchronized",
+              "value": "false"
+            },
+            {
+              "name": "Anti-Aliasing",
+              "value": "true"
+            },
+            {
+              "name": "Major Performance Caveat",
+              "value": "false"
+            },
+            {
+              "name": "Power Preference",
+              "value": "default"
+            },
+            {
+              "name": "Pre-multiplied Alpha",
+              "value": "true"
+            },
+            {
+              "name": "Preserve Drawing Buffer",
+              "value": "false"
+            },
+            {
+              "name": "XR Compatible",
+              "value": "false"
+            },
+            {
+              "name": "Drawing Buffer Color Space",
+              "value": "srgb"
+            },
+            {
+              "name": "Unpack Color Space",
+              "value": "srgb"
+            },
+            {
+              "name": "Max Vertex Attributes",
+              "value": "16"
+            },
+            {
+              "name": "Max Vertex Uniform Vectors",
+              "value": "4096"
+            },
+            {
+              "name": "Max Vertex Texture Image Units",
+              "value": "16"
+            },
+            {
+              "name": "Max Varying Vectors",
+              "value": "30"
+            },
+            {
+              "name": "Best Float Precision",
+              "value": "[-2^127,2^127](23)"
+            },
+            {
+              "name": "Max Vertex Uniform Components",
+              "value": "16384"
+            },
+            {
+              "name": "Max Vertex Uniform Blocks",
+              "value": "14"
+            },
+            {
+              "name": "Max Vertex Output Components",
+              "value": "64"
+            },
+            {
+              "name": "Max Varying Components",
+              "value": "124"
+            },
+            {
+              "name": "Max Interleaved Components",
+              "value": "128"
+            },
+            {
+              "name": "Max Separate Attribs",
+              "value": "4"
+            },
+            {
+              "name": "Max Separate Components",
+              "value": "4"
+            },
+            {
+              "name": "Aliased Line Width Range",
+              "value": "[1,1]"
+            },
+            {
+              "name": "Aliased Point Size Range",
+              "value": "[1,1024]"
+            },
+            {
+              "name": "Max Fragment Uniform Vectors",
+              "value": "1024"
+            },
+            {
+              "name": "Max Texture Image Units",
+              "value": "16"
+            },
+            {
+              "name": "Float/Int Precision",
+              "value": "highp/highp"
+            },
+            {
+              "name": "Best Float Precision",
+              "value": "[-2^127,2^127](23)"
+            },
+            {
+              "name": "Max Fragment Uniform Components",
+              "value": "16384"
+            },
+            {
+              "name": "Max Fragment Uniform Blocks",
+              "value": "14"
+            },
+            {
+              "name": "Max Fragment Input Components",
+              "value": "128"
+            },
+            {
+              "name": "Min Program Texel Offset",
+              "value": "-8"
+            },
+            {
+              "name": "Max Program Texel Offset",
+              "value": "7"
+            },
+            {
+              "name": "Max Draw Buffers",
+              "value": "8"
+            },
+            {
+              "name": "Max Color Attachments",
+              "value": "8"
+            },
+            {
+              "name": "Max Samples",
+              "value": "16"
+            },
+            {
+              "name": "Max Color Buffers",
+              "value": "undefined"
+            },
+            {
+              "name": "Max Render Buffer Size",
+              "value": "16384"
+            },
+            {
+              "name": "Max Viewport Dimensions",
+              "value": "[16384,16384]"
+            },
+            {
+              "name": "Red Bits",
+              "value": "8"
+            },
+            {
+              "name": "Green Bits",
+              "value": "8"
+            },
+            {
+              "name": "Blue Bits",
+              "value": "8"
+            },
+            {
+              "name": "Alpha Bits",
+              "value": "8"
+            },
+            {
+              "name": "Depth Bits",
+              "value": "24"
+            },
+            {
+              "name": "Stencil Bits",
+              "value": "8"
+            },
+            {
+              "name": "Max Texture Size",
+              "value": "16384"
+            },
+            {
+              "name": "Max Cube Map Texture Size",
+              "value": "16384"
+            },
+            {
+              "name": "Max Combined Texture Image Units",
+              "value": "32"
+            },
+            {
+              "name": "Max Anisotropy",
+              "value": "16"
+            },
+            {
+              "name": "Max 3D Texture Size",
+              "value": "2048"
+            },
+            {
+              "name": "Max Array Texture Layers",
+              "value": "2048"
+            },
+            {
+              "name": "Max Texture LOD Bias",
+              "value": "15"
+            },
+            {
+              "name": "Max Uniform Buffer Bindings",
+              "value": "60"
+            },
+            {
+              "name": "Max Uniform Block Size",
+              "value": "65536"
+            },
+            {
+              "name": "Uniform Buffer Offset Alignment",
+              "value": "256"
+            },
+            {
+              "name": "Max Combined Uniform Blocks",
+              "value": "28"
+            },
+            {
+              "name": "Max Combined Vertex Uniform Components",
+              "value": "245760"
+            },
+            {
+              "name": "Max Combined Fragment Uniform Components",
+              "value": "245760"
+            },
+            {
+              "name": "Supported WebGL Extensions",
+              "value": "EXT_clip_control"
+            }
+          ],
+          "total": 73,
+          "webglVendor": "WebKit",
+          "webglRenderer": "WebKit WebGL",
+          "unmaskedVendor": "! Google Inc. (Intel)",
+          "unmaskedRenderer": "! ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+        }
+      },
+      {
+        "id": "iphey",
+        "name": "iphey.com",
+        "url": "https://iphey.com/",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "items": [],
+          "passes": 0,
+          "fails": 0,
+          "total": 0
+        }
+      },
+      {
+        "id": "dbi-bot",
+        "name": "deviceandbrowserinfo Bot Check",
+        "url": "https://deviceandbrowserinfo.com/are_you_a_bot",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "flags": {
+            "hasBotUserAgent": false,
+            "hasWebdriverTrue": false,
+            "hasWebdriverInFrameTrue": false,
+            "isPlaywright": false,
+            "hasInconsistentChromeObject": false,
+            "isPhantom": false,
+            "isNightmare": false,
+            "isSequentum": false,
+            "isSeleniumChromeDefault": false,
+            "isHeadlessChrome": false,
+            "isWebGLInconsistent": false,
+            "isAutomatedWithCDP": false,
+            "isAutomatedWithCDPInWebWorker": false,
+            "hasInconsistentClientHints": false,
+            "hasInconsistentGPUFeatures": false,
+            "isIframeOverridden": false,
+            "hasInconsistentWorkerValues": false,
+            "hasHighHardwareConcurrency": false,
+            "hasHeadlessChromeDefaultScreenResolution": false,
+            "hasSuspiciousWeakSignals": false
+          },
+          "flagsTotal": 20,
+          "flagsTrue": 0,
+          "flagsTriggered": [],
+          "verdict": ""
+        }
+      },
+      {
+        "id": "amiunique",
+        "name": "amiunique.org/fingerprint",
+        "url": "https://amiunique.org/fingerprint",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "verdict": "My browser fingerprint",
+          "attrs": [
+            {
+              "name": "1 - User agent\n    \n    HTTP header sent to the server that contains information regarding your browser and operating system",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "2 - Accept\n    \n    HTTP header sent to the server that contains information regarding the type of media that are acceptable for the response",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+            },
+            {
+              "name": "3 - Content encoding\n    \n    HTTP header sent to the server that lists the compression methods supported by the browser",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "gzip, deflate, br, zstd"
+            },
+            {
+              "name": "4 - Content language\n    \n    HTTP header sent to the server that indicates the preferred languages for the response",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "en-US"
+            },
+            {
+              "name": "5 - Upgrade Insecure Requests\n    \n    HTTP header sent to the server that indicates the client's preference for an encrypted and authenticated response.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "1"
+            },
+            {
+              "name": "5 -\n    Content language\n    \n    Using Javascript for getting preferred languages for the response",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "en-US,en"
+            },
+            {
+              "name": "6 -\n    Canvas\n    \n    Rendering of a specific picture with the HTML5 Canvas element following a fixed set of instructions. The picture presents some slight noticeable variations depending on the OS and the browser used.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "8 -\n    Use of Adblock\n    \n    Test to find out if the AdBlock extension is installed or not.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "10 -\n    Navigator properties\n    \n    List the properties present in the navigator object",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "80 properties detected"
+            },
+            {
+              "name": "12 -\n    Product\n    \n    Returns the value of navigator.product",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "Gecko"
+            },
+            {
+              "name": "13 -\n    Product sub\n    \n    Returns the value of navigator.productSub",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "20030107"
+            },
+            {
+              "name": "14 -\n    Vendor\n    \n    Indicate the browser' vendor",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "Google Inc."
+            },
+            {
+              "name": "15 -\n    Vendor sub\n    \n    Returns the value of navigator.vendorSub",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "No value"
+            },
+            {
+              "name": "16 -\n    Hardware concurrency\n    \n    Returns the value of navigator.hardwareConcurrency",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "8"
+            },
+            {
+              "name": "17 -\n    Device memory\n    \n    Returns the approximate amount of device memory in gigabytes",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "8"
+            },
+            {
+              "name": "19 -\n    Screen width\n    \n    Returns the width of the screen.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "1920"
+            },
+            {
+              "name": "20 -\n    Screen height\n    \n    Returns the height of the screen in pixels.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "1080"
+            },
+            {
+              "name": "21 -\n    Screen depth\n    \n    Returns the color depth of the screen.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "24"
+            },
+            {
+              "name": "22 -\n    Screen available Height\n    \n    Specifies the height of the screen, in pixels, minus permanent or semipermanent user interface features displayed by the operating system, such as the Taskbar on Windows.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "1040"
+            },
+            {
+              "name": "23 -\n    Screen available width\n    \n    Returns the amount of horizontal space in pixels available to the window.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "1920"
+            },
+            {
+              "name": "24 -\n    Permissions\n    \n    Permissions of the browser",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "accelerometer\n      \n      : prompt\n    \n        accessibility\n      \n      : Not supported\n    \n        ambient-light-sensor\n      \n      : Not supported\n    \n        camera\n      \n      : prompt\n    \n        clipboard-read\n      \n      : prompt\n    \n        clipboard-write\n      \n      : prompt\n  "
+            },
+            {
+              "name": "25 -\n    WebGL Vendor\n    \n    Name of the WebGL Vendor. Some browsers give the full name of the underlying graphics card used by the device.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "Google Inc. (Intel)"
+            },
+            {
+              "name": "26 -\n    WebGL Renderer\n    \n    Name of the WebGL Renderer. Some browsers give the full name of the underlying graphics driver.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+            },
+            {
+              "name": "27 -\n    WebGL Data\n    \n    Rendering of a specific picture with the HTML5 Canvas element and the WebGL API following a fixed set of instructions. The picture presents some slight noticeable variations depending on the OS and the browser used.",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "28 -\n    WebGL Parameters \n    \n    WebGL parameters : colors, textures, vectors, etc",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "35 different extensions\n    \n      25 different general parameters analyzed\n    \n      36 different shaders precisions analyzed"
+            },
+            {
+              "name": "32 -\n    Audio formats\n    \n    Supported audio format for the audio element",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "audio/3gpp\n      \n      : No value\n    \n        audio/3gpp2\n      \n      : No value\n    \n        audio/AMR-NB\n      \n      : No value\n    \n        audio/AMR-WB\n      \n      : No value\n    \n        audio/GSM\n      \n      : No value\n    \n        audio/aac\n      \n      : probably\n    \n        audio/bas"
+            },
+            {
+              "name": "33 -\n    Audio context\n    \n    Parameters of an audio context",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "destination.channelCount\n      \n      : No value\n    \n        destination.channelCountMode\n      \n      : No value\n    \n        destination.channelInterpretation\n      \n      : No value\n    \n        destination.maxChannelCount\n      \n      : No value\n    \n        destination.numberOfInputs\n      \n  "
+            },
+            {
+              "name": "34 -\n    Frequency analyser\n    \n    Provide real-time frequency and time-domain analysis information",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "channelCount\n      \n      : 2\n    \n        channelCountMode\n      \n      : max\n    \n        channelInterpretation\n      \n      : speakers\n    \n        fftSize\n      \n      : 2048\n    \n        frequencyBinCount\n      \n      : 1024\n    \n        maxDecibels\n      \n      : -30\n    \n        minDecibels\n "
+            },
+            {
+              "name": "35 -\n    Audio data\n    \n    Audio elements rendered via an audio context",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "Not supported"
+            },
+            {
+              "name": "36 -\n    Video formats\n    \n    Supported video format for the video element",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "video/mp4; codecs=\"flac\"\n      \n      : probably\n    \n        video/mp4; codecs=\"H.264, mp3\"\n      \n      : No value\n    \n        video/mp4; codecs=\"H.264, aac\"\n      \n      : No value\n    \n        video/mpeg; codec=\"H.264\"\n      \n      : No value\n    \n        video/ogg; codecs=\"theora\"\n      \n     "
+            },
+            {
+              "name": "37 -\n    Media devices\n    \n    Returns the list of microphones, cameras, headphones.. presents on the device",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "1 audioinput\n    \n      1 videoinput\n    \n      1 audiooutput"
+            },
+            {
+              "name": "38 -\n    Gyroscope\n    \n    Test to find out if a gyroscope is present on the device",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "39 -\n    Keyboard layout\n    \n    Test to detect the keyboard layout (qwerty, azerty, etc)",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "Other"
+            },
+            {
+              "name": "40 -\n    Battery\n    \n    Returns property belonging to the battery value, such as level, charging, chargin time and discharging time",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "charging\n      \n      : true\n    \n        chargingTime\n      \n      : No value\n    \n        dischargingTime\n      \n      : Infinity\n    \n        level\n      \n      : 1\n    \n        onchargingchange\n      \n      : No value\n    \n        onchargingtimechange\n      \n      : No value\n    \n        ondisch"
+            },
+            {
+              "name": "41 -\n    Connection\n    \n    Connection informations",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "downlink\n      \n      : 10\n    \n        downlinkMax\n      \n      : No value\n    \n        effectiveType\n      \n      : 4g\n    \n        rtt\n      \n      : No value\n    \n        saveData\n      \n      : No value\n    \n        type\n      \n      : No value"
+            },
+            {
+              "name": "42 -\n    key\n    \n    Returns the value of window.key",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "No value"
+            },
+            {
+              "name": "43 -\n    Location bar\n    \n    Test to find out if the location bar is visible",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "44 -\n    Menu bar\n    \n    Test to find out if the menu bar is visible",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "45 -\n    Personal bar\n    \n    Test to find out if the personal bar is visible",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "46 -\n    Status bar\n    \n    Test to find out if the status bar is visible",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "47 -\n    Tool bar\n    \n    Test to find out if the tool bar is visible",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": ""
+            },
+            {
+              "name": "48 -\n    Result state\n    \n    Returns the value of window.result.state",
+              "similarityPct": null,
+              "similarityRaw": "",
+              "value": "No value"
+            }
+          ],
+          "attrsTotal": 42,
+          "outliers": [],
+          "outlierCount": 0
+        }
+      },
+      {
+        "id": "pixelscan",
+        "name": "pixelscan.net/fingerprint-check",
+        "url": "https://pixelscan.net/fingerprint-check",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "maskVerdict": null,
+          "challengeDetected": false,
+          "stillLoading": true,
+          "cards": [
+            {
+              "title": "Bot Verification",
+              "status": "unknown",
+              "summary": "Bot VerificationVerify that user is a human"
+            },
+            {
+              "title": "Location",
+              "status": "unknown",
+              "summary": "LocationIP Address141.11.43.141WebRTC IP Address141.11.43.141, 74.48.108.165CountryFranceCityLyonISPStreamline Servers Pty LtdLatitude45.74906Longitude4.84789User Type by IPhostingDate & TimeTimezone from JSAmerica/New_YorkDaylight Savings"
+            }
+          ],
+          "dangerCards": 0,
+          "warningCards": 0,
+          "successCards": 0,
+          "unknownCards": 2
+        }
+      },
+      {
+        "id": "creepjs",
+        "name": "CreepJS",
+        "url": "https://abrahamjuliot.github.io/creepjs/",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "liesSurfaces": [
+            {
+              "surface": "WebGL",
+              "severity": "bold-fail",
+              "hash": "6108b922"
+            }
+          ],
+          "liesCount": 0,
+          "boldFailCount": 1,
+          "trustScore": null,
+          "fingerprintId": null,
+          "blockedCount": null,
+          "errorsCount": null,
+          "sections": [
+            {
+              "title": "WebRTC",
+              "subtitle": "WebRTC6a44903b host connection: candidate:2103897496 1 udp 1677729535 74.48.108.165 52156 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag jfaq network-cost 999 foundation/ip:"
+            },
+            {
+              "title": "WebRTC",
+              "subtitle": "WebRTC6a44903b host connection: candidate:2103897496 1 udp 1677729535 74.48.108.165 52156 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag jfaq network-cost 999 foundation/ip: type &"
+            },
+            {
+              "title": "audio/opus",
+              "subtitle": "sdp capabilities: .modal-creep-webrtc-sdp-capabilities:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-webrtc-sdp-c"
+            },
+            {
+              "title": "Timezone",
+              "subtitle": "25.20ms Timezone2d612b4e Eastern Daylight Time America, New York -27028667038000 240"
+            },
+            {
+              "title": "Intl",
+              "subtitle": "190.40ms Intl23d22f8d en-USJuly at Eastern Daylight TimeAmerican English21 millionnext year0 or 1one"
+            },
+            {
+              "title": "Headless",
+              "subtitle": ".like-headless-rating { background: linear-gradient(90deg, var(--grey-glass) 38%, #fff0 38%, #fff0 100%); } .headless-rating { background: linear-gradient(90deg, var(--error) 0%,"
+            },
+            {
+              "title": "Resistance",
+              "subtitle": "0.80ms Resistanceeb6b354a privacy: unknown security: unknown mode: unknown extension: unknown"
+            },
+            {
+              "title": "Worker",
+              "subtitle": "Workere7556a66 lang/timezone: en-US (1 US dollar) America/New_York (240) confidence: highgpu: Google Inc. (Intel) ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692)"
+            },
+            {
+              "title": "WebGL",
+              "subtitle": "143.40ms WebGL6108b922 images:25d5cd97 pixels:b226532750875bab params (78): .modal-creep-canvas-webgl-parameters:checked ~ .modal-container { visibility: visible; opacity: 1;"
+            },
+            {
+              "title": "Screen",
+              "subtitle": "0.40ms Screene21c7846 ...screen: 1920 x 1080 ....avail: 1920 x 1040 touch: false depth: 24|24 viewport: .screen-frame { width:180px;height:101.25px; }"
+            },
+            {
+              "title": "Canvas 2d",
+              "subtitle": ".pixels { padding: 19px; position: relative; overflow: hidden; } .canvas-data { max-width: 200px; height: 50px; transform: scale(1); background-image: url(data"
+            },
+            {
+              "title": "Fonts",
+              "subtitle": "582.30ms Fonts287bdab5 load (26/51): Like Windows 10 apps: unsupported \"Cambria Math\", \"DejaVu Sans\", \"Gentium Book Basic\", \"HoloLens MDL2 Assets\", \"Ink Free\", \"Javanese Text\", \"Leelawa"
+            },
+            {
+              "title": "DOMRect",
+              "subtitle": "90.00ms DOMRect0b79835f elems A: 0.26037227672485364 elems B: 0.26037227672485364 range A: 0.26037227672485364 range B: 0.26037227672485364 0.14490883605957033 😀🤵‍♂️⚧...▪✌❄"
+            },
+            {
+              "title": "SVGRect",
+              "subtitle": "111.50ms SVGRect0f8f1d8a bBox: 0.0967765625 char: 0.04045348052978515 subs: 0.027460067749023438 text: 0.027460067749023438 0.06964058715820313 😀🤵‍♂️⚧...▪✌❄"
+            },
+            {
+              "title": "diffs from 115",
+              "subtitle": "Features: 113-115+ JS/DOM: .modal-creep-features-js:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-features-js:c"
+            },
+            {
+              "title": "diffs from 115",
+              "subtitle": "CSS: .modal-creep-features-css:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-features-css:checked ~ .modal-contai"
+            },
+            {
+              "title": "CSS Media Queries",
+              "subtitle": "43.80ms CSS Media Queries202401c6 @media: .modal-creep-css-media:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-cree"
+            },
+            {
+              "title": "Computed Style",
+              "subtitle": "160.40ms Computed Styleb0062e03 keys (1317): .modal-creep-computed-style:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .mo"
+            },
+            {
+              "title": "Math",
+              "subtitle": "32.50ms Math54cd8264 results: .modal-creep-maths:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-maths:checked"
+            },
+            {
+              "title": "Error",
+              "subtitle": "1.70ms Error92b51d39 results: .modal-creep-console-errors:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-conso"
+            },
+            {
+              "title": "Window",
+              "subtitle": "1.60ms Windowaa97d874 keys (1231): .modal-creep-iframe-content-window-version:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; }"
+            },
+            {
+              "title": "HTMLElement",
+              "subtitle": "0.20ms HTMLElementdf3845ad keys (343): .modal-creep-html-element-version:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .mo"
+            },
+            {
+              "title": "Navigator",
+              "subtitle": "Navigator90812eb0 properties (80): .modal-creep-navigator-properties:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-cr"
+            }
+          ]
+        }
+      },
+      {
+        "id": "arh-antoinevastel",
+        "name": "arh.antoinevastel.com/bots",
+        "url": "https://arh.antoinevastel.com/bots/",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "rows": [
+            {
+              "name": "PHANTOM_UA",
+              "status": "consistent",
+              "raw": "{\"userAgent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\"}"
+            },
+            {
+              "name": "PHANTOM_PROPERTIES",
+              "status": "consistent",
+              "raw": "{\"attributesFound\":[false,false,false]}"
+            },
+            {
+              "name": "PHANTOM_ETSL",
+              "status": "consistent",
+              "raw": "{\"etsl\":33}"
+            },
+            {
+              "name": "PHANTOM_LANGUAGE",
+              "status": "consistent",
+              "raw": "{\"languages\":[\"en-US\",\"en\"]}"
+            },
+            {
+              "name": "PHANTOM_WEBSOCKET",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "MQ_SCREEN",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "PHANTOM_OVERFLOW",
+              "status": "consistent",
+              "raw": "{\"depth\":9577,\"errorMessage\":\"Maximum call stack size exceeded\",\"errorName\":\"RangeError\",\"errorStacklength\":747}"
+            },
+            {
+              "name": "PHANTOM_WINDOW_HEIGHT",
+              "status": "consistent",
+              "raw": "{\"wInnerHeight\":1080,\"wOuterHeight\":1080,\"wOuterWidth\":1920,\"wInnerWidth\":1920,\"wScreenX\":0,\"wPageXOffset\":0,\"wPageYOffset\":0,\"cWidth\":1920,\"cHeight\":619,\"sWidth\":1920,\"sHeight\":1080,\"sAvailWidth\":192"
+            },
+            {
+              "name": "HEADCHR_UA",
+              "status": "consistent",
+              "raw": "{\"userAgent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\"}"
+            },
+            {
+              "name": "WEBDRIVER",
+              "status": "inconsistent",
+              "raw": "{}"
+            },
+            {
+              "name": "HEADCHR_CHROME_OBJ",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "HEADCHR_PERMISSIONS",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "HEADCHR_PLUGINS",
+              "status": "consistent",
+              "raw": "{\"plugins\":[\"PDF Viewer::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format\",\"Chrome PDF Viewer::Portable Document Form"
+            },
+            {
+              "name": "HEADCHR_IFRAME",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "CHR_DEBUG_TOOLS",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "SELENIUM_DRIVER",
+              "status": "consistent",
+              "raw": "{\"attributesFound\":[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]}"
+            },
+            {
+              "name": "CHR_BATTERY",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "CHR_MEMORY",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "TRANSPARENT_PIXEL",
+              "status": "consistent",
+              "raw": "{\"0\":0,\"1\":0,\"2\":0,\"3\":0}"
+            },
+            {
+              "name": "SEQUENTUM",
+              "status": "consistent",
+              "raw": "{}"
+            },
+            {
+              "name": "VIDEO_CODECS",
+              "status": "consistent",
+              "raw": "{\"h264\":\"probably\"}"
+            }
+          ],
+          "rowsTotal": 21,
+          "consistent": 20,
+          "unsure": 0,
+          "inconsistent": 1,
+          "inconsistentTests": [
+            "WEBDRIVER"
+          ],
+          "unsureTests": [],
+          "fpCollect": null
+        }
+      },
+      {
+        "id": "incolumitas",
+        "name": "bot.incolumitas.com",
+        "url": "https://bot.incolumitas.com/",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "preSections": [
+            {
+              "heading": "New Detection Tests\n              [1]\n              [2]\n              [3]\n      ",
+              "json": {
+                "puppeteerEvaluationScript": "OK",
+                "webdriverPresent": "OK",
+                "connectionRTT": "FAIL",
+                "refMatch": "OK",
+                "overrideTest": "FAIL",
+                "overflowTest": "FAIL",
+                "puppeteerExtraStealthUsed": "OK",
+                "inconsistentWebWorkerNavigatorPropery": "OK"
+              },
+              "rawSnippet": "{\n  \"puppeteerEvaluationScript\": \"OK\",\n  \"webdriverPresent\": \"OK\",\n  \"connectionRTT\": \"FAIL\",\n  \"refMatch\": \"OK\",\n  \"overrideTest\": \"FAIL\",\n  \"overflowTest\": \"FAIL\",\n  \"puppeteerExtraStealthUsed\": \"OK\",\n  \"inconsistentWebWorkerNavigatorPropery\": \"OK\"\n}"
+            },
+            {
+              "heading": "Old Bot Detection Tests (Intoli.com tests + additions,\n              Fingerprint",
+              "json": {
+                "intoli": {
+                  "userAgent": "OK",
+                  "webDriver": "OK",
+                  "webDriverAdvanced": "OK",
+                  "pluginsLength": "OK",
+                  "pluginArray": "OK",
+                  "languages": "OK"
+                },
+                "fpscanner": {
+                  "PHANTOM_UA": "OK",
+                  "PHANTOM_PROPERTIES": "OK",
+                  "PHANTOM_ETSL": "OK",
+                  "PHANTOM_LANGUAGE": "OK",
+                  "PHANTOM_WEBSOCKET": "OK",
+                  "MQ_SCREEN": "OK",
+                  "PHANTOM_OVERFLOW": "OK",
+                  "PHANTOM_WINDOW_HEIGHT": "OK",
+                  "HEADCHR_UA": "OK",
+                  "WEBDRIVER": "FAIL",
+                  "HEADCHR_CHROME_OBJ": "OK",
+                  "HEADCHR_PERMISSIONS": "OK",
+                  "HEADCHR_PLUGINS": "OK",
+                  "HEADCHR_IFRAME": "OK",
+                  "CHR_DEBUG_TOOLS": "OK",
+                  "SELENIUM_DRIVER": "OK",
+                  "CHR_BATTERY": "OK",
+                  "CHR_MEMORY": "OK",
+                  "TRANSPARENT_PIXEL": "OK",
+                  "SEQUENTUM": "OK",
+                  "VIDEO_CODECS": "OK"
+                }
+              },
+              "rawSnippet": "{\n  \"intoli\": {\n    \"userAgent\": \"OK\",\n    \"webDriver\": \"OK\",\n    \"webDriverAdvanced\": \"OK\",\n    \"pluginsLength\": \"OK\",\n    \"pluginArray\": \"OK\",\n    \"languages\": \"OK\"\n  },\n  \"fpscanner\": {\n    \"PHANTOM_UA\": \"OK\",\n    \"PHANTOM_PROPERTIES\": \"OK\",\n    \"PHANTOM_ETSL\": \"OK\",\n    \"PHANTOM_LANGUAGE\": \"OK\",\n    \"PHANTOM_WEBSOCKET\": \"OK\",\n    \"MQ_SCREEN\": \"OK\",\n    \"PHANTOM_OVERFLOW\": \"OK\",\n    \"PHANTOM_WI"
+            },
+            {
+              "heading": "IP Address API [1] [2]",
+              "json": {
+                "ip": "141.11.43.141",
+                "rir": "RIPE",
+                "is_bogon": false,
+                "is_mobile": false,
+                "is_satellite": false,
+                "is_crawler": false,
+                "is_datacenter": true,
+                "is_tor": false,
+                "is_proxy": false,
+                "is_vpn": false,
+                "is_abuser": false,
+                "datacenter": {
+                  "datacenter": "Private Customer",
+                  "domain": "ipxo.com",
+                  "network": "141.11.43.0 - 141.11.43.255"
+                },
+                "company": {
+                  "name": "Private Customer",
+                  "abuser_score": "0 (Very Low)",
+                  "domain": "ipxo.com",
+                  "type": "hosting",
+                  "network": "141.11.43.0 - 141.11.43.255",
+                  "netname": "NET-141-11-43-0-24"
+                },
+                "abuse": {
+                  "name": "Private Customer",
+                  "address": "Private Residence",
+                  "email": "report@abuseradar.com",
+                  "phone": ""
+                },
+                "asn": {
+                  "asn": 136510,
+                  "abuser_score": "0.0378 (High)",
+                  "route": "141.11.43.0/24",
+                  "descr": "STREAMLINESERVERS-AS-AP - Streamline Servers Pty Ltd, AU",
+                  "country": "au",
+                  "active": true,
+                  "org": "Streamline Servers Pty Ltd",
+                  "domain": "streamlinevps.com",
+                  "abuse": "noc@streamlinevps.com",
+                  "type": "hosting",
+                  "updated": "2020-07-13",
+                  "rir": "APNIC"
+                },
+                "location": {
+                  "is_eu_member": true,
+                  "calling_code": "33",
+                  "currency_code": "EUR",
+                  "continent": "EU",
+                  "country": "France",
+                  "country_code": "FR",
+                  "state": "Auvergne-Rhône-Alpes",
+                  "city": "Lyon",
+                  "latitude": 45.74906,
+                  "longitude": 4.84789,
+                  "zip": "69998 CEDEX 07",
+                  "timezone": "Europe/Paris",
+                  "local_time": "2026-05-30T05:33:11+02:00",
+                  "local_time_unix": 1780111991,
+                  "is_dst": true,
+                  "utcoffset": "+02:00",
+                  "accuracy": "VERY_HIGH"
+                },
+                "elapsed_ms": 0.06
+              },
+              "rawSnippet": "{  \"ip\": \"141.11.43.141\",  \"rir\": \"RIPE\",  \"is_bogon\": false,  \"is_mobile\": false,  \"is_satellite\": false,  \"is_crawler\": false,  \"is_datacenter\": true,  \"is_tor\": false,  \"is_proxy\": false,  \"is_vpn\": false,  \"is_abuser\": false,  \"datacenter\": {    \"datacenter\": \"Private Customer\",    \"domain\": \"ipxo.com\",    \"network\": \"141.11.43.0 - 141.11.43.255\"  },  \"company\": {    \"name\": \"Private Customer\""
+            },
+            {
+              "heading": "fingerprintjs - Browser Fingerprint\n              [1]",
+              "json": null,
+              "rawSnippet": "ac1a5a343290a67d91ec5f24a065543b"
+            },
+            {
+              "heading": "WebGL Fingerprint\n              [1]",
+              "json": null,
+              "rawSnippet": "d38c1330af64b53f3fd5901aa21e760370e0812a854f867789964dce07257e9b"
+            },
+            {
+              "heading": "Web Worker Navigatory Property\n              [1]",
+              "json": {
+                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
+                "appVersion": "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
+                "platform": "Win32",
+                "webdriver": false,
+                "deviceMemory": 8,
+                "hardwareConcurrency": 8,
+                "vendor": "Google Inc.",
+                "language": "en-US",
+                "languages": [
+                  "en-US",
+                  "en"
+                ]
+              },
+              "rawSnippet": "{\n  \"userAgent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"appVersion\": \"5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"platform\": \"Win32\",\n  \"webdriver\": false,\n  \"deviceMemory\": 8,\n  \"hardwareConcurrency\": 8,\n  \"vendor\": \"Google Inc.\",\n  \"language\": \"e"
+            },
+            {
+              "heading": "Fp-collect info (Modified by Me)",
+              "json": {
+                "byteLength": "unknown",
+                "appVersion": "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
+                "onLine": true,
+                "doNotTrack": null,
+                "hardwareConcurrency": 8,
+                "timezone": 240,
+                "timezone2": "America/New_York",
+                "systemTime": "Fri May 29 2026 23:33:11 GMT-0400 (Eastern Daylight Time)",
+                "getTimezoneOffset": 300,
+                "toLocaleString": "5/29/2026, 11:33:11 PM",
+                "historyLength": 12,
+                "indexedDB": true,
+                "openDatabase": false,
+                "product": "Gecko",
+                "fmget": false,
+                "domAutomation": false,
+                "cookieEnabled": true,
+                "sendBeaconAvailable": true,
+                "appName": "Netscape",
+                "vendor": "Google Inc.",
+                "appCodeName": "Mozilla",
+                "userMediaAvailable": true,
+                "javaEnabled": false,
+                "batteryDetails": {
+                  "charging": true,
+                  "chargingTime": 0,
+                  "dischargingTime": null,
+                  "level": 1
+                },
+                "plugins": [
+                  "PDF Viewer::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format",
+                  "Chrome PDF Viewer::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format",
+                  "Chromium PDF Viewer::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format",
+                  "Microsoft Edge PDF Viewer::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format",
+                  "WebKit built-in PDF::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format"
+                ],
+                "mimeTypes": [
+                  "Portable Document Format~~application/pdf~~pdf",
+                  "Portable Document Format~~text/pdf~~pdf"
+                ],
+                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
+                "platform": "Win32",
+                "language": "en-US",
+                "languages": [
+                  "en-US",
+                  "en"
+                ],
+                "screen": {
+                  "wInnerHeight": 1080,
+                  "wOuterHeight": 1080,
+                  "wOuterWidth": 1920,
+                  "wInnerWidth": 1920,
+                  "wScreenX": 0,
+                  "wPageXOffset": 0,
+                  "wPageYOffset": 0,
+                  "cWidth": 1920,
+                  "cHeight": 5521,
+                  "sWidth": 1920,
+                  "sHeight": 1080,
+                  "sAvailWidth": 1920,
+                  "sAvailHeight": 1040,
+                  "sColorDepth": 24,
+                  "sPixelDepth": 24,
+                  "wDevicePixelRatio": 1
+                },
+                "touchScreen": [
+                  0,
+                  false,
+                  false
+                ],
+                "videoCard": [
+                  "Google Inc. (Intel)",
+                  "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+                ],
+                "multimediaDevices": {
+                  "speakers": 1,
+                  "micros": 1,
+                  "webcams": 1
+                },
+                "productSub": "20030107",
+                "navigatorPrototype": [
+                  "vendorSub~~~function get vendorSub() { [native code] }",
+                  "productSub~~~function get productSub() { [native code] }",
+                  "vendor~~~function get vendor() { [native code] }",
+                  "maxTouchPoints~~~function get maxTouchPoints() { [native code] }",
+                  "scheduling~~~function get scheduling() { [native code] }",
+                  "userActivation~~~function get userActivation() { [native code] }",
+                  "geolocation~~~function get geolocation() { [native code] }",
+                  "doNotTrack~~~function get doNotTrack() { [native code] }",
+                  "webkitTemporaryStorage~~~function get webkitTemporaryStorage() { [native code] }",
+                  "webkitPersistentStorage~~~function get webkitPersistentStorage() { [native code] }",
+                  "hardwareConcurrency~~~function get hardwareConcurrency() { [native code] }",
+                  "cookieEnabled~~~function get cookieEnabled() { [native code] }",
+                  "appCodeName~~~function get appCodeName() { [native code] }",
+                  "appName~~~function get appName() { [native code] }",
+                  "appVersion~~~function get appVersion() { [native code] }",
+                  "platform~~~function get platform() { [native code] }",
+                  "product~~~function get product() { [native code] }",
+                  "userAgent~~~function get userAgent() { [native code] }",
+                  "language~~~function get language() { [native code] }",
+                  "languages~~~function get languages() { [native code] }",
+                  "onLine~~~function get onLine() { [native code] }",
+                  "webdriver~~~function get webdriver() { [native code] }",
+                  "plugins~~~function get plugins() { [native code] }",
+                  "mimeTypes~~~function get mimeTypes() { [native code] }",
+                  "pdfViewerEnabled~~~function get pdfViewerEnabled() { [native code] }",
+                  "connection~~~function get connection() { [native code] }",
+                  "getGamepads~~~function getGamepads() { [native code] }",
+                  "javaEnabled~~~function javaEnabled() { [native code] }",
+                  "sendBeacon~~~function sendBeacon() { [native code] }",
+                  "vibrate~~~function vibrate() { [native code] }",
+                  "windowControlsOverlay~~~function get windowControlsOverlay() { [native code] }",
+                  "constructor~~~function Navigator() { [native code] }",
+                  "deprecatedRunAdAuctionEnforcesKAnonymity~~~function get deprecatedRunAdAuctionEnforcesKAnonymity() { [native code] }",
+                  "protectedAudience~~~function get protectedAudience() { [native code] }",
+                  "bluetooth~~~function get bluetooth() { [native code] }",
+                  "clipboard~~~function get clipboard() { [native code] }",
+                  "credentials~~~function get credentials() { [native code] }",
+                  "keyboard~~~function get keyboard() { [native code] }",
+                  "managed~~~function get managed() { [native code] }",
+                  "mediaDevices~~~function get mediaDevices() { [native code] }",
+                  "serviceWorker~~~function get serviceWorker() { [native code] }",
+                  "virtualKeyboard~~~function get virtualKeyboard() { [native code] }",
+                  "wakeLock~~~function get wakeLock() { [native code] }",
+                  "deviceMemory~~~function get deviceMemory() { [native code] }",
+                  "userAgentData~~~function get userAgentData() { [native code] }",
+                  "locks~~~function get locks() { [native code] }",
+                  "storage~~~function get storage() { [native code] }",
+                  "gpu~~~function get gpu() { [native code] }",
+                  "login~~~function get login() { [native code] }",
+                  "ink~~~function get ink() { [native code] }",
+                  "mediaCapabilities~~~function get mediaCapabilities() { [native code] }",
+                  "devicePosture~~~function get devicePosture() { [native code] }",
+                  "hid~~~function get hid() { [native code] }",
+                  "mediaSession~~~function get mediaSession() { [native code] }",
+                  "permissions~~~function get permissions() { [native code] }",
+                  "presentation~~~function get presentation() { [native code] }",
+                  "serial~~~function get serial() { [native code] }",
+                  "usb~~~function get usb() { [native code] }",
+                  "xr~~~function get xr() { [native code] }",
+                  "storageBuckets~~~function get storageBuckets() { [native code] }",
+                  "adAuctionComponents~~~function adAuctionComponents() { [native code] }",
+                  "runAdAuction~~~function runAdAuction() { [native code] }",
+                  "canLoadAdAuctionFencedFrame~~~function canLoadAdAuctionFencedFrame() { [native code] }",
+                  "clearAppBadge~~~function clearAppBadge() { [native code] }",
+                  "getBattery~~~function getBattery() { [native code] }",
+                  "getUserMedia~~~function getUserMedia() { [native code] }",
+                  "requestMIDIAccess~~~function requestMIDIAccess() { [native code] }",
+                  "requestMediaKeySystemAccess~~~function requestMediaKeySystemAccess() { [native code] }",
+                  "setAppBadge~~~function setAppBadge() { [native code] }",
+                  "webkitGetUserMedia~~~function webkitGetUserMedia() { [native code] }",
+                  "clearOriginJoinedAdInterestGroups~~~function clearOriginJoinedAdInterestGroups() { [native code] }",
+                  "createAuctionNonce~~~function createAuctionNonce() { [native code] }",
+                  "joinAdInterestGroup~~~function joinAdInterestGroup() { [native code] }",
+                  "leaveAdInterestGroup~~~function leaveAdInterestGroup() { [native code] }",
+                  "updateAdInterestGroups~~~function updateAdInterestGroups() { [native code] }",
+                  "deprecatedReplaceInURN~~~function deprecatedReplaceInURN() { [native code] }",
+                  "deprecatedURNToURL~~~function deprecatedURNToURL() { [native code] }",
+                  "getInstalledRelatedApps~~~function getInstalledRelatedApps() { [native code] }",
+                  "getInterestGroupAdAuctionData~~~function getInterestGroupAdAuctionData() { [native code] }",
+                  "registerProtocolHandler~~~function registerProtocolHandler() { [native code] }",
+                  "unregisterProtocolHandler~~~function unregisterProtocolHandler() { [native code] }",
+                  "constructor~~~function Navigator() { [native code] }",
+                  "__defineGetter__~~~",
+                  "__defineSetter__~~~",
+                  "hasOwnProperty~~~",
+                  "__lookupGetter__~~~",
+                  "__lookupSetter__~~~",
+                  "isPrototypeOf~~~",
+                  "propertyIsEnumerable~~~",
+                  "toString~~~",
+                  "valueOf~~~",
+                  "__proto__~~~",
+                  "toLocaleString~~~"
+                ],
+                "navigatorProperties": [
+                  "vendorSub",
+                  "productSub",
+                  "vendor",
+                  "maxTouchPoints",
+                  "scheduling",
+                  "userActivation",
+                  "geolocation",
+                  "doNotTrack",
+                  "webkitTemporaryStorage",
+                  "webkitPersistentStorage",
+                  "hardwareConcurrency",
+                  "cookieEnabled",
+                  "appCodeName",
+                  "appName",
+                  "appVersion",
+                  "platform",
+                  "product",
+                  "userAgent",
+                  "language",
+                  "languages",
+                  "onLine",
+                  "webdriver",
+                  "plugins",
+                  "mimeTypes",
+                  "pdfViewerEnabled",
+                  "connection",
+                  "getGamepads",
+                  "javaEnabled",
+                  "sendBeacon",
+                  "vibrate",
+                  "windowControlsOverlay",
+                  "constructor",
+                  "deprecatedRunAdAuctionEnforcesKAnonymity",
+                  "protectedAudience",
+                  "bluetooth",
+                  "clipboard",
+                  "credentials",
+                  "keyboard",
+                  "managed",
+                  "mediaDevices",
+                  "serviceWorker",
+                  "virtualKeyboard",
+                  "wakeLock",
+                  "deviceMemory",
+                  "userAgentData",
+                  "locks",
+                  "storage",
+                  "gpu",
+                  "login",
+                  "ink",
+                  "mediaCapabilities",
+                  "devicePosture",
+                  "hid",
+                  "mediaSession",
+                  "permissions",
+                  "presentation",
+                  "serial",
+                  "usb",
+                  "xr",
+                  "storageBuckets",
+                  "adAuctionComponents",
+                  "runAdAuction",
+                  "canLoadAdAuctionFencedFrame",
+                  "clearAppBadge",
+                  "getBattery",
+                  "getUserMedia",
+                  "requestMIDIAccess",
+                  "requestMediaKeySystemAccess",
+                  "setAppBadge",
+                  "webkitGetUserMedia",
+                  "clearOriginJoinedAdInterestGroups",
+                  "createAuctionNonce",
+                  "joinAdInterestGroup",
+                  "leaveAdInterestGroup",
+                  "updateAdInterestGroups",
+                  "deprecatedReplaceInURN",
+                  "deprecatedURNToURL",
+                  "getInstalledRelatedApps",
+                  "getInterestGroupAdAuctionData",
+                  "registerProtocolHandler",
+                  "unregisterProtocolHandler",
+                  "constructor",
+                  "__defineGetter__",
+                  "__defineSetter__",
+                  "hasOwnProperty",
+                  "__lookupGetter__",
+                  "__lookupSetter__",
+                  "isPrototypeOf",
+                  "propertyIsEnumerable",
+                  "toString",
+                  "valueOf",
+                  "__proto__",
+                  "toLocaleString"
+                ],
+                "etsl": 33,
+                "screenDesc": "function get width() { [native code] }",
+                "phantomJS": [
+                  false,
+                  false,
+                  false
+                ],
+                "nightmareJS": false,
+                "selenium": [
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false,
+                  false
+                ],
+                "webDriver": true,
+                "webDriverValue": false,
+                "errorsGenerated": [
+                  "azeaze is not defined",
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ],
+                "resOverflow": {
+                  "depth": 9556,
+                  "errorMessage": "Maximum call stack size exceeded",
+                  "errorName": "RangeError",
+                  "errorStacklength": 864
+                },
+                "accelerometerUsed": false,
+                "screenMediaQuery": true,
+                "hasChrome": true,
+                "detailChrome": {
+                  "webstore": "TypeError: Cannot read properties of undefined (reading 'constructor')",
+                  "runtime": "function Object() { [native code] }",
+                  "app": "function Object() { [native code] }",
+                  "csi": "function Function() { [native code] }",
+                  "loadTimes": "function Function() { [native code] }",
+                  "connect": "window.chrome.runtime.connect is not a function",
+                  "sendMessage": "window.chrome.runtime.sendMessage is not a function"
+                },
+                "permissions": {
+                  "state": "prompt",
+                  "permission": "default"
+                },
+                "allPermissions": {
+                  "notifications": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "ambient-light-sensor": {
+                    "error": "TypeError: Failed to execute 'query' on 'Permissions': GenericSensorExtraClasses flag is not enabled."
+                  },
+                  "bluetooth": {
+                    "error": "TypeError: Failed to execute 'query' on 'Permissions': Failed to read the 'name' property from 'PermissionDescriptor': The provided value 'bluetooth' is not a valid enum value of type PermissionName."
+                  },
+                  "device-info": {
+                    "error": "TypeError: Failed to execute 'query' on 'Permissions': Failed to read the 'name' property from 'PermissionDescriptor': The provided value 'device-info' is not a valid enum value of type PermissionName."
+                  },
+                  "nfc": {
+                    "error": "TypeError: Failed to execute 'query' on 'Permissions': Web NFC is not enabled."
+                  },
+                  "push": {
+                    "error": "NotSupportedError: Failed to execute 'query' on 'Permissions': Push Permission without userVisibleOnly:true isn't supported yet."
+                  },
+                  "speaker-selection": {
+                    "error": "TypeError: Failed to execute 'query' on 'Permissions': The Speaker Selection API is not enabled."
+                  },
+                  "accelerometer": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "background-fetch": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "background-sync": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "camera": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "clipboard-write": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "display-capture": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "geolocation": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "gyroscope": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "magnetometer": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "microphone": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "midi": {
+                    "state": "prompt",
+                    "permission": "default"
+                  },
+                  "persistent-storage": {
+                    "state": "prompt",
+                    "permission": "default"
+                  }
+                },
+                "iframeChrome": "object",
+                "debugTool": false,
+                "battery": true,
+                "deviceMemory": 8,
+                "tpCanvas": {
+                  "0": 0,
+                  "1": 0,
+                  "2": 0,
+                  "3": 0
+                },
+                "sequentum": false,
+                "audioCodecs": {
+                  "ogg": "probably",
+                  "mp3": "probably",
+                  "wav": "probably",
+                  "m4a": "maybe",
+                  "aac": "probably"
+                },
+                "videoCodecs": {
+                  "ogg": "",
+                  "h264": "probably",
+                  "webm": "probably",
+                  "mpeg4v": "",
+                  "mpeg4a": "",
+                  "theora": ""
+                },
+                "webSocketSupportTimeout": true
+              },
+              "rawSnippet": "{\n  \"byteLength\": \"unknown\",\n  \"appVersion\": \"5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"onLine\": true,\n  \"doNotTrack\": null,\n  \"hardwareConcurrency\": 8,\n  \"timezone\": 240,\n  \"timezone2\": \"America/New_York\",\n  \"systemTime\": \"Fri May 29 2026 23:33:11 GMT-0400 (Eastern Daylight Time)\",\n  \"getTimezoneOffset\": 300,\n  \"toLocaleString"
+            }
+          ],
+          "triggeredBadFlags": [],
+          "triggeredBadFlagsCount": 0,
+          "botDetectedText": false,
+          "behavioralSnippet": "Behavioral Classification More Sources and Links Bot Challenge New Detection Tests Old Detection Tests IP Address API Proxy/VPN Detection Tests Http Headers TCP/IP Fingerprint TLS Fingerprint Browser Fingerprint Canvas Fingerprint W"
+        }
+      },
+      {
+        "id": "fingerprint-scan",
+        "name": "fingerprint-scan.com",
+        "url": "https://fingerprint-scan.com/",
+        "ok": true,
+        "durationMs": 0,
+        "extracted": {
+          "botRiskScore": 75,
+          "scoreSourceText": "Bot Risk Score: 75/100",
+          "scoreVerdict": "bot",
+          "attrs": [
+            {
+              "name": "accept",
+              "value": "*/*"
+            },
+            {
+              "name": "accept-encoding",
+              "value": "gzip, br"
+            },
+            {
+              "name": "accept-language",
+              "value": "en-US,en;q=0.9"
+            },
+            {
+              "name": "host",
+              "value": "fingerprint-scan.com"
+            },
+            {
+              "name": "priority",
+              "value": "u=1, i"
+            },
+            {
+              "name": "referer",
+              "value": "https://fingerprint-scan.com/"
+            },
+            {
+              "name": "sec-ch-ua",
+              "value": "\"HeadlessChrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\""
+            },
+            {
+              "name": "sec-ch-ua-mobile",
+              "value": "?0"
+            },
+            {
+              "name": "sec-ch-ua-platform",
+              "value": "\"Windows\""
+            },
+            {
+              "name": "sec-fetch-dest",
+              "value": "empty"
+            },
+            {
+              "name": "sec-fetch-mode",
+              "value": "cors"
+            },
+            {
+              "name": "sec-fetch-site",
+              "value": "same-origin"
+            },
+            {
+              "name": "user-agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "IP Address",
+              "value": "141.11.43.141"
+            },
+            {
+              "name": "Country",
+              "value": "SG"
+            },
+            {
+              "name": "City",
+              "value": "Singapore"
+            },
+            {
+              "name": "ASN",
+              "value": "136510"
+            },
+            {
+              "name": "AS Organization",
+              "value": "Private Customer"
+            },
+            {
+              "name": "Timezone",
+              "value": "Asia/Singapore"
+            },
+            {
+              "name": "HTTP Protocol",
+              "value": "HTTP/3"
+            },
+            {
+              "name": "TLS Version",
+              "value": "TLSv1.3"
+            },
+            {
+              "name": "TLS Cipher",
+              "value": "AEAD-AES128-GCM-SHA256"
+            },
+            {
+              "name": "Client TCP RTT",
+              "value": "0"
+            },
+            {
+              "name": "User Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "Platform",
+              "value": "Win32"
+            },
+            {
+              "name": "Timezone",
+              "value": "America/New_York"
+            },
+            {
+              "name": "Hardware Concurrency",
+              "value": "8"
+            },
+            {
+              "name": "Device Memory",
+              "value": "8"
+            },
+            {
+              "name": "Max Touch Points",
+              "value": "0"
+            },
+            {
+              "name": "Accelerometer",
+              "value": "false"
+            },
+            {
+              "name": "Locale Date",
+              "value": "12/31/1969, 7:00:00 PM"
+            },
+            {
+              "name": "Is Brave Browser",
+              "value": "false"
+            },
+            {
+              "name": "Has Default Chrome Extension",
+              "value": "false"
+            },
+            {
+              "name": "WebDriver",
+              "value": "false"
+            },
+            {
+              "name": "Is Selenium Chrome",
+              "value": "false"
+            },
+            {
+              "name": "CDP Check",
+              "value": "false"
+            },
+            {
+              "name": "Is Playwright",
+              "value": "false"
+            },
+            {
+              "name": "Width",
+              "value": "1920"
+            },
+            {
+              "name": "Height",
+              "value": "1080"
+            },
+            {
+              "name": "availableWidth",
+              "value": "1920"
+            },
+            {
+              "name": "availableHeight",
+              "value": "1040"
+            },
+            {
+              "name": "availLeft",
+              "value": "0"
+            },
+            {
+              "name": "availTop",
+              "value": "0"
+            },
+            {
+              "name": "devicePixelRatio",
+              "value": "1"
+            },
+            {
+              "name": "multiScreen",
+              "value": "false"
+            },
+            {
+              "name": "colorDepth",
+              "value": "24"
+            },
+            {
+              "name": "pixelDepth",
+              "value": "24"
+            },
+            {
+              "name": "innerWidth",
+              "value": "1920"
+            },
+            {
+              "name": "innerHeight",
+              "value": "1080"
+            },
+            {
+              "name": "outerWidth",
+              "value": "1920"
+            },
+            {
+              "name": "outerHeight",
+              "value": "1080"
+            },
+            {
+              "name": "screenOrientationType",
+              "value": "landscape-primary"
+            },
+            {
+              "name": "screenOrientationAngle",
+              "value": "0"
+            },
+            {
+              "name": "isFullScreen",
+              "value": "false"
+            },
+            {
+              "name": "Languages",
+              "value": "[\"en-US\",\"en\"]"
+            },
+            {
+              "name": "Language",
+              "value": "en-US"
+            },
+            {
+              "name": "speakers",
+              "value": "1"
+            },
+            {
+              "name": "micros",
+              "value": "1"
+            },
+            {
+              "name": "webcams",
+              "value": "1"
+            },
+            {
+              "name": "plugins",
+              "value": "PDF Viewer, Chrome PDF Viewer, Chromium PDF Viewer, Microsoft Edge PDF Viewer, WebKit built-in PDF"
+            },
+            {
+              "name": "Number",
+              "value": "5"
+            },
+            {
+              "name": "Mime Types",
+              "value": "application/pdf, text/pdf"
+            },
+            {
+              "name": "Number",
+              "value": "2"
+            },
+            {
+              "name": "architecture",
+              "value": "x86"
+            },
+            {
+              "name": "bitness",
+              "value": "64"
+            },
+            {
+              "name": "platformVersion",
+              "value": "15.0.0"
+            },
+            {
+              "name": "WebGL Vendor",
+              "value": "Google Inc. (Intel)"
+            },
+            {
+              "name": "WebGL Renderer",
+              "value": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+            },
+            {
+              "name": "WebGL Vendor",
+              "value": "Google Inc. (Intel)"
+            },
+            {
+              "name": "WebGL Renderer",
+              "value": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+            },
+            {
+              "name": "User Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
+            },
+            {
+              "name": "Languages",
+              "value": "[\"en-US\",\"en\"]"
+            },
+            {
+              "name": "Platform",
+              "value": "Win32"
+            },
+            {
+              "name": "Hardware Concurrency",
+              "value": "8"
+            },
+            {
+              "name": "CDP Check",
+              "value": "false"
+            },
+            {
+              "name": "Is Same As Main JS Context",
+              "value": "true"
+            },
+            {
+              "name": "Voice URI",
+              "value": "Microsoft David Desktop - English (United States)"
+            },
+            {
+              "name": "Name",
+              "value": "Microsoft David Desktop - English (United States)"
+            },
+            {
+              "name": "Lang",
+              "value": "en-US"
+            },
+            {
+              "name": "Local Service",
+              "value": "true"
+            },
+            {
+              "name": "Default",
+              "value": "true"
+            },
+            {
+              "name": "Number of Voices",
+              "value": "3"
+            },
+            {
+              "name": "Number of Local Services",
+              "value": "3"
+            },
+            {
+              "name": "Number of Google Voices",
+              "value": "1"
+            },
+            {
+              "name": "Has Russian Local Voice",
+              "value": "false"
+            },
+            {
+              "name": "parameters",
+              "value": "3c504025"
+            },
+            {
+              "name": "challenge",
+              "value": "3179729d"
+            },
+            {
+              "name": "acos",
+              "value": "1.4473588658278522"
+            },
+            {
+              "name": "acosh",
+              "value": "709.889355822726"
+            },
+            {
+              "name": "acoshPf",
+              "value": "355.291251501643"
+            },
+            {
+              "name": "asin",
+              "value": "0.12343746096704435"
+            },
+            {
+              "name": "asinh",
+              "value": "0.881373587019543"
+            },
+            {
+              "name": "asinhPf",
+              "value": "0.8813735870195429"
+            },
+            {
+              "name": "atanh",
+              "value": "0.5493061443340548"
+            },
+            {
+              "name": "atanhPf",
+              "value": "0.5493061443340548"
+            },
+            {
+              "name": "atan",
+              "value": "0.4636476090008061"
+            },
+            {
+              "name": "sin",
+              "value": "0.8178819121159085"
+            },
+            {
+              "name": "sinh",
+              "value": "1.1752011936438014"
+            },
+            {
+              "name": "sinhPf",
+              "value": "1.1752011936438014"
+            },
+            {
+              "name": "cos",
+              "value": "-0.8390715290095377"
+            },
+            {
+              "name": "cosh",
+              "value": "1.5430806348152437"
+            },
+            {
+              "name": "coshPf",
+              "value": "1.5430806348152437"
+            },
+            {
+              "name": "tan",
+              "value": "-1.4214488238747245"
+            },
+            {
+              "name": "tanh",
+              "value": "0.7615941559557649"
+            },
+            {
+              "name": "tanhPf",
+              "value": "0.7615941559557649"
+            },
+            {
+              "name": "exp",
+              "value": "2.718281828459045"
+            },
+            {
+              "name": "expm1",
+              "value": "1.718281828459045"
+            },
+            {
+              "name": "expm1Pf",
+              "value": "1.718281828459045"
+            },
+            {
+              "name": "log1p",
+              "value": "2.3978952727983707"
+            },
+            {
+              "name": "log1pPf",
+              "value": "2.3978952727983707"
+            },
+            {
+              "name": "powPI",
+              "value": "1.9275814160560206e-50"
+            },
+            {
+              "name": "hash",
+              "value": "3b96dfd2"
+            },
+            {
+              "name": "Supported Media Capabilities",
+              "value": "[{\"name\":\"video/mp4; codecs=\\\"avc1.42E01E\\\"\",\"supported\":true,\"smooth\":true,\"powerEfficient\":false},{\"name\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\",\"supported\":true,\"smooth\":true,\"powerEfficient\":true},{\"name\":\"video/webm; codecs=\\\"vp09.00.10.08\\\"\",\"supported\":true,\"smooth\":true,\"powerEfficient\":false},{\""
+            },
+            {
+              "name": "Number",
+              "value": "9"
+            },
+            {
+              "name": "Width",
+              "value": "0"
+            },
+            {
+              "name": "Height",
+              "value": "0"
+            },
+            {
+              "name": "Fonts",
+              "value": "[\"Calibri\",\"Franklin Gothic\",\"MS UI Gothic\",\"MT Extra\",\"Marlett\",\"Segoe UI Light\",\"SimHei\",\"Univers CE 55 Medium\"]"
+            },
+            {
+              "name": "Number",
+              "value": "8"
+            },
+            {
+              "name": "Color Gamut",
+              "value": "NOT_AVAILABLE"
+            },
+            {
+              "name": "Any Pointer",
+              "value": "fine,any"
+            },
+            {
+              "name": "Any Hover",
+              "value": "hover,any"
+            },
+            {
+              "name": "Canvas",
+              "value": "7e50fa36"
+            },
+            {
+              "name": "Canvas Modified",
+              "value": "true"
+            },
+            {
+              "name": "size",
+              "value": "0"
+            },
+            {
+              "name": "WebGPU",
+              "value": "NOT_AVAILABLE"
+            },
+            {
+              "name": "ogg",
+              "value": "probably"
+            },
+            {
+              "name": "mp3",
+              "value": "probably"
+            },
+            {
+              "name": "wav",
+              "value": "probably"
+            },
+            {
+              "name": "m4a",
+              "value": "maybe"
+            },
+            {
+              "name": "aac",
+              "value": "probably"
+            },
+            {
+              "name": "h264",
+              "value": "probably"
+            },
+            {
+              "name": "webm",
+              "value": "probably"
+            },
+            {
+              "name": "Iframe Overridden",
+              "value": "false"
+            },
+            {
+              "name": "WebDriver",
+              "value": "false"
+            }
+          ],
+          "attrsTotal": 134,
+          "highRiskHit": false,
+          "lowRiskHit": false,
+          "botDetectedText": false
+        }
+      }
+    ]
+  },
+  "error": null,
+  "meta": {
+    "sdkVersion": "0.10.0",
+    "chromiumVersion": "baseline"
+  }
+}

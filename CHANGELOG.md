@@ -7,6 +7,56 @@ in 0.x (minor bumps may include breaking changes).
 
 ## [Unreleased]
 
+### Added — Cloud server-side injection (Option A) + Detection Lab evidence (2026-05-30)
+
+落实「证据 → 用户 → 夯实」推进建议的第一刀（详见 [`docs/ROADMAP-90D.md`](docs/ROADMAP-90D.md)）。
+
+- **云端服务端注入（Option A，默认开启）** —— 解决「裸 `connectOverCDP` /
+  Browserbase baseURL swap 拿不到深层 stealth」的核心矛盾。新增
+  `apps/browser-pod/src/inject.ts` `applyServerStealth`：pod 在 chromium 起好后用
+  自带 playwright `connectOverCDP` + `addInitScript` 注册与 desktop launcher 同款
+  `injectAll`（canvas/WebGL/audio/UA-CH/字体/worker scope）。每 session 受
+  `stealth.inject`、pod 受 `POD_SERVER_INJECT` 约束；连接保持到 session 结束，
+  `killChromium` 先 close 再 SIGTERM。`apps/browser-pod` 新增 `@mosaiq/sdk` 依赖，
+  Dockerfile 用 `MOSAIQ_SDK_SKIP_POSTINSTALL=1` 跳过无关的 rebrowser-patch postinstall。
+  **三重验证**：(1) 真 pod + 真 chromium 本地实测，裸 `connectOverCDP` 不调
+  `injectInto` 即得 `hardwareConcurrency`/WebGL renderer = persona 值；(2) pod +
+  cloud-runtime Docker 镜像构建通过；(3) **全链路 `docker-compose.local-docker.yml`
+  e2e 本地跑绿**（cloud-runtime → LocalDocker → pod 容器 → CDP 反代），
+  `e2e-smoke.mjs` 新增「不调 injectInto 也 spoof」断言通过。
+- **修复 `LocalDockerMachineManager` pod-start 超时** —— 35s→75s（与 Fly 对齐）。
+  pod 内 chromium boot 默认 60s，35s 会在慢机器上提前 abort 误判 `pool.pod_unhealthy`
+  并丢失 pod 诊断。属上面 compose e2e 实测暴露的既有 bug。
+- **`injectAll` realm 级幂等守卫** —— 服务端注入 + 客户端 `injectInto` 双重注册同一
+  文档只生效一次，不会双重包装 prototype getter。
+- **Detection Lab 首批真实 baseline + scorer 重校准** —— 4 个 fixture persona
+  （win11/win10/macOS/Ubuntu）对 12 个 live 站点各跑一次，
+  `tests/fixtures/baseline-runs/<id>/baseline.json` 首次提交，detection-lab CI gate
+  现真正生效。深入调查首跑的 2 个 hit 后确认**两者均非伪装失败，而是 scorer 判定过严/
+  误判严重度**（与 bench `PHASE-1-NEXT-STEPS.md` / `PHASE-2-PLAN.md` 既有结论一致），
+  据此重校准 `detection-lab/scorer.ts`（**注入层未改动**——`liesCount=0` + canvas
+  正常渲染证明伪装本就 API 一致）：
+  - **browserleaks-canvas**：移除「uniqueness>50% → medium hit」。canvas 是高熵指纹，
+    真实浏览器 / 隐私工具同样常 100% unique，而 per-persona 噪声本就**故意**让 hash 唯一
+    （反跨站追踪）；旧逻辑「唯一性高 = noise 不足」方向是反的。真正的 spoof-failed 信号
+    （hash 缺失 / 全黑）仍保留为 high。
+  - **creepjs WebGL bold-fail**：`liesCount===0`（无真实撒谎）时由 high 降为 low。这是
+    CreepJS 人工策展 GPU 白名单的数据缺口（Intel UHD 730 未收录，真实同款 GPU 用户同样
+    bold-fail，「非 Mosaiq bug」），项目 Phase 2.2 bench 已证实 JS 层无法反推命中
+    （联合密度 ~5.5e-8）。保持可见但不再误判为 high。
+  - **影响**：4 份 baseline weightedHits 4.50 → **0.50**（canvas hit 消除、creepjs
+    WebGL 降 low）。scorer 单测 +2（WebGL bold-fail liesCount=0/≠0 两态）。
+- **公开 leaderboard** —— `pnpm build-leaderboard` 由 4 份真 baseline 生成静态站
+  （部署 GitHub Pages 需 maintainer 开启）。
+- **质量护栏** —— CI 加 `@mosaiq/browser-pod` 单测 + non-blocking biome
+  changed-files 可见性 gate；`@mosaiq/cli` 版本号改为从 package.json 动态读
+  （消除 0.9.0-dev 漂移）；`@mosaiq/cloud-sdk` 纳入 `audit-tarballs`；`cloud-runtime`
+  README / ci.yml 注释大面积 doc 漂移修正；`DEVELOPMENT.md §8` 新增技术债清单。
+- **新文档 / 模板** —— `docs/EVIDENCE-AND-VALIDATION.md`（baseline bootstrap +
+  leaderboard + 硬目标/真账号实测协议）、`docs/ROADMAP-90D.md`（单人+AI 90 天现实
+  路线）、`.github/ISSUE_TEMPLATE/detection-report.yml`（反检测命中回流）。
+  `RELEASING.md §8` 改成可执行的 npm `@mosaiq` scope go-live 清单（含 cloud-sdk）。
+
 ### Added — v0.11 phase 11.1: Cloud Runtime alpha (2026-05-22)
 
 第一次把 Mosaiq 的 cloud track 从设计稿（`docs/CLOUD-RUNTIME-ARCH.md`）落到

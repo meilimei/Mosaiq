@@ -33,6 +33,7 @@ import type { Persona } from '@mosaiq/persona-schema';
 
 import { loadContext, snapshotContext } from './context-io.js';
 import { loadEnv } from './env.js';
+import { applyServerStealth, type ServerStealthHandle } from './inject.js';
 import { getLogger } from './logger.js';
 import { buildChromiumFlags } from './persona-flags.js';
 
@@ -46,6 +47,12 @@ export interface RunningChromium {
 export interface ChromiumSpawnInput {
   machineId: string;
   persona: Persona;
+  /**
+   * 是否做服务端深层注入（Option A）。默认 true。控制平面从 session 的
+   * `stealth.inject` 透传；设 false = raw chromium 模式（仅进程级 flag）。
+   * 也受 pod env `POD_SERVER_INJECT` 总开关约束（kill-switch）。
+   */
+  stealthInject?: boolean;
   viewport?: { width: number; height: number };
   ttlSeconds: number;
   /**
@@ -87,6 +94,8 @@ let current:
       sessionUserDir: string;
       contextProjectId: string | null;
       managedKill: boolean;
+      /** Option A: pod 侧服务端注入连接句柄；kill 时先 close 再 SIGTERM。null = 未注入。 */
+      injectHandle: ServerStealthHandle | null;
     }
   | null = null;
 
@@ -239,7 +248,12 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     if (current && current.proc === proc) {
       if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
       const wasManaged = current.managedKill;
+      const handle = current.injectHandle;
       current = null;
+      // Option A: 关掉服务端注入的 playwright 连接。unmanaged 退出（crash/TTL/self-
+      // death）时 chromium 已死，连接会自然报错；managed 退出时 killChromium 已先关，
+      // 这里 double-close 是安全的（close 内部 best-effort catch）。
+      void handle?.close();
       // Phase 11.6: managed kill（killChromium）会在 snapshot 之后自己 rm，这里
       // 跳过避免在 snapshot 读取 user-data-dir 之前就把它删了。Unmanaged 退出
       // （crash / TTL SIGTERM / chromium self-death）照常立即清理，不 snapshot。
@@ -303,6 +317,19 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
   externalUrl.port = String(env.POD_CDP_PORT);
   const cdpUrl = externalUrl.toString();
 
+  // ── Option A: 服务端深层注入 ──
+  // 在 spawnChromium 返回（= 控制平面把 cdpUrl 回给客户端）**之前**注册 injectAll，
+  // 确保客户端随后 connectOverCDP 创建的页面一加载就带 canvas/WebGL/audio/UA-CH/字体/
+  // worker 全套深层 spoof（而不只是进程级 flag）。受 session 的 stealthInject + pod env
+  // POD_SERVER_INJECT 双重 gate。applyServerStealth 内部 fail-soft，绝不抛错。
+  const doInject = (input.stealthInject ?? true) && env.POD_SERVER_INJECT;
+  const injectHandle = doInject
+    ? await applyServerStealth({
+        internalCdpPort: env.POD_CDP_INTERNAL_PORT,
+        persona: input.persona,
+      })
+    : null;
+
   const info: RunningChromium = {
     machineId: input.machineId,
     pid: proc.pid ?? -1,
@@ -323,8 +350,12 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     sessionUserDir,
     contextProjectId: input.context?.projectId ?? null,
     managedKill: false,
+    injectHandle,
   };
-  log.info({ machineId: info.machineId, pid: info.pid, cdpUrl }, 'chromium ready');
+  log.info(
+    { machineId: info.machineId, pid: info.pid, cdpUrl, serverInject: doInject },
+    'chromium ready',
+  );
   return info;
 }
 
@@ -367,8 +398,13 @@ export async function killChromium(machineId: string, opts: KillOptions = {}): P
   const proc = current.proc;
   const sessionUserDir = current.sessionUserDir;
   const contextProjectId = current.contextProjectId;
+  const injectHandle = current.injectHandle;
   current.managedKill = true; // exit handler 跳过 rm，交给本函数
   if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
+
+  // Option A: 先关服务端注入的 playwright 连接，再 SIGTERM chromium —— 避免连接在
+  // chromium 被杀时报一堆 disconnect 错误。best-effort。
+  await injectHandle?.close();
 
   proc.kill('SIGTERM');
   const killed = await waitForExit(proc, 5_000);

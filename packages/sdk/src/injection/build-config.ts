@@ -151,6 +151,11 @@ export function buildInjectionConfig(persona: Persona): InjectionConfig {
 
     // Audio
     audioSampleRate: persona.hardware.audio.sampleRate,
+    // ⚠️ 下面三个字段当前已派生但 runner.ts 尚未消费（非死字段，是为后续 surface 预留的
+    // 管线）：audioOutputLatency → 未来 spoof AudioContext.outputLatency/baseLatency；
+    // audioInputDevices/audioOutputDevices → 未来 spoof navigator.mediaDevices.enumerateDevices()
+    // 的设备计数。保留 persona→config 的连线，落地新 surface 时 runner.ts 直接读即可，
+    // 不必再改 persona-schema / 模板。要移除请连同 InjectionConfig 字段与相关测试一并处理。
     audioOutputLatency: persona.hardware.audio.outputLatencySec,
     audioInputDevices: persona.hardware.audio.inputDeviceCount,
     audioOutputDevices: persona.hardware.audio.outputDeviceCount,

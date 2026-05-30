@@ -145,7 +145,29 @@ const contexts = browser.contexts();
 log('browser.contexts()', { count: contexts.length });
 const ctx = contexts[0] ?? (await browser.newContext());
 
-// ─── inject persona JS-level spoof BEFORE first goto ────────────────────────
+// ─── Option A regression gate: SERVER-SIDE injection (no injectInto yet) ─────
+// With stealth.inject=true (default), the pod injects injectAll server-side, so
+// a raw connectOverCDP page should ALREADY see deep-spoofed values BEFORE any
+// client-side injectInto. Uses a real URL (not about:blank) so the pod's
+// connectOverCDP auto-attach reliably registers the init script before load.
+log('server-side injection probe (no client injectInto)');
+{
+  const probe = await ctx.newPage();
+  await probe.goto('https://example.com', { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const hc = await probe.evaluate(() => navigator.hardwareConcurrency).catch(() => null);
+  await probe.close().catch(() => {});
+  if (hc === persona.hardware.cpu.cores) {
+    ok(`server-side injection active: hardwareConcurrency=${hc} (no injectInto)`);
+  } else {
+    fail('server-side injection inactive: hardwareConcurrency not spoofed pre-injectInto', {
+      got: hc,
+      expected: persona.hardware.cpu.cores,
+      hint: 'pod POD_SERVER_INJECT off, or pod predates Option A, or auto-attach race',
+    });
+  }
+}
+
+// ─── inject persona JS-level spoof BEFORE first goto (idempotent w/ server) ──
 log('injectInto(context)');
 await session.injectInto(ctx);
 ok('injectInto resolved');

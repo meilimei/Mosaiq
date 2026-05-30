@@ -1,5 +1,7 @@
 # Project Mosaiq — 反指纹浏览器 + AI Agent 浏览器基础设施 PRD v0.2
 
+> ⚠️ **愿景 vs 现实（2026-05 更新，先读这条）**：本 PRD 描述的是 Mosaiq 的**长期产品愿景**（双引擎、Chromium fork、7–9 人团队、$60–115M ARR）。**当前真实状态**是单人 + AI agent、约 20 天构建出的注入路径 SDK + CLI + 桌面应用 + cloud-runtime alpha（Chromium fork 已冷藏，见 [`chromium-fork/STATUS.md`](../chromium-fork/STATUS.md)）。未来 90 天的**务实**优先级（证明反检测真能打、拿首批真实用户、夯实质量）见 [`docs/ROADMAP-90D.md`](./ROADMAP-90D.md)。阅读本文时请把「宏大叙事」与「近期可执行项」分开看，别把愿景当承诺。
+
 > **一句话**：**Browser Infrastructure for the Agentic AI Economy**。基于 Chromium fork 的反指纹内核，同时提供桌面浏览器（Desktop）与云端浏览器服务（Cloud Runtime），覆盖跨境电商 / 自动化 / AI Agent 全部用户场景，对标并超越 Multilogin / AdsPower / Browserbase。
 
 > **战略定位**：双引擎产品（Desktop + Cloud），Year 1 桌面优先建立现金流与品牌，Year 2 云端为主冲击 venture-scale，Year 3 双轨年 ARR $60–115M，估值 $500M–$1.5B。

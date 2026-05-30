@@ -140,7 +140,11 @@ export class LocalDockerMachineManager implements MachineManager {
       podFetchImpl:
         opts.podFetchImpl ?? opts.fetchImpl ?? (globalThis.fetch.bind(globalThis) as FetchLike),
       waitForPodReadyTimeoutMs: opts.waitForPodReadyTimeoutMs ?? 15_000,
-      podStartTimeoutMs: opts.podStartTimeoutMs ?? 35_000,
+      // 与 FlyMachineManager 对齐（75s）。pod 内 POD_CHROMIUM_BOOT_TIMEOUT_MS 默认 60s——
+      // 控制平面这边必须 > 60s，否则我们 35s 就 abort，既拿不到 pod 的 chromium stderr
+      // 诊断，又在慢机器（冷启动 chromium 容器 >35s）上误判 pod_unhealthy。75s = 60s + 15s
+      // HTTP roundtrip 余量，让 pod 内的 boot timeout 先 fire。
+      podStartTimeoutMs: opts.podStartTimeoutMs ?? 75_000,
     };
   }
 

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 实测 / 验证手册（先读这个）
+    url: https://github.com/meilimei/Mosaiq/blob/main/docs/EVIDENCE-AND-VALIDATION.md
+    about: 怎么跑 Detection Lab 取真实分、bootstrap baseline、跑硬目标 / 真账号实测、出公开 leaderboard。
+  - name: 开发者踩坑录 / 已知技术债
+    url: https://github.com/meilimei/Mosaiq/blob/main/DEVELOPMENT.md
+    about: 反检测的诚实边界、已知 follow-up 与技术债。

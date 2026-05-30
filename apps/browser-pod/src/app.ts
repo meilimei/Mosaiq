@@ -99,6 +99,9 @@ export function createApp(): Hono {
       info = await spawnChromium({
         machineId,
         persona,
+        // Option A: 默认 true（控制平面也默认 stealth.inject=true）。仅当客户端显式
+        // 关闭（raw chromium 模式）时为 false。pod env POD_SERVER_INJECT 是总开关。
+        stealthInject: req.stealth?.inject ?? true,
         ttlSeconds: req.ttlSeconds,
         ...(req.viewport ? { viewport: req.viewport } : {}),
         ...(req.context ? { context: req.context } : {}),

@@ -226,6 +226,27 @@ describe('scoreCreepjs', () => {
     expect(partial.hits).toHaveLength(0);
     expect(partial.metrics.creepjsLies).toBe(0);
   });
+
+  it('WebGL bold-fail + liesCount=0 → low（CreepJS GPU 白名单数据缺口，非伪装失败）', () => {
+    const partial = scoreCreepjs({
+      liesCount: 0,
+      boldFailCount: 1,
+      liesSurfaces: [{ surface: 'WebGL', severity: 'bold-fail', hash: '6108b922' }],
+    });
+    expect(partial.hits).toHaveLength(1);
+    expect(partial.hits[0]?.severity).toBe('low');
+    expect(partial.hits[0]?.evidence).toMatch(/白名单/);
+  });
+
+  it('WebGL bold-fail 但 liesCount>0 → 仍 high（有真实撒谎，从严）', () => {
+    const partial = scoreCreepjs({
+      liesCount: 1,
+      boldFailCount: 1,
+      liesSurfaces: [{ surface: 'WebGL', severity: 'bold-fail', hash: 'def' }],
+    });
+    const webglHit = partial.hits.find((h) => h.detector.includes('WebGL'));
+    expect(webglHit?.severity).toBe('high');
+  });
 });
 
 describe('scoreIphey', () => {
@@ -260,10 +281,12 @@ describe('scoreBrowserleaksCanvas', () => {
     expect(partial.hits[0]?.detector).toMatch(/missing/i);
   });
 
-  it('hash 存在 + uniqueness > 50% → medium hit (too unique)', () => {
-    const partial = scoreBrowserleaksCanvas({ canvasHash: 'abc123', uniqueness: '75.3%' });
-    expect(partial.hits).toHaveLength(1);
-    expect(partial.hits[0]?.severity).toBe('medium');
+  it('hash 存在 + 高 uniqueness → 不 hit（v0.11: 唯一 canvas 非 bot 信号，uniqueness 不再计 hit）', () => {
+    const partial = scoreBrowserleaksCanvas({
+      canvasHash: 'abc123',
+      uniqueness: '100% (The signature is unique to our database)',
+    });
+    expect(partial.hits).toHaveLength(0);
   });
 
   it('hash 存在 + uniqueness 低 → 不 hit', () => {
