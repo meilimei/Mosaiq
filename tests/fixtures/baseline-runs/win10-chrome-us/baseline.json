@@ -30,25 +30,18 @@
     "amiuniqueOutliers": 0,
     "fpScannerInconsistent": 0,
     "incolumitasBadFlags": 0,
-    "weightedHits": 4.5,
+    "weightedHits": 0.5,
     "hits": [
-      {
-        "surface": "canvas",
-        "site": "browserleaks-canvas",
-        "detector": "canvas hash too unique",
-        "evidence": "uniqueness=100% (The signature is unique to our database) (>50%) — noise 不足或 spoof 未生效",
-        "severity": "medium"
-      },
       {
         "surface": "other",
         "site": "creepjs",
         "detector": "creepjs bold-fail: WebGL",
-        "evidence": "hash=48d3767e",
-        "severity": "high"
+        "evidence": "hash=48d3767e (GPU 不在 CreepJS 白名单；liesCount=0，真实同款 GPU 用户同样如此，非伪装失败)",
+        "severity": "low"
       }
     ],
     "hitsBySurface": {
-      "canvas": 1,
+      "canvas": 0,
       "webgl": 0,
       "audio": 0,
       "font": 0,

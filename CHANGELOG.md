@@ -29,11 +29,23 @@ in 0.x (minor bumps may include breaking changes).
   并丢失 pod 诊断。属上面 compose e2e 实测暴露的既有 bug。
 - **`injectAll` realm 级幂等守卫** —— 服务端注入 + 客户端 `injectInto` 双重注册同一
   文档只生效一次，不会双重包装 prototype getter。
-- **Detection Lab 首批真实 baseline** —— 4 个 fixture persona（win11/win10/macOS/
-  Ubuntu）对 12 个 live 站点各跑一次（每个 12 sites ok / 2 hits / weightedHits
-  4.50），`tests/fixtures/baseline-runs/<id>/baseline.json` 首次提交，detection-lab
-  CI gate 现真正生效。2 个 hit（browserleaks canvas 唯一性 100% + creepjs WebGL）
-  是诚实、可执行的待修项。
+- **Detection Lab 首批真实 baseline + scorer 重校准** —— 4 个 fixture persona
+  （win11/win10/macOS/Ubuntu）对 12 个 live 站点各跑一次，
+  `tests/fixtures/baseline-runs/<id>/baseline.json` 首次提交，detection-lab CI gate
+  现真正生效。深入调查首跑的 2 个 hit 后确认**两者均非伪装失败，而是 scorer 判定过严/
+  误判严重度**（与 bench `PHASE-1-NEXT-STEPS.md` / `PHASE-2-PLAN.md` 既有结论一致），
+  据此重校准 `detection-lab/scorer.ts`（**注入层未改动**——`liesCount=0` + canvas
+  正常渲染证明伪装本就 API 一致）：
+  - **browserleaks-canvas**：移除「uniqueness>50% → medium hit」。canvas 是高熵指纹，
+    真实浏览器 / 隐私工具同样常 100% unique，而 per-persona 噪声本就**故意**让 hash 唯一
+    （反跨站追踪）；旧逻辑「唯一性高 = noise 不足」方向是反的。真正的 spoof-failed 信号
+    （hash 缺失 / 全黑）仍保留为 high。
+  - **creepjs WebGL bold-fail**：`liesCount===0`（无真实撒谎）时由 high 降为 low。这是
+    CreepJS 人工策展 GPU 白名单的数据缺口（Intel UHD 730 未收录，真实同款 GPU 用户同样
+    bold-fail，「非 Mosaiq bug」），项目 Phase 2.2 bench 已证实 JS 层无法反推命中
+    （联合密度 ~5.5e-8）。保持可见但不再误判为 high。
+  - **影响**：4 份 baseline weightedHits 4.50 → **0.50**（canvas hit 消除、creepjs
+    WebGL 降 low）。scorer 单测 +2（WebGL bold-fail liesCount=0/≠0 两态）。
 - **公开 leaderboard** —— `pnpm build-leaderboard` 由 4 份真 baseline 生成静态站
   （部署 GitHub Pages 需 maintainer 开启）。
 - **质量护栏** —— CI 加 `@mosaiq/browser-pod` 单测 + non-blocking biome

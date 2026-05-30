@@ -305,12 +305,29 @@ export function scoreCreepjs(extracted: Record<string, unknown>): SitePartialSco
   const hits: SurfaceHit[] = [];
   for (const ls of liesSurfaces) {
     const { surface, severity } = attributeSurface(ls.surface, ls.severity);
+    // CreepJS 的 'bold-fail' = 值不在 CreepJS「已知良品」白名单里（≠ 检测到撒谎；真实
+    // 撒谎数由 liesCount 单列）。WebGL 的 bold-fail 是已知的 **GPU 能力白名单数据缺口**：
+    // CreepJS 白名单是 ~500 条真实用户哈希的人工策展集，覆盖不到的（含真实的非主流 GPU）
+    // 都会 bold-fail。本项目 Phase 2.2 bench（find-creepjs-whitelist-fit /
+    // verify-creepjs-profile-hash）已证实在 JS 注入层无法反推命中（联合密度 ~5.5e-8），
+    // 且真实同款 GPU 用户同样 bold-fail。因此当 liesCount===0（无真实撒谎）时，WebGL
+    // bold-fail 是数据缺口而非伪装失败 → 记 low（保持可见、不误判为 high）。其余 surface
+    // 的 bold-fail 仍按 high 处理（更可能是真实异常）。
+    const isWebglWhitelistGap =
+      ls.severity === 'bold-fail' && ls.surface.toLowerCase() === 'webgl' && liesCount === 0;
+    const hitSeverity: SurfaceHit['severity'] = isWebglWhitelistGap
+      ? 'low'
+      : ls.severity === 'bold-fail'
+        ? 'high'
+        : severity;
     hits.push({
       surface,
       site: 'creepjs',
       detector: `creepjs ${ls.severity}: ${ls.surface}`,
-      evidence: `hash=${ls.hash}`,
-      severity: ls.severity === 'bold-fail' ? 'high' : severity,
+      evidence: isWebglWhitelistGap
+        ? `hash=${ls.hash} (GPU 不在 CreepJS 白名单；liesCount=0，真实同款 GPU 用户同样如此，非伪装失败)`
+        : `hash=${ls.hash}`,
+      severity: hitSeverity,
     });
   }
   return {
@@ -338,13 +355,19 @@ export function scoreIphey(extracted: Record<string, unknown>): SitePartialScore
 
 export function scoreBrowserleaksCanvas(extracted: Record<string, unknown>): SitePartialScore {
   const hash = extracted.canvasHash as string | undefined;
-  const uniqueness = extracted.uniqueness as string | undefined;
   const hits: SurfaceHit[] = [];
 
-  // 设计决策（与 bench/report.ts 旧 analyzeBrowserleaksCanvas 同形）：
-  //   - hash 不存在 → 致命（解析失败或 canvas 全黑）→ high hit
-  //   - hash 存在 + uniqueness > 50% → noise 不足 / spoof 失败 → medium hit
-  //   - 其他 → info only，不 hit
+  // 设计决策（v0.11 recalibration）：
+  //   - hash 不存在 → 致命（解析失败 / canvas 全黑 / canvas API 被禁）→ high hit
+  //   - hash 存在 → OK，不计 hit
+  //
+  // 为什么移除旧的「uniqueness > 50% → medium hit」：browserleaks-canvas 只对 canvas
+  // hash 一次，报告它在其访客库里的稀有度。canvas 是高熵指纹——真实浏览器（尤其隐私
+  // 工具 / 非主流硬件）在 browserleaks 上同样常 100% unique；而 Mosaiq 的 per-persona
+  // canvas 噪声本就**故意**让 hash 唯一以反跨站追踪。唯一性本身不是机器人信号，且
+  // browserleaks 单次 hash 检测不到「加了噪声」。旧逻辑「uniqueness 高 = noise 不足」
+  // 在方向上是反的（噪声越足 → 越唯一），属误判。真正的 spoof-failed 信号是 hash 缺失
+  // （全黑 / 被禁），由上面那条覆盖。uniqueness 仍保留在 raw extracted 里供参考。
   if (!hash) {
     hits.push({
       surface: 'canvas',
@@ -353,17 +376,6 @@ export function scoreBrowserleaksCanvas(extracted: Record<string, unknown>): Sit
       evidence: 'canvas hash 提取失败 — 站点 DOM 变化或 canvas API 被禁用',
       severity: 'high',
     });
-  } else {
-    const uniqPct = parseUniquenessPct(uniqueness);
-    if (uniqPct !== null && uniqPct > 50) {
-      hits.push({
-        surface: 'canvas',
-        site: 'browserleaks-canvas',
-        detector: 'canvas hash too unique',
-        evidence: `uniqueness=${uniqueness} (>50%) — noise 不足或 spoof 未生效`,
-        severity: 'medium',
-      });
-    }
   }
   return { hits, metrics: {} };
 }
