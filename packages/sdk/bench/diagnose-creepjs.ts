@@ -2,8 +2,8 @@
  * diagnose-creepjs — 在真实 chromium 内复现 CreepJS lies/timezone 检测路径。
  *
  * 用法：
- *   pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-creepjs.ts
- *   $env:HEADED='1'; pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-creepjs.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/diagnose-creepjs.ts
+ *   $env:HEADED='1'; pnpm --filter @runova/sdk exec tsx bench/diagnose-creepjs.ts
  *
  * 检测分类：
  *   1. Timezone 各 path 一致性（Date.getTimezoneOffset / Intl / Date.toString）
@@ -19,7 +19,7 @@
  *   - $env:TEMP\creep-intl.ts:130-145 (Intl bold-fail = LowerEntropy.TIME_ZONE)
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { deletePersona, launchPersona, personaExists, savePersona } from '../src/index.js';
 
 const PERSONA_ID = 'creepjs-diag' as const;

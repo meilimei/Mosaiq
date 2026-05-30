@@ -18,13 +18,13 @@
  * the default pool, breaking site reputation.
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 import {
   createMacosSonomaChromeUsPersona,
   createUbuntu2204ChromeUsPersona,
   createWin10ChromeUsPersona,
   createWin11ChromeUsPersona,
-} from '@mosaiq/persona-schema/templates';
+} from '@runova/persona-schema/templates';
 
 export interface DefaultPersonaSeed {
   /**

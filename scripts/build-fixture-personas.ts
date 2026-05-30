@@ -12,7 +12,7 @@
 //     regenerations — otherwise the workflow's baseline JSON would drift
 //     for reasons unrelated to anti-detection behavior, swamping the
 //     regression signal.
-//   - The persona template factories in @mosaiq/persona-schema use
+//   - The persona template factories in @runova/persona-schema use
 //     `randomNoiseSeed()` + `new Date().toISOString()` by default. This
 //     script overrides both with deterministic inputs (fixed master seed
 //     + epoch timestamps) so the output is reproducible.
@@ -23,7 +23,7 @@
 //
 // Authoring policy (do NOT hand-edit the generated JSON files):
 //   - If you need to change the fixture, edit this script + re-run it.
-//   - If you upgrade @mosaiq/persona-schema template factories, re-run
+//   - If you upgrade @runova/persona-schema template factories, re-run
 //     this script and commit the regenerated JSON in the same PR.
 //   - CI runs `--check` to fail loudly if the committed JSON drifts from
 //     what the current script would generate.

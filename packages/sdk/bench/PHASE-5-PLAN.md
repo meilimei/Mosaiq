@@ -86,7 +86,7 @@ PCM hook 没问题（`AudioBuffer.getChannelData` 用 `audioNoiseAmplitude=1e-7`
 - fingerprint.com 等其他 detector audio 维度无新错误
 
 **步骤**：
-1. `pnpm --filter @mosaiq/sdk run bench:baseline-detection`
+1. `pnpm --filter @runova/sdk run bench:baseline-detection`
 2. 检查 12-site report，重点：creepjs / fingerprint-scan / browserleaks / fp.com
 3. 比对 v0.3.0 baseline-snapshot.json（如果有）
 

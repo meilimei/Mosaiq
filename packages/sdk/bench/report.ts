@@ -2,7 +2,7 @@
  * report — 读 baseline-detection 输出的 raw.json，生成 report.md。
  *
  * 用法（仓库根目录）：
- *   pnpm --filter @mosaiq/sdk exec tsx bench/report.ts <results-dir>
+ *   pnpm --filter @runova/sdk exec tsx bench/report.ts <results-dir>
  *
  * 不传 results-dir 时取 bench/results/ 下最新的一个。
  *
@@ -731,7 +731,7 @@ function generate(rawPath: string, outDir: string): void {
   md += `4. 加单测（vitest，目标 ≥ 10 测试）\n`;
   md += `5. 重跑 \`bench/baseline-detection.ts\` 验证通过率提升\n\n`;
   md += `如需重新跑：\n\n`;
-  md += `\`\`\`bash\npnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts\npnpm --filter @mosaiq/sdk exec tsx bench/report.ts\n\`\`\`\n`;
+  md += `\`\`\`bash\npnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts\npnpm --filter @runova/sdk exec tsx bench/report.ts\n\`\`\`\n`;
 
   const outPath = join(outDir, 'report.md');
   writeFileSync(outPath, md, 'utf8');

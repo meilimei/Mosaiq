@@ -25,7 +25,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { type Persona, type PersonaId, type PersonaPatch, updatePersona } from '@mosaiq/sdk';
+import { type Persona, type PersonaId, type PersonaPatch, updatePersona } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 import { type ParsedProxyInput, parseProxyUrl } from './proxy-url.js';

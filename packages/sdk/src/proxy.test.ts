@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { ProxyConfig } from '@mosaiq/persona-schema';
+import type { ProxyConfig } from '@runova/persona-schema';
 
 import { buildProxyServerArg, toPlaywrightProxy } from './proxy.js';
 

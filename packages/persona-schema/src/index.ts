@@ -1,9 +1,9 @@
 /**
- * @mosaiq/persona-schema
+ * @runova/persona-schema
  * Canonical Persona schema — 反检测浏览器身份的数据契约。
  *
  * 被以下组件消费：
- *   - @mosaiq/sdk          浏览器启动与注入
+ *   - @runova/sdk          浏览器启动与注入
  *   - @mosaiq/desktop      桌面 GUI
  *   - @mosaiq/cli          命令行
  *   - @mosaiq/mcp-server   Agent 集成

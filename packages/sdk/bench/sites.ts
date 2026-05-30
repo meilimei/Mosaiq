@@ -6,7 +6,7 @@
  *
  * 本文件保留旧 import 路径（`./sites.js`）。新代码请直接 import:
  *   - 从源码：`@/d:/projects/Mosaiq/packages/sdk/src/detection-lab/sites.ts`
- *   - 通过 SDK 公共 API：`import { SITES } from '@mosaiq/sdk'`
+ *   - 通过 SDK 公共 API：`import { SITES } from '@runova/sdk'`
  */
 
 export {

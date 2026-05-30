@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
 import { Input } from '@/components/ui/input.js';
 import { Label } from '@/components/ui/label.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 import type { ClonePersonaInput } from '../../electron/ipc-types.js';
 import { ProxyFieldset, type ProxyProtocol } from '../components/ProxyFieldset.js';
 import { useToast } from '../components/Toast.js';

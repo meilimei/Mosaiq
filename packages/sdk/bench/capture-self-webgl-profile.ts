@@ -22,7 +22,7 @@
  * capture must reflect the host hardware, not Mosaiq's persona.
  *
  * Run:
- *   pnpm --filter @mosaiq/sdk run bench:capture-self
+ *   pnpm --filter @runova/sdk run bench:capture-self
  */
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
     writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
     console.log(`[capture-self] wrote ${outPath}`);
     console.log('[capture-self] next:');
-    console.log(`[capture-self]   pnpm --filter @mosaiq/sdk run bench:integrate-profiles`);
+    console.log(`[capture-self]   pnpm --filter @runova/sdk run bench:integrate-profiles`);
   } finally {
     await browser.close();
   }

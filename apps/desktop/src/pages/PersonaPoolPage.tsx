@@ -36,16 +36,16 @@ import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
 import { STATUS_BADGE_CLASS, STATUS_LABEL, formatMs } from '@/lib/detection-lab.js';
 import { cn, formatDate } from '@/lib/utils.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { DetectionRun, DetectionRunSummary, HitsBySurface } from '@mosaiq/sdk';
+import type { PersonaId } from '@runova/persona-schema';
+import type { DetectionRun, DetectionRunSummary, HitsBySurface } from '@runova/sdk';
 
 import type { PersonaSummary } from '../../electron/ipc-types.js';
 
 /**
  * Local copy of `emptyHitsBySurface()` — we don't import the runtime helper
- * from `@mosaiq/sdk` because that package's entry transitively pulls in
+ * from `@runova/sdk` because that package's entry transitively pulls in
  * playwright-core / chromium-bidi which Vite cannot bundle for the renderer
- * (browser-target). Type-only imports from `@mosaiq/sdk` are fine because
+ * (browser-target). Type-only imports from `@runova/sdk` are fine because
  * tsc erases them; this object literal is the only runtime SDK value we need.
  * If the SDK's HitsBySurface key set changes, tsc here will complain because
  * `HitsBySurface` is a strict `Record<SurfaceName, number>`.

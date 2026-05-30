@@ -27,8 +27,8 @@
 
 import { parseArgs } from 'node:util';
 
-import { TEMPLATE_CATALOG } from '@mosaiq/persona-schema/templates';
-import { type Persona, type PersonaId, personaExists, savePersona } from '@mosaiq/sdk';
+import { TEMPLATE_CATALOG } from '@runova/persona-schema/templates';
+import { type Persona, type PersonaId, personaExists, savePersona } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 import { type ParsedProxyInput, parseProxyUrl } from './proxy-url.js';

@@ -43,8 +43,8 @@ body:
       options:
         - Desktop（launchPersona）
         - CLI（mosaiq detection-lab run）
-        - SDK（@mosaiq/sdk launchPersona，自写脚本）
-        - Cloud + @mosaiq/cloud-sdk injectInto()
+        - SDK（@runova/sdk launchPersona，自写脚本）
+        - Cloud + @runova/cloud-sdk injectInto()
         - Cloud 裸 connectOverCDP / @browserbasehq/sdk（无 injectInto）
         - 其他
     validations:
@@ -83,7 +83,7 @@ body:
     id: versions
     attributes:
       label: 版本
-      placeholder: "@mosaiq/sdk 0.10.0 / playwright-core 1.59.1 / chromium <从 /json/version 读>"
+      placeholder: "@runova/sdk 0.10.0 / playwright-core 1.59.1 / chromium <从 /json/version 读>"
     validations:
       required: true
   - type: textarea

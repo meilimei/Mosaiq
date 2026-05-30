@@ -22,7 +22,7 @@ import {
 } from 'recharts';
 
 import { SURFACE_LABEL, hitsBySurfaceToRadarData } from '@/lib/detection-lab.js';
-import type { HitsBySurface, SurfaceName } from '@mosaiq/sdk';
+import type { HitsBySurface, SurfaceName } from '@runova/sdk';
 
 interface HitsBySurfaceRadarProps {
   hitsBySurface: HitsBySurface;

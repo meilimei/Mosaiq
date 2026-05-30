@@ -14,7 +14,7 @@
  *     same personaId / runId / filename.
  */
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 import { describe, expect, it } from 'vitest';
 
 import { buildArtifactUrl } from './artifact-url.js';

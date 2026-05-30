@@ -2,7 +2,7 @@
  * probe-error-stack — 探测我们 spoof 后的 chromium 里 Error.stack 字符串
  *   是否仍含 puppeteer / playwright / automation / cdp / blob: 等敏感字样。
  *
- *   pnpm --filter @mosaiq/sdk exec tsx bench/probe-error-stack.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/probe-error-stack.ts
  *
  * 背景（Phase 2.5 bench 真实数据驱动）：incolumitas 的 modified fp-collect 抓到
  * `webDriver: true`，raw JSON 含 `errorsGenerated: ["azeaze is not defined", ...]`，
@@ -19,7 +19,7 @@
 import { rmSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 import {
   deletePersona,

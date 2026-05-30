@@ -28,7 +28,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 import type { Page } from 'playwright-core';
 
 import type { BrowserSession } from '../browser-session.js';

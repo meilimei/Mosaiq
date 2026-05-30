@@ -19,9 +19,9 @@
  * paste-ready snippet.
  *
  * Run:
- *   echo "<paste json>" | pnpm --filter @mosaiq/sdk exec tsx bench/convert-captured-profile.ts
- *   pnpm --filter @mosaiq/sdk exec tsx bench/convert-captured-profile.ts --file capture.json
- *   pnpm --filter @mosaiq/sdk exec tsx bench/convert-captured-profile.ts --self-test
+ *   echo "<paste json>" | pnpm --filter @runova/sdk exec tsx bench/convert-captured-profile.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/convert-captured-profile.ts --file capture.json
+ *   pnpm --filter @runova/sdk exec tsx bench/convert-captured-profile.ts --self-test
  */
 
 import { readFileSync } from 'node:fs';
@@ -515,7 +515,7 @@ export function selfTest(): void {
       `self-test FAILED: capHash mismatch (got ${verify.capHash}, expected ${EXPECTED_CAP_HASH}).`,
     );
     console.error('If you intentionally changed INTEL_UHD_730_D3D11 in webgl-profiles.ts, run');
-    console.error('  pnpm --filter @mosaiq/sdk run bench:verify-creepjs');
+    console.error('  pnpm --filter @runova/sdk run bench:verify-creepjs');
     console.error('and update EXPECTED_CAP_HASH to match.');
     process.exit(1);
   }

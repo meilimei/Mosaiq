@@ -28,7 +28,7 @@ COPY apps/cloud-runtime/package.json apps/cloud-runtime/
 
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile \
-      --filter @mosaiq/persona-schema --filter @mosaiq/cloud-runtime
+      --filter @runova/persona-schema --filter @mosaiq/cloud-runtime
 
 # ─── stage: build ───────────────────────────────────────────────────────────
 FROM deps AS build
@@ -47,8 +47,8 @@ COPY apps/cloud-runtime apps/cloud-runtime
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     rm -rf packages/persona-schema/node_modules apps/cloud-runtime/node_modules && \
     pnpm install --frozen-lockfile \
-      --filter @mosaiq/persona-schema --filter @mosaiq/cloud-runtime && \
-    pnpm --filter @mosaiq/persona-schema build && \
+      --filter @runova/persona-schema --filter @mosaiq/cloud-runtime && \
+    pnpm --filter @runova/persona-schema build && \
     pnpm --filter @mosaiq/cloud-runtime build
 
 # pnpm deploy 把目标 workspace 包 + 所有 prod deps（含 workspace 间的 @mosaiq/persona-schema）

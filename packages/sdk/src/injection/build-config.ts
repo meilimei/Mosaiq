@@ -2,8 +2,8 @@
  * 从 Persona 派生 InjectionConfig。Node 端执行，不进浏览器。
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
-import { seedToUint32 } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
+import { seedToUint32 } from '@runova/persona-schema';
 
 import { buildUserAgent } from '../ua.js';
 import type { InjectionConfig } from './types.js';

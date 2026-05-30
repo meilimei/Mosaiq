@@ -1,4 +1,4 @@
-# @mosaiq/persona-schema
+# @runova/persona-schema
 
 Canonical Persona schema — Mosaiq 反检测浏览器身份的数据契约。
 
@@ -15,7 +15,7 @@ Canonical Persona schema — Mosaiq 反检测浏览器身份的数据契约。
 
 这份 schema 被以下组件消费：
 
-- `@mosaiq/sdk` — 浏览器启动与 CDP 注入
+- `@runova/sdk` — 浏览器启动与 CDP 注入
 - `@mosaiq/desktop` — 桌面 GUI
 - `@mosaiq/cli` — 命令行
 - 未来 Chromium fork — C++ `PersonaService`（通过 JSON Schema 导出跨语言）
@@ -25,7 +25,7 @@ Canonical Persona schema — Mosaiq 反检测浏览器身份的数据契约。
 ### 从模板创建 Persona
 
 ```ts
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 const alice = createWin11ChromeUsPersona({
   id: 'reddit-alice',
@@ -46,7 +46,7 @@ const alice = createWin11ChromeUsPersona({
 ### 校验
 
 ```ts
-import { parsePersona, safeParsePersona } from '@mosaiq/persona-schema';
+import { parsePersona, safeParsePersona } from '@runova/persona-schema';
 
 const persona = parsePersona(jsonData); // throws on invalid
 const result = safeParsePersona(jsonData); // safe variant
@@ -55,7 +55,7 @@ const result = safeParsePersona(jsonData); // safe variant
 ### 导出 JSON Schema（供 Rust / C++ 消费）
 
 ```ts
-import { getPersonaJsonSchema } from '@mosaiq/persona-schema';
+import { getPersonaJsonSchema } from '@runova/persona-schema';
 
 writeFileSync('persona.schema.json', JSON.stringify(getPersonaJsonSchema(), null, 2));
 ```

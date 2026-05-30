@@ -24,7 +24,7 @@
 #     lock-step `fixed` group and removes the consumed changeset files.
 #   - When the release PR merges (and no pending changesets remain), runs
 #     `pnpm changeset publish` — publishes the four publishable packages
-#     (@mosaiq/persona-schema + @mosaiq/sdk + @mosaiq/cli + @mosaiq/cloud-sdk)
+#     (@runova/persona-schema + @runova/sdk + @mosaiq/cli + @runova/cloud-sdk)
 #     to npm with provenance attestation.
 
 name: Release
@@ -80,7 +80,7 @@ jobs:
       # hook used to `clean && build && typecheck`, which created a race in
       # changesets's parallel `npm publish`: persona-schema's `clean` would
       # delete its dist while sdk's tsc was concurrently reading
-      # @mosaiq/persona-schema/dist/*.d.ts, producing TS2307 storms. CI
+      # @runova/persona-schema/dist/*.d.ts, producing TS2307 storms. CI
       # already enforces typecheck+test+build on every PR, so this single
       # up-front build is sufficient gate.
       #
@@ -89,16 +89,16 @@ jobs:
       # invocation builds them in the right sequence.
       - name: Build publishable packages
         run: |
-          pnpm --filter "@mosaiq/persona-schema" \
-               --filter "@mosaiq/sdk" \
-               --filter "@mosaiq/cloud-sdk" \
+          pnpm --filter "@runova/persona-schema" \
+               --filter "@runova/sdk" \
+               --filter "@runova/cloud-sdk" \
                --filter "@mosaiq/cli" \
                build
 
       # Defense-in-depth: even the release path must pass the same audit
       # gates as CI. This catches "version PR somehow shipped a broken
       # tarball" regressions before npm sees them.
-      - name: Drift check — @mosaiq/sdk playwright-core patch
+      - name: Drift check — @runova/sdk playwright-core patch
         run: pnpm run check-sdk-patch-drift
 
       - name: Audit publishable tarballs

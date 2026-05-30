@@ -11,11 +11,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 import {
   createMacosSonomaChromeUsPersona,
   createWin11ChromeUsPersona,
-} from '@mosaiq/persona-schema/templates';
+} from '@runova/persona-schema/templates';
 
 import { buildAcceptLanguage, buildUserAgent } from './ua.js';
 

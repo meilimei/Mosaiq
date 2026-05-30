@@ -1,5 +1,5 @@
 {
-  "name": "@mosaiq/sdk",
+  "name": "@runova/sdk",
   "version": "0.10.0",
   "description": "Mosaiq SDK — launch Chromium with persona-driven anti-detection. Drop-in for Playwright/Stagehand.",
   "license": "Apache-2.0",
@@ -68,7 +68,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@mosaiq/persona-schema": "workspace:*",
+    "@runova/persona-schema": "workspace:*",
     "https-proxy-agent": "^7.0.6",
     "patch-package": "^8.0.0",
     "playwright-core": "1.59.1",

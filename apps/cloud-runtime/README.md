@@ -15,7 +15,7 @@ REST API + CDP-over-WebSocket gateway for the per-session browser pool.
 ```bash
 # repo 根目录
 pnpm install
-pnpm --filter @mosaiq/persona-schema build
+pnpm --filter @runova/persona-schema build
 pnpm --filter @mosaiq/cloud-runtime dev
 # → 控制平面 listen :8787（环境变量见 .env.example）
 ```

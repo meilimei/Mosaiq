@@ -1,5 +1,5 @@
 {
-  "name": "@mosaiq/persona-schema",
+  "name": "@runova/persona-schema",
   "version": "0.10.0",
   "description": "Persona schema definitions for Mosaiq — the canonical source of truth for browser fingerprints",
   "license": "Apache-2.0",

@@ -1,7 +1,7 @@
 /**
  * diagnose-navigator-lies — 扫 navigator.plugins / mimeTypes / pdfViewerEnabled 的所有可能 leak。
  *
- * 用法：pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-navigator-lies.ts
+ * 用法：pnpm --filter @runova/sdk exec tsx bench/diagnose-navigator-lies.ts
  *
  * 目标：找 CreepJS Navigator lies (b067dc4a) 的 root cause。Phase 1.8 加 spoof 后
  * navigator scan_Navigator queryLies 返回 [] —— 说明不在标准 toString/proxy detection
@@ -9,7 +9,7 @@
  * Plugin instance 的内部 slot 等）。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { deletePersona, launchPersona, personaExists, savePersona } from '../src/index.js';
 
 const PERSONA_ID = `diag-nav-${Date.now().toString(36)}`;

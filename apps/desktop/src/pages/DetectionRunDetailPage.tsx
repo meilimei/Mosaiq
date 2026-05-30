@@ -31,8 +31,8 @@ import {
   formatMs,
 } from '@/lib/detection-lab.js';
 import { cn } from '@/lib/utils.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { DetectionRun, SurfaceHit, SurfaceName } from '@mosaiq/sdk';
+import type { PersonaId } from '@runova/persona-schema';
+import type { DetectionRun, SurfaceHit, SurfaceName } from '@runova/sdk';
 
 interface DetectionRunDetailPageProps {
   personaId: PersonaId;

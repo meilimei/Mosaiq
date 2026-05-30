@@ -87,13 +87,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # e2e-smoke.mjs imports from `../dist/index.js` (cloud-sdk dist) and
-      # `@mosaiq/persona-schema/templates`. cloud-sdk depends transitively on
-      # @mosaiq/sdk + persona-schema, so build all three upstream.
+      # `@runova/persona-schema/templates`. cloud-sdk depends transitively on
+      # @runova/sdk + persona-schema, so build all three upstream.
       - name: Build workspace packages (cloud-sdk + sdk + persona-schema)
         run: |
-          pnpm --filter @mosaiq/persona-schema build
-          pnpm --filter @mosaiq/sdk build
-          pnpm --filter @mosaiq/cloud-sdk build
+          pnpm --filter @runova/persona-schema build
+          pnpm --filter @runova/sdk build
+          pnpm --filter @runova/cloud-sdk build
 
       - name: Verify docker daemon
         run: |

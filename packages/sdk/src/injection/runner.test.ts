@@ -20,7 +20,7 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 import { buildInjectionConfig } from './build-config.js';
 import { injectAll } from './runner.js';

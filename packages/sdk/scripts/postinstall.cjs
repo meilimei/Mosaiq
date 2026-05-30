@@ -1,7 +1,7 @@
 'use strict';
 
 // =============================================================================
-// @mosaiq/sdk postinstall script
+// @runova/sdk postinstall script
 //
 // Applies the rebrowser-patches patch to the consumer's
 // `playwright-core@1.59.1`. The patch (302 lines, see
@@ -13,7 +13,7 @@
 //   1. If running inside the Mosaiq monorepo itself (our own path doesn't
 //      contain `node_modules`), exit 0 — `pnpm.patchedDependencies` in the
 //      workspace root handles the patch during `pnpm install`.
-//   2. Otherwise (we're installed under `<consumer>/node_modules/@mosaiq/sdk/`):
+//   2. Otherwise (we're installed under `<consumer>/node_modules/@runova/sdk/`):
 //      walk up from `__dirname` to find the consumer project root (closest
 //      ancestor `node_modules`'s parent), verify `playwright-core` exists
 //      under it, and invoke `patch-package` with `--patch-dir` pointing to
@@ -34,7 +34,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 
-const TAG = '[@mosaiq/sdk postinstall]';
+const TAG = '[@runova/sdk postinstall]';
 
 function log(msg) {
   // eslint-disable-next-line no-console
@@ -89,7 +89,7 @@ function main() {
   );
   if (!fs.existsSync(playwrightCorePkg)) {
     warn(
-      `playwright-core not found at ${playwrightCorePkg}. @mosaiq/sdk requires playwright-core to be installed as a sibling dependency; add 'playwright-core' to your dependencies (or install 'playwright', which bundles it) and re-install to enable Mosaiq anti-detection.`,
+      `playwright-core not found at ${playwrightCorePkg}. @runova/sdk requires playwright-core to be installed as a sibling dependency; add 'playwright-core' to your dependencies (or install 'playwright', which bundles it) and re-install to enable Mosaiq anti-detection.`,
     );
     return;
   }
@@ -101,7 +101,7 @@ function main() {
     const installedVersion = installed?.version;
     if (installedVersion !== '1.59.1') {
       warn(
-        `playwright-core@${installedVersion} detected; @mosaiq/sdk patch only supports playwright-core@1.59.1. Pin playwright-core (or playwright) to '1.59.1' in your dependencies, or expect degraded anti-detection (creepjs / sannysoft will flag webdriver).`,
+        `playwright-core@${installedVersion} detected; @runova/sdk patch only supports playwright-core@1.59.1. Pin playwright-core (or playwright) to '1.59.1' in your dependencies, or expect degraded anti-detection (creepjs / sannysoft will flag webdriver).`,
       );
       return;
     }
@@ -123,7 +123,7 @@ function main() {
     patchPackageBin = path.resolve(path.dirname(pkgPath), binEntry);
   } catch (e) {
     warn(
-      `Could not resolve patch-package bin (${e?.message}); this should be a regular dependency of @mosaiq/sdk. Skip patch.`,
+      `Could not resolve patch-package bin (${e?.message}); this should be a regular dependency of @runova/sdk. Skip patch.`,
     );
     return;
   }

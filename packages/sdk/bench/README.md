@@ -8,13 +8,13 @@
 
 ```bash
 # 1. 跑检测（默认 headless，6 个站点，约 90-120 秒）
-pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+pnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts
 
 # 2. 生成 report.md（自动用最新 results）
-pnpm --filter @mosaiq/sdk exec tsx bench/report.ts
+pnpm --filter @runova/sdk exec tsx bench/report.ts
 
 # 或指定 results 目录
-pnpm --filter @mosaiq/sdk exec tsx bench/report.ts bench/results/2026-05-13T13-30-00-000Z
+pnpm --filter @runova/sdk exec tsx bench/report.ts bench/results/2026-05-13T13-30-00-000Z
 ```
 
 ## 环境变量
@@ -62,8 +62,8 @@ results/2026-05-13T.../
 ## 前置条件
 
 1. `pnpm install` 已跑过
-2. `pnpm --filter @mosaiq/persona-schema build && pnpm --filter @mosaiq/sdk build` 至少跑过一次（templates 需要 dist）
-3. **playwright chromium 已下载**：`pnpm --filter @mosaiq/sdk exec playwright install chromium`
+2. `pnpm --filter @runova/persona-schema build && pnpm --filter @runova/sdk build` 至少跑过一次（templates 需要 dist）
+3. **playwright chromium 已下载**：`pnpm --filter @runova/sdk exec playwright install chromium`
 4. 网络可访问 `creepjs` / `browserleaks.com` / `iphey.com` / `bot.sannysoft.com`（**不需要 VPN，他们都是 public**）
 
 ## 限制
@@ -80,9 +80,9 @@ results/2026-05-13T.../
 ```yaml
 - name: baseline detection
   run: |
-    pnpm --filter @mosaiq/sdk exec playwright install chromium
-    pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
-    pnpm --filter @mosaiq/sdk exec tsx bench/report.ts
+    pnpm --filter @runova/sdk exec playwright install chromium
+    pnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts
+    pnpm --filter @runova/sdk exec tsx bench/report.ts
 - uses: actions/upload-artifact@v4
   with:
     name: baseline-results

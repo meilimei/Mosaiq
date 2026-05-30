@@ -117,7 +117,7 @@ CreepJS 白名单是从真实用户提交的捕获积累，不是算法推导。
 
 - `bench/find-creepjs-whitelist-fit.ts` —— reverse-fit 探索工具，含 CreepJS
   whitelist 完整副本 + hashMini / capabilitiesHash 实现 + 稀疏度分析
-- 输出可重现：`pnpm --filter @mosaiq/sdk exec tsx bench/find-creepjs-whitelist-fit.ts`
+- 输出可重现：`pnpm --filter @runova/sdk exec tsx bench/find-creepjs-whitelist-fit.ts`
 
 ---
 
@@ -152,10 +152,10 @@ CreepJS 白名单是从真实用户提交的捕获积累，不是算法推导。
 用户可手动跑：
 
 ```pwsh
-pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+pnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts
 # 或单跑 win10 persona 验证
 $env:ONLY="creepjs,sannysoft,browserleaks-webgl"
-pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+pnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts
 ```
 
 **测试快照**：
@@ -523,8 +523,8 @@ read-perturb-writeback 流程，复杂度高。暂不 hook（绝大多数 worker
 
 ```bash
 # 跑当前基线确认起点
-pnpm --filter @mosaiq/sdk test
-pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-webgl.ts
+pnpm --filter @runova/sdk test
+pnpm --filter @runova/sdk exec tsx bench/diagnose-webgl.ts
 
 # 看现有 webgl-profiles 结构
 cat packages/sdk/src/injection/webgl-profiles.ts | head -60

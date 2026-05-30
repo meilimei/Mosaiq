@@ -20,7 +20,7 @@
 import { writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-import { type DetectionRun, formatDetectionRunMarkdown, loadDetectionRun } from '@mosaiq/sdk';
+import { type DetectionRun, formatDetectionRunMarkdown, loadDetectionRun } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 

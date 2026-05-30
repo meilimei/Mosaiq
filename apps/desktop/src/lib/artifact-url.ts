@@ -5,7 +5,7 @@
  * URL shape:
  *   mosaiq-artifact://<personaId>/<runId>/<filename>
  *
- * `SiteResult.screenshot` / `SiteResult.html` from `@mosaiq/sdk` are stored
+ * `SiteResult.screenshot` / `SiteResult.html` from `@runova/sdk` are stored
  * as **relative paths** to the run's artifact dir — typically just
  * "<siteId>.png" / "<siteId>.html". This helper turns one of those relative
  * paths into a URL the renderer can drop directly into `<img src="">`.
@@ -18,7 +18,7 @@
  * So the renderer side just has to encode and concatenate.
  */
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 const SCHEME = 'mosaiq-artifact';
 

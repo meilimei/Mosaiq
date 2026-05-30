@@ -1,5 +1,5 @@
 /**
- * @mosaiq/sdk/detection-lab — Detection Lab 公共 barrel。
+ * @runova/sdk/detection-lab — Detection Lab 公共 barrel。
  *
  * v0.8 起把 bench-only 的检测站 specs / extractors / 类型契约提升到 SDK src/，
  * 让 desktop app 主进程（不能依赖 `bench/`，`bench/` 不在 dist 里）也能 import。
@@ -13,7 +13,7 @@
  *   type DetectionRun,
  *   type DetectionScore,
  *   type SiteResult,
- * } from '@mosaiq/sdk';
+ * } from '@runova/sdk';
  * ```
  *
  * 设计选择（v0.8 演进）：
@@ -26,10 +26,10 @@
  *     8.5 main 进程的 IPC handler 直接 import；renderer 通过 preload bridge 拿
  *     `DetectionRunSummary[]` / `DetectionRun`（两者都是 POJO，IPC-safe）。
  *
- * 实操上 `@mosaiq/sdk` 整体已经是 Node-only 包（launcher 用 chromium），所以
+ * 实操上 `@runova/sdk` 整体已经是 Node-only 包（launcher 用 chromium），所以
  * renderer 永远走 preload bridge；这里的 pure / impure 区分主要影响 desktop
  * main process 的依赖图清晰度，以及未来若要把 scorer 单独打包给 web 用时的
- * 拆分点（`@mosaiq/sdk/detection-lab/scorer` 直接出 ESM）。
+ * 拆分点（`@runova/sdk/detection-lab/scorer` 直接出 ESM）。
  */
 
 export { SITES, extractCreepjsFromDocument } from './sites.js';

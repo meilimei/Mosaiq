@@ -19,7 +19,7 @@ import {
   type DetectionScore,
   SDK_VERSION,
   getInstalledChromeVersion,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 /**
  * 把 `runDetection(...)` 成功 / 取消的产出包装成可保存的 `DetectionRun`。

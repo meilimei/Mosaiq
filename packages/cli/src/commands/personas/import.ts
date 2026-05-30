@@ -25,7 +25,7 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-import { type ImportConflictOptions, type Persona, importPersonaJson } from '@mosaiq/sdk';
+import { type ImportConflictOptions, type Persona, importPersonaJson } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 

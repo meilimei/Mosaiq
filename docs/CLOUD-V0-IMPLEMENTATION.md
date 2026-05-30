@@ -113,16 +113,16 @@ cloud-runtime 控制平面：
 
 **Persona 注入怎么办？**
 - pod **不做** Playwright 级注入，只负责 chromium-flag 级配置（lang、window-size、proxy、user-agent via cmdline）
-- 客户端 `@mosaiq/cloud-sdk` 拿到 cdpUrl 后 `chromium.connectOverCDP(cdpUrl)`，对 `browser.contexts()[0]` 调 `addInitScript()` 注入 `@mosaiq/sdk/injection` 的 `buildInjectionConfig + injectAll`
+- 客户端 `@runova/cloud-sdk` 拿到 cdpUrl 后 `chromium.connectOverCDP(cdpUrl)`，对 `browser.contexts()[0]` 调 `addInitScript()` 注入 `@runova/sdk/injection` 的 `buildInjectionConfig + injectAll`
 - 注入逻辑 100% 复用 SDK，无重复实现
 
-### ADR-4：API 形状 = `@mosaiq/cloud-sdk` 原生为主，Browserbase 兼容为辅
+### ADR-4：API 形状 = `@runova/cloud-sdk` 原生为主，Browserbase 兼容为辅
 
 **选择**：
 
 | API | 形状 | phase |
 |---|---|---|
-| **`@mosaiq/cloud-sdk`**（TypeScript-first） | `new MosaiqCloudClient({...}).createSession({...})` → `ManagedCloudSession` | 11.1 ✅ |
+| **`@runova/cloud-sdk`**（TypeScript-first） | `new MosaiqCloudClient({...}).createSession({...})` → `ManagedCloudSession` | 11.1 ✅ |
 | Browserbase 兼容 REST（`POST /v1/sessions` 等） | mirror Browserbase 数据格式，让 Stagehand `apiUrl` 一行切 | 11.3 路由 stub 11.1 |
 | MCP server | `@mosaiq/mcp-server` 包 | 11.6+ |
 
@@ -215,7 +215,7 @@ Mosaiq/
                   ┌─────────────────────────────────────────┐
                   │ LaunchAI worker (Node)                  │
                   │  import { MosaiqCloudClient }            │
-                  │     from '@mosaiq/cloud-sdk'             │
+                  │     from '@runova/cloud-sdk'             │
                   └────────────────┬────────────────────────┘
                                    │ 1) POST /v1/sessions
                                    │    Authorization: Bearer msq_sk_...
@@ -405,7 +405,7 @@ audit_events {
 
 ### 5.5 `GET /v1/personas`、`POST /v1/personas`、`GET /v1/personas/:id`
 
-CRUD 复用 `@mosaiq/persona-schema` 的 Zod schema 校验。phase 11.1 只支持 user-uploaded persona；seed pool 和 capture 走 phase 11.4。
+CRUD 复用 `@runova/persona-schema` 的 Zod schema 校验。phase 11.1 只支持 user-uploaded persona；seed pool 和 capture 走 phase 11.4。
 
 ### 5.6 `GET /v1/health`
 
@@ -461,7 +461,7 @@ pnpm --filter @mosaiq/browser-pod dev
 
 ```typescript
 // D:/projects/LaunchAI/src/lib/browser/runtime-mosaiq.ts
-import { MosaiqCloudClient } from '@mosaiq/cloud-sdk'
+import { MosaiqCloudClient } from '@runova/cloud-sdk'
 
 const client = new MosaiqCloudClient({
   apiUrl: process.env.MOSAIQ_API_URL!,

@@ -7,7 +7,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 export interface PathConfig {
   /**

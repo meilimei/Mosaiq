@@ -11,7 +11,7 @@
 //   5. pnpm patch-commit node_modules/.tmp-playwright-patch
 //        # pnpm regenerates patches/playwright-core@1.59.1.patch and the
 //        # pnpm.patchedDependencies entry automatically.
-//   6. (optional sanity) pnpm --filter @mosaiq/sdk exec tsx bench/smoke-patch.ts
+//   6. (optional sanity) pnpm --filter @runova/sdk exec tsx bench/smoke-patch.ts
 //
 // Adaptations vs upstream rebrowser:
 //   - crPage.js Runtime.addBinding moved into exposePlaywrightBinding() in 1.59 → only wrap Runtime.enable

@@ -40,10 +40,10 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.21)
-      '@mosaiq/persona-schema':
+      '@runova/persona-schema':
         specifier: workspace:*
         version: link:../../packages/persona-schema
-      '@mosaiq/sdk':
+      '@runova/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
       hono:
@@ -86,7 +86,7 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.19.14(hono@4.12.21)
-      '@mosaiq/persona-schema':
+      '@runova/persona-schema':
         specifier: workspace:*
         version: link:../../packages/persona-schema
       better-sqlite3:
@@ -144,12 +144,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@mosaiq/persona-schema':
-        specifier: workspace:*
-        version: link:../../packages/persona-schema
-      '@mosaiq/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
       '@radix-ui/react-dialog':
         specifier: ^1.1.2
         version: 1.1.15(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -171,6 +165,12 @@ importers:
       '@radix-ui/react-toast':
         specifier: ^1.2.2
         version: 1.2.15(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@runova/persona-schema':
+        specifier: workspace:*
+        version: link:../../packages/persona-schema
+      '@runova/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       class-variance-authority:
         specifier: ^0.7.0
         version: 0.7.1
@@ -247,10 +247,10 @@ importers:
 
   packages/cli:
     dependencies:
-      '@mosaiq/persona-schema':
+      '@runova/persona-schema':
         specifier: workspace:*
         version: link:../persona-schema
-      '@mosaiq/sdk':
+      '@runova/sdk':
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
@@ -272,10 +272,10 @@ importers:
 
   packages/cloud-sdk:
     dependencies:
-      '@mosaiq/persona-schema':
+      '@runova/persona-schema':
         specifier: workspace:*
         version: link:../persona-schema
-      '@mosaiq/sdk':
+      '@runova/sdk':
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
@@ -322,7 +322,7 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@mosaiq/persona-schema':
+      '@runova/persona-schema':
         specifier: workspace:*
         version: link:../persona-schema
       https-proxy-agent:

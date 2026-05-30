@@ -15,7 +15,7 @@
 
 import { type BrowserContext, type LaunchOptions, chromium } from 'playwright-core';
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 
 import { BrowserSession } from './browser-session.js';
 import { getInstalledChromeMajor, getInstalledChromeVersion } from './chromium-version.js';

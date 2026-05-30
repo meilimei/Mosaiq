@@ -22,7 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 
-import type { DetectionRunSummary } from '@mosaiq/sdk';
+import type { DetectionRunSummary } from '@runova/sdk';
 
 import { STATUS_LABEL, formatMs } from '@/lib/detection-lab.js';
 

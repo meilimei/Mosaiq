@@ -13,7 +13,7 @@
  *   - 真机 capture 接入时复用工具验证（v0.5 真用户提交 fingerprint 后跑此工具）
  *
  * 运行：
- *   pnpm --filter @mosaiq/sdk exec tsx bench/verify-creepjs-profile-hash.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/verify-creepjs-profile-hash.ts
  */
 
 import {

@@ -38,7 +38,7 @@ import {
   loadDetectionRun,
   runDetection,
   saveDetectionRun,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 import { fmt, formatMs, renderTable } from '../../output.js';
 import { statusBadge } from './format.js';

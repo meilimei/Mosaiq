@@ -19,7 +19,7 @@ import { audit } from '../middleware/audit.js';
 import { getAuth } from '../middleware/auth.js';
 import { rateLimitTier } from '../middleware/rate-limit.js';
 import { ApiError } from '../utils/errors.js';
-import { parsePersona, type Persona } from '@mosaiq/persona-schema';
+import { parsePersona, type Persona } from '@runova/persona-schema';
 
 export const personasRoute = new Hono();
 

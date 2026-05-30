@@ -16,7 +16,7 @@ On a PR / push / weekly cron, the workflow:
 
 1. Imports the fixture persona into the runner's `~/.mosaiq/personas/`
 2. Runs `mosaiq detection-lab run <persona-id> --json` → fresh candidate
-3. Strips environmental noise via `stripRunForBaseline` from `@mosaiq/sdk`
+3. Strips environmental noise via `stripRunForBaseline` from `@runova/sdk`
 4. Diffs against this directory's `baseline.json` via `diffRuns`
 5. Fails the workflow on regression (added hits / `weightedHits` rose /
    `>2` sites flipped `ok → fail`)
@@ -50,7 +50,7 @@ with a "baseline missing" markdown report instead of failing. To bootstrap:
    the CI runner).
 3. **Strip + write** the baseline on your dev machine:
    ```bash
-   pnpm --filter @mosaiq/sdk build
+   pnpm --filter @runova/sdk build
    node scripts/ci-compare-baseline.mjs write-baseline \
      candidate-<persona-id>.json \
      tests/fixtures/baseline-runs/<persona-id>/baseline.json

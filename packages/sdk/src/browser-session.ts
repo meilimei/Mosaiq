@@ -10,7 +10,7 @@
 
 import type { BrowserContext, Page } from 'playwright-core';
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 import { Humanize, type HumanizeDefaults } from './humanize/index.js';
 
 export class BrowserSession {

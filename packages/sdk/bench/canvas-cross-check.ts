@@ -12,7 +12,7 @@
  *     绘制内容算 Canvas hash（toDataURL → SHA-256 截 16 hex）。
  *   - assert (D) 跨 run hash 完全相同；assert (U) 跨 persona hash 全部不同。
  *
- *   pnpm --filter @mosaiq/sdk exec tsx bench/canvas-cross-check.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/canvas-cross-check.ts
  *
  * 失败 → 反检测注入的 noise 派生路径或 spoof 应用顺序有静默 bug。
  */
@@ -20,13 +20,13 @@ import { createHash } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 import {
   createMacosSonomaChromeUsPersona,
   createUbuntu2204ChromeUsPersona,
   createWin10ChromeUsPersona,
   createWin11ChromeUsPersona,
-} from '@mosaiq/persona-schema/templates';
+} from '@runova/persona-schema/templates';
 
 import {
   deletePersona,

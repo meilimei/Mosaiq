@@ -10,7 +10,7 @@
  *   - FlyMachineManager         — 调 Fly Machines API (phase 11.2)
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 
 /** 机器实例的元信息。 */
 export interface AcquiredMachine {

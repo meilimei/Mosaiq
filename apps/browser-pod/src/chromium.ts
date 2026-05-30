@@ -29,7 +29,7 @@ import path from 'node:path';
 
 import { chromium } from 'playwright-core';
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 
 import { loadContext, snapshotContext } from './context-io.js';
 import { loadEnv } from './env.js';

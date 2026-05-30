@@ -2,7 +2,7 @@
  * humanize-demo — 跑通 BrowserSession.humanize 的最小可执行示例。
  *
  * 用法（仓库根目录执行）：
- *   pnpm --filter @mosaiq/sdk exec tsx examples/humanize-demo.ts
+ *   pnpm --filter @runova/sdk exec tsx examples/humanize-demo.ts
  *
  * 流程：
  *   1. 用 win11-chrome-us 模板创建一个 ephemeral persona（持久化到 ~/.mosaiq）
@@ -18,7 +18,7 @@
  * 自动化的检测分回归测试是 v0.2.x 后续工作（详见 docs/HUMANIZE-DESIGN.md §6.2）。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { deletePersona, launchPersona, personaExists, savePersona } from '../src/index.js';
 
 const DEMO_ID = 'humanize-demo' as const;

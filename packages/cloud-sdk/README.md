@@ -1,20 +1,20 @@
-# @mosaiq/cloud-sdk
+# @runova/cloud-sdk
 
 > TypeScript client SDK for **Mosaiq Cloud** — managed anti-detect Chromium
 > sessions over CDP-over-WebSocket. Drop-in for Playwright, Stagehand-compatible
 > in v0.13+.
 >
-> Pairs with the open-source `@mosaiq/sdk` (desktop / SDK side) and
-> `@mosaiq/persona-schema` (canonical persona JSON).
+> Pairs with the open-source `@runova/sdk` (desktop / SDK side) and
+> `@runova/persona-schema` (canonical persona JSON).
 
 ---
 
 ## Install
 
 ```bash
-npm i @mosaiq/cloud-sdk playwright-core
+npm i @runova/cloud-sdk playwright-core
 # or
-pnpm add @mosaiq/cloud-sdk playwright-core
+pnpm add @runova/cloud-sdk playwright-core
 ```
 
 `playwright-core` is a **peer dependency** — you bring your own version
@@ -26,7 +26,7 @@ pnpm add @mosaiq/cloud-sdk playwright-core
 
 ```typescript
 import { chromium } from 'playwright-core';
-import { MosaiqCloudClient } from '@mosaiq/cloud-sdk';
+import { MosaiqCloudClient } from '@runova/cloud-sdk';
 
 const client = new MosaiqCloudClient({
   apiUrl: 'https://api.mosaiq.dev',          // or http://localhost:8787 for dev
@@ -117,7 +117,7 @@ await client.closeSession(id);   // 跟 session.close() 等价
 所有非 2xx 响应抛 `CloudApiError`：
 
 ```typescript
-import { CloudApiError, type CloudErrorCode } from '@mosaiq/cloud-sdk';
+import { CloudApiError, type CloudErrorCode } from '@runova/cloud-sdk';
 
 try {
   await client.createSession({ persona: { id: 'bogus' } });
@@ -145,7 +145,7 @@ try {
    chromium-level config (UA, locale, viewport, proxy) is already applied via
    cmdline flags. JS-level spoof (navigator.* / screen / WebGL / Canvas / Audio
    noise / fonts) is injected via `injectInto(ctx)` which uses the **same
-   injection script** as `@mosaiq/sdk` desktop launcher.
+   injection script** as `@runova/sdk` desktop launcher.
 
 ---
 

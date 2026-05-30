@@ -18,7 +18,7 @@
 //        [--require-baseline]
 //
 //      Loads both files, strips the candidate to baseline shape via
-//      `stripRunForBaseline`, then runs `diffRuns` from @mosaiq/sdk.
+//      `stripRunForBaseline`, then runs `diffRuns` from @runova/sdk.
 //      Emits a markdown report (always) and a green/red verdict.
 //      Lenient policy: a small number of network-driven `ok → fail`
 //      flips can be tolerated (configurable; see below) so the gate
@@ -73,8 +73,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 // We import the SDK directly from the workspace build output rather than
-// via the bare-specifier `@mosaiq/sdk`. Reason: pnpm only symlinks
-// `@mosaiq/sdk` into consumer packages' `node_modules` (cli / desktop /
+// via the bare-specifier `@runova/sdk`. Reason: pnpm only symlinks
+// `@runova/sdk` into consumer packages' `node_modules` (cli / desktop /
 // persona-schema-tests), NOT into the workspace root. Bare-specifier
 // import would fail when this script runs from the repo root.
 // The file-URL import side-steps the resolver and works from any cwd.
@@ -88,8 +88,8 @@ try {
 } catch (err) {
   // eslint-disable-next-line no-console
   console.error(
-    `❌ Failed to import @mosaiq/sdk: ${err?.message ?? err}\n` +
-      'Hint: run `pnpm --filter @mosaiq/sdk build` first, then re-invoke.',
+    `❌ Failed to import @runova/sdk: ${err?.message ?? err}\n` +
+      'Hint: run `pnpm --filter @runova/sdk build` first, then re-invoke.',
   );
   process.exit(2);
 }
@@ -484,7 +484,7 @@ compare options:
                                      not rise and no hits were added (default: 2)
 
 Examples:
-  pnpm --filter @mosaiq/sdk build
+  pnpm --filter @runova/sdk build
   pnpm mosaiq detection-lab run win11-chrome-us --json > candidate.json
   node scripts/ci-compare-baseline.mjs compare \\
     tests/fixtures/baseline-runs/win11-chrome-us/baseline.json \\

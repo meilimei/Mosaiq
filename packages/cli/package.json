@@ -45,8 +45,8 @@
     "start": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@mosaiq/persona-schema": "workspace:*",
-    "@mosaiq/sdk": "workspace:*"
+    "@runova/persona-schema": "workspace:*",
+    "@runova/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.7.5",

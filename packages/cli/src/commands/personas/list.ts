@@ -12,7 +12,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { listPersonas } from '@mosaiq/sdk';
+import { listPersonas } from '@runova/sdk';
 
 import { fmt, renderTable } from '../../output.js';
 import { extractTemplateTag } from './template-tag.js';

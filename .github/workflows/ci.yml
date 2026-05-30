@@ -8,7 +8,7 @@
 #   3. captured-WebGL-profiles drift check — bench/captured-profiles/*.json
 #      must stay in lock-step with src/injection/webgl-profiles-captured.ts
 #      (Phase 7.0 contributor pipeline). Re-run
-#      `pnpm --filter @mosaiq/sdk run bench:integrate-profiles` locally and
+#      `pnpm --filter @runova/sdk run bench:integrate-profiles` locally and
 #      commit the regenerated TS to fix a drift failure.
 #   4. biome lint on CHANGED files (separate `lint` job, PR-only, NON-BLOCKING) —
 #      see below.
@@ -178,9 +178,9 @@ jobs:
       # Total cost: <30s, all packages build in topological order.
       - name: Build workspace packages
         run: |
-          pnpm --filter "@mosaiq/persona-schema" \
-               --filter "@mosaiq/sdk" \
-               --filter "@mosaiq/cloud-sdk" \
+          pnpm --filter "@runova/persona-schema" \
+               --filter "@runova/sdk" \
+               --filter "@runova/cloud-sdk" \
                --filter "@mosaiq/cli" \
                build
 
@@ -188,10 +188,10 @@ jobs:
         run: pnpm -r typecheck
 
       - name: Test — persona-schema
-        run: pnpm --filter @mosaiq/persona-schema test
+        run: pnpm --filter @runova/persona-schema test
 
       - name: Test — sdk
-        run: pnpm --filter @mosaiq/sdk test
+        run: pnpm --filter @runova/sdk test
 
       # CLI vitest covers pure helpers under packages/cli/src/commands/**
       # (selectPersonas / aggregateBatch / decideBatchExitCode / template-
@@ -217,7 +217,7 @@ jobs:
       #                 real chromium spawned (the real-browser path is covered by
       #                 cloud-runtime-e2e.yml). Now run as a first-class gate.
       - name: Test — cloud-sdk
-        run: pnpm --filter @mosaiq/cloud-sdk test
+        run: pnpm --filter @runova/cloud-sdk test
 
       - name: Test — cloud-runtime
         run: pnpm --filter @mosaiq/cloud-runtime test
@@ -229,15 +229,15 @@ jobs:
       # `--check` mode and fail if the on-disk file differs. This is the
       # exact contract documented in docs/CAPTURING-WEBGL-PROFILES.md.
       - name: Drift check — captured WebGL profiles
-        run: pnpm --filter @mosaiq/sdk run bench:integrate-profiles -- --check
+        run: pnpm --filter @runova/sdk run bench:integrate-profiles -- --check
 
       # v0.10 phase 10.2 drift detection: the rebrowser-patches patch for
       # playwright-core@1.59.1 is duplicated between the workspace root
       # (`patches/`, consumed by pnpm.patchedDependencies for monorepo install)
       # and `packages/sdk/patches/` (shipped in the npm tarball + applied by
-      # @mosaiq/sdk's postinstall for external consumers). These two MUST stay
+      # @runova/sdk's postinstall for external consumers). These two MUST stay
       # byte-identical; this step fails if they drift.
-      - name: Drift check — @mosaiq/sdk playwright-core patch
+      - name: Drift check — @runova/sdk playwright-core patch
         run: pnpm run check-sdk-patch-drift
 
       # v0.10 phase 10.6 drift detection: the Detection Lab CI gate

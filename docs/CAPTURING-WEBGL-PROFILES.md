@@ -3,7 +3,7 @@
 > **TL;DR** Open `packages/sdk/bench/capture-real-webgl-profile.html` in
 > your browser, click `Capture`, drop the JSON into
 > `packages/sdk/bench/captured-profiles/<id>.json`, run
-> `pnpm --filter @mosaiq/sdk run bench:integrate-profiles`, commit both
+> `pnpm --filter @runova/sdk run bench:integrate-profiles`, commit both
 > files.
 
 This doc explains how to contribute a real-hardware WebGL profile to
@@ -68,7 +68,7 @@ Save the JSON locally — name doesn't matter yet, we'll rename in step 3.
 Pipe or pass the file to the convert tool:
 
 ```bash
-pnpm --filter @mosaiq/sdk run bench:convert-profile -- --file ~/Downloads/my-capture.json
+pnpm --filter @runova/sdk run bench:convert-profile -- --file ~/Downloads/my-capture.json
 ```
 
 You'll see one of:
@@ -120,7 +120,7 @@ suggested-id from the renderer string.
 ## Step 4 — Integrate
 
 ```bash
-pnpm --filter @mosaiq/sdk run bench:integrate-profiles
+pnpm --filter @runova/sdk run bench:integrate-profiles
 ```
 
 This regenerates `packages/sdk/src/injection/webgl-profiles-captured.
@@ -140,7 +140,7 @@ git commit -m "feat(profiles): add <gpu-name> capture"
 CI will run:
 
 ```bash
-pnpm --filter @mosaiq/sdk run bench:integrate-profiles -- --check
+pnpm --filter @runova/sdk run bench:integrate-profiles -- --check
 ```
 
 …to verify the on-disk TS file is in sync with your JSON. If you

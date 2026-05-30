@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
 import { Input } from '@/components/ui/input.js';
 import { formatDate, formatDuration } from '@/lib/utils.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 import type { PersonaSummary } from '../../electron/ipc-types.js';
 import { useToast } from '../components/Toast.js';
 

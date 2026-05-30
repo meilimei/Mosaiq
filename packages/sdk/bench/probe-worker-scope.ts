@@ -2,7 +2,7 @@
  * probe-worker-scope — 在我们 spoof 后的 chromium 里启动一个 DedicatedWorker，
  *   读 navigator.* 与 main scope 比对，验证 §11 worker scope spoof 是否生效。
  *
- *   pnpm --filter @mosaiq/sdk exec tsx bench/probe-worker-scope.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/probe-worker-scope.ts
  *
  * 期望：worker.userAgent === main.userAgent，hardwareConcurrency / deviceMemory
  *      / language / languages / platform 一致。
@@ -10,7 +10,7 @@
 import { rmSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 import {
   deletePersona,

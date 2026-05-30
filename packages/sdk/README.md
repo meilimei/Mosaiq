@@ -1,14 +1,14 @@
-# @mosaiq/sdk
+# @runova/sdk
 
 > Mosaiq SDK — 用 persona 驱动的 Chromium 反检测引擎。Drop-in 兼容
 > Playwright / Stagehand / Puppeteer-style 工作流。
 
-[![npm version](https://img.shields.io/npm/v/@mosaiq/sdk.svg)](https://www.npmjs.com/package/@mosaiq/sdk)
+[![npm version](https://img.shields.io/npm/v/@runova/sdk.svg)](https://www.npmjs.com/package/@runova/sdk)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ## 定位
 
-`@mosaiq/sdk` 是 [Mosaiq](https://github.com/meilimei/Mosaiq) 反检测浏览器
+`@runova/sdk` 是 [Mosaiq](https://github.com/meilimei/Mosaiq) 反检测浏览器
 基础设施的 **TypeScript SDK**。它提供:
 
 - **`launchPersona(persona)`** — 启动 Chromium，注入与 persona 一致的
@@ -30,9 +30,9 @@
 
 ```bash
 # v0.10.0+ (npm)
-npm i @mosaiq/sdk
+npm i @runova/sdk
 # 或者
-pnpm add @mosaiq/sdk
+pnpm add @runova/sdk
 ```
 
 Chromium 二进制由 [Playwright](https://playwright.dev) 管理：
@@ -58,8 +58,8 @@ npx playwright install chromium
 ## 5 分钟 Quickstart
 
 ```typescript
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
-import { launchPersona, savePersona } from '@mosaiq/sdk';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
+import { launchPersona, savePersona } from '@runova/sdk';
 
 // 1. 创建一个 persona（Win11 Chrome US locale 模板）
 const alice = createWin11ChromeUsPersona({
@@ -90,7 +90,7 @@ Stagehand / `browser-use` API 都能直接用。
 ## Detection Lab — 一键反检测自检
 
 ```typescript
-import { loadPersona, runDetection, formatDetectionRunMarkdown } from '@mosaiq/sdk';
+import { loadPersona, runDetection, formatDetectionRunMarkdown } from '@runova/sdk';
 
 const alice = loadPersona('reddit-alice');
 
@@ -133,7 +133,7 @@ console.log(report);
 ### Browser launch
 
 ```typescript
-import { launchPersona, BrowserSession, type LaunchPersonaOptions } from '@mosaiq/sdk';
+import { launchPersona, BrowserSession, type LaunchPersonaOptions } from '@runova/sdk';
 ```
 
 `launchPersona(persona, options?)` → `Promise<BrowserSession>`。
@@ -148,7 +148,7 @@ import {
   personaExists, updatePersona, clonePersona,
   recordLaunch,
   type PersonaPatch, type CloneOptions,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 ```
 
 读写 `~/.mosaiq/personas/<id>.json`，与 Mosaiq Desktop 应用同一数据目录。
@@ -160,7 +160,7 @@ import {
   serializePersona, exportPersonaJson,
   parsePersonaJson, importPersonaJson,
   type ExportOptions, type ImportOptions, type ImportConflictOptions,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 ```
 
 导出 / 导入 persona JSON 文件，支持 `--include-secrets` 控制是否 redact
@@ -180,7 +180,7 @@ import {
   type RunDetectionOptions, type RunDetectionResult,
   type RunProgressEvent, type RunStatus,
   type FormatMarkdownOptions, type RunDiff, type RunSnapshot, type ChangedHit,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 ```
 
 12 站检测 / 打分 / 存储 / Markdown 报告 / run-vs-run diff 的完整能力。
@@ -193,7 +193,7 @@ import {
   planMouseTrajectory, planTypingPlan,
   type HumanizeDefaults, type HumanizeSpeed,
   type MoveOptions, type ClickOptions, type TypeOptions,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 const h = new Humanize(page);
 await h.move({ x: 600, y: 400 });
@@ -210,7 +210,7 @@ await h.type('input[name=username]', 'alice_2026', { speed: 'normal' });
 import {
   buildProxyServerArg, toPlaywrightProxy, verifyProxy,
   type PlaywrightProxy, type ProxyVerifyResult, type ProxyVerifyOptions,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 ```
 
 `http` / `https` / `socks5`，URL-encoded credentials 自动解码，
@@ -224,7 +224,7 @@ import {
   getPersonaDir, getPersonaFile,
   getDetectionRunsRoot, getDetectionRunsDir, getDetectionRunFile,
   type PathConfig,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 ```
 
 默认 `~/.mosaiq/`；通过环境变量 `MOSAIQ_RUNTIME_ROOT` 覆盖。
@@ -232,12 +232,12 @@ import {
 ### Persona schema 类型 re-export
 
 ```typescript
-import type { Persona, PersonaId, PersonaDraft, PersonaMetadata } from '@mosaiq/sdk';
-import { parsePersona, safeParsePersona } from '@mosaiq/sdk';
+import type { Persona, PersonaId, PersonaDraft, PersonaMetadata } from '@runova/sdk';
+import { parsePersona, safeParsePersona } from '@runova/sdk';
 ```
 
 `Persona` zod schema 校验。详细字段定义见
-[`@mosaiq/persona-schema`](https://www.npmjs.com/package/@mosaiq/persona-schema)。
+[`@runova/persona-schema`](https://www.npmjs.com/package/@runova/persona-schema)。
 
 ---
 
@@ -247,7 +247,7 @@ SDK 直接基于 `playwright-core` 1.59.1（patched）。`session.context()` 返
 `BrowserContext`，所以：
 
 ```typescript
-import { launchPersona } from '@mosaiq/sdk';
+import { launchPersona } from '@runova/sdk';
 import { Stagehand } from '@browserbasehq/stagehand';
 
 const session = await launchPersona(persona);
@@ -280,7 +280,7 @@ mosaiq personas create alice --template win11-chrome-us --display-name "Alice"
 
 ## 反检测设计
 
-`@mosaiq/sdk` 的反检测能力分两层：
+`@runova/sdk` 的反检测能力分两层：
 
 1. **Persona 注入**（`launchPersona`）— navigator / canvas / WebGL / audio /
    WebRTC / UA-CH 等指纹按 persona 配置覆盖。每个 persona 的 noise seed 都
@@ -307,13 +307,13 @@ mosaiq personas create alice --template win11-chrome-us --display-name "Alice"
 git clone https://github.com/meilimei/Mosaiq
 cd Mosaiq
 pnpm install
-pnpm --filter @mosaiq/sdk build
-pnpm --filter @mosaiq/sdk test    # 593 vitest cases
-pnpm --filter @mosaiq/sdk demo:humanize   # 看 Humanize 鼠标轨迹 demo
+pnpm --filter @runova/sdk build
+pnpm --filter @runova/sdk test    # 593 vitest cases
+pnpm --filter @runova/sdk demo:humanize   # 看 Humanize 鼠标轨迹 demo
 
 # Detection Lab bench (本地真跑 12 站)
-pnpm --filter @mosaiq/sdk bench
-pnpm --filter @mosaiq/sdk bench:report
+pnpm --filter @runova/sdk bench
+pnpm --filter @runova/sdk bench:report
 ```
 
 ---

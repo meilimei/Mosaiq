@@ -1,9 +1,9 @@
 /**
- * @mosaiq/sdk — Mosaiq SDK 公共 API。
+ * @runova/sdk — Mosaiq SDK 公共 API。
  *
  * 使用示例：
  * ```ts
- * import { launchPersona, loadPersona } from '@mosaiq/sdk';
+ * import { launchPersona, loadPersona } from '@runova/sdk';
  *
  * const alice = loadPersona('reddit-alice');
  * const session = await launchPersona(alice);
@@ -132,5 +132,5 @@ export type {
   PersonaId,
   PersonaDraft,
   PersonaMetadata,
-} from '@mosaiq/persona-schema';
-export { parsePersona, safeParsePersona } from '@mosaiq/persona-schema';
+} from '@runova/persona-schema';
+export { parsePersona, safeParsePersona } from '@runova/persona-schema';

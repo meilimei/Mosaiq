@@ -18,7 +18,7 @@ import {
   SURFACE_LABEL,
 } from '@/lib/detection-lab.js';
 import { cn } from '@/lib/utils.js';
-import type { SurfaceHit } from '@mosaiq/sdk';
+import type { SurfaceHit } from '@runova/sdk';
 
 interface SurfaceHitBadgeProps {
   hit: SurfaceHit;

@@ -7,7 +7,7 @@
  * 不依赖任何 SDK runtime 调用；纯 DetectionRun → string 投影。
  */
 
-import type { DetectionRun, DetectionRunSummary } from '@mosaiq/sdk';
+import type { DetectionRun, DetectionRunSummary } from '@runova/sdk';
 
 import { fmt, formatMs } from '../../output.js';
 

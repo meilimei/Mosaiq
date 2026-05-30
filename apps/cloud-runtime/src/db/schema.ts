@@ -280,7 +280,7 @@ export const personas = sqliteTable(
     projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     /** 'user' | 'seed' | 'capture' */
     source: text('source').notNull(),
-    /** 整个 Persona JSON，schema 由 @mosaiq/persona-schema parse 校验 */
+    /** 整个 Persona JSON，schema 由 @runova/persona-schema parse 校验 */
     personaJson: text('persona_json').notNull(),
     createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
     updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),

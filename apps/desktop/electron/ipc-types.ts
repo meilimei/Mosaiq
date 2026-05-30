@@ -3,14 +3,14 @@
  * 所有 channel 命名空间用 'mosaiq:' 前缀。
  */
 
-import type { Persona, PersonaId } from '@mosaiq/persona-schema';
+import type { Persona, PersonaId } from '@runova/persona-schema';
 import type {
   DetectionRun,
   DetectionRunSummary,
   ProxyVerifyResult,
   RunDiff,
   RunProgressEvent,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 export type { DetectionRun, DetectionRunSummary, ProxyVerifyResult, RunDiff, RunProgressEvent };
 
@@ -201,7 +201,7 @@ export interface MosaiqApi {
   /**
    * v0.9 phase 9.7: 把单次 run 渲染成 markdown 报告并保存到用户选的路径。
    * 主进程负责 load + format + save-dialog + 写盘（renderer 无法直接调
-   * `formatDetectionRunMarkdown`，因为 `@mosaiq/sdk` 的运行时入口被 Vite
+   * `formatDetectionRunMarkdown`，因为 `@runova/sdk` 的运行时入口被 Vite
    * dep-optimization 拒收——见 9.4 CHANGELOG 的 Documented gotcha）。
    */
   detectionLabExportRunMarkdown(

@@ -12,7 +12,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { type Persona, loadPersona } from '@mosaiq/sdk';
+import { type Persona, loadPersona } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 import { extractTemplateTag } from './template-tag.js';

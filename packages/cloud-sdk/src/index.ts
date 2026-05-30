@@ -1,9 +1,9 @@
 /**
- * @mosaiq/cloud-sdk —— Mosaiq Cloud 控制平面客户端。
+ * @runova/cloud-sdk —— Mosaiq Cloud 控制平面客户端。
  *
  * 使用：
  * ```ts
- * import { MosaiqCloudClient } from '@mosaiq/cloud-sdk';
+ * import { MosaiqCloudClient } from '@runova/cloud-sdk';
  * import { chromium } from 'playwright-core';
  *
  * const client = new MosaiqCloudClient({
@@ -50,4 +50,4 @@ export {
 } from './errors.js';
 
 // Re-export Persona type for convenience（让 cloud-sdk 用户不必再装 persona-schema）
-export type { Persona } from '@mosaiq/persona-schema';
+export type { Persona } from '@runova/persona-schema';

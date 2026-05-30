@@ -17,7 +17,7 @@ in 0.x (minor bumps may include breaking changes).
   自带 playwright `connectOverCDP` + `addInitScript` 注册与 desktop launcher 同款
   `injectAll`（canvas/WebGL/audio/UA-CH/字体/worker scope）。每 session 受
   `stealth.inject`、pod 受 `POD_SERVER_INJECT` 约束；连接保持到 session 结束，
-  `killChromium` 先 close 再 SIGTERM。`apps/browser-pod` 新增 `@mosaiq/sdk` 依赖，
+  `killChromium` 先 close 再 SIGTERM。`apps/browser-pod` 新增 `@runova/sdk` 依赖，
   Dockerfile 用 `MOSAIQ_SDK_SKIP_POSTINSTALL=1` 跳过无关的 rebrowser-patch postinstall。
   **三重验证**：(1) 真 pod + 真 chromium 本地实测，裸 `connectOverCDP` 不调
   `injectInto` 即得 `hardwareConcurrency`/WebGL renderer = persona 值；(2) pod +
@@ -50,7 +50,7 @@ in 0.x (minor bumps may include breaking changes).
   （部署 GitHub Pages 需 maintainer 开启）。
 - **质量护栏** —— CI 加 `@mosaiq/browser-pod` 单测 + non-blocking biome
   changed-files 可见性 gate；`@mosaiq/cli` 版本号改为从 package.json 动态读
-  （消除 0.9.0-dev 漂移）；`@mosaiq/cloud-sdk` 纳入 `audit-tarballs`；`cloud-runtime`
+  （消除 0.9.0-dev 漂移）；`@runova/cloud-sdk` 纳入 `audit-tarballs`；`cloud-runtime`
   README / ci.yml 注释大面积 doc 漂移修正；`DEVELOPMENT.md §8` 新增技术债清单。
 - **新文档 / 模板** —— `docs/EVIDENCE-AND-VALIDATION.md`（baseline bootstrap +
   leaderboard + 硬目标/真账号实测协议）、`docs/ROADMAP-90D.md`（单人+AI 90 天现实
@@ -104,7 +104,7 @@ in 0.x (minor bumps may include breaking changes).
     `closeSession` / `listPersonas` / `getPersona` / `createPersona` /
     `health`，所有非 2xx 抛 `CloudApiError(code, status, detail)`
   - `ManagedCloudSession.injectInto(ctx)` 在 `connectOverCDP` 后用
-    `addInitScript` 注入 persona JS-level spoof —— **复用 `@mosaiq/sdk`
+    `addInitScript` 注入 persona JS-level spoof —— **复用 `@runova/sdk`
     `injection` 的 `buildInjectionConfig` + `injectAll` 同款脚本**，
     让 cloud session 与 desktop `launchPersona()` 行为完全一致
   - 12/12 vitest 通过，包括设计稿 §9 必过的
@@ -142,13 +142,13 @@ in 0.x (minor bumps may include breaking changes).
 
 | package | 测试文件 | 测试数 |
 |---|---|---|
-| `@mosaiq/persona-schema` | 1 | 26 |
-| `@mosaiq/sdk` | 29 | 623 |
+| `@runova/persona-schema` | 1 | 26 |
+| `@runova/sdk` | 29 | 623 |
 | `@mosaiq/cli` | 3 | 64 |
 | `@mosaiq/desktop` | 2 | 45 |
 | `@mosaiq/cloud-runtime` (new) | 3 | 25 |
 | `@mosaiq/browser-pod` (new) | 0 | passWithNoTests |
-| `@mosaiq/cloud-sdk` (new) | 3 | 12 |
+| `@runova/cloud-sdk` (new) | 3 | 12 |
 | **总计** | **41** | **795** |
 
 `pnpm typecheck` 7 包全绿；`pnpm --filter <new>... build` 3 个新包都
@@ -162,7 +162,7 @@ in 0.x (minor bumps may include breaking changes).
 + 10.7 + 10.8 + 10.9 are all in; the only remaining v0.10 work is the
 maintainer-side bootstrap (commit the first `baseline.json` from a green
 detection-lab workflow's candidate artifact) and the actual
-`npm publish` of `@mosaiq/persona-schema` / `@mosaiq/sdk` /
+`npm publish` of `@runova/persona-schema` / `@runova/sdk` /
 `@mosaiq/cli` at `0.10.0`.
 
 ### Added
@@ -191,7 +191,7 @@ detection-lab workflow's candidate artifact) and the actual
   (`commit 708b7e1`).
   - `scripts/build-fixture-personas.ts` (~143 LOC) — deterministic
     persona-fixture generator. Imports `createWin11ChromeUsPersona`
-    from `@mosaiq/persona-schema`, overrides the template's normally-
+    from `@runova/persona-schema`, overrides the template's normally-
     random `masterSeed` with the well-known constant
     `'deadbeef'` and replaces `metadata.createdAt` / `updatedAt` (which
     the template factory sets via `new Date()`) with the unix-epoch
@@ -220,8 +220,8 @@ detection-lab workflow's candidate artifact) and the actual
   comparator** (this entry).
   - `scripts/ci-compare-baseline.mjs` (~470 LOC) — the heart of the
     gate. Pure Node ESM, imports `diffRuns` + `stripRunForBaseline`
-    from `@mosaiq/sdk` via a workspace-aware `file://` URL (the bare
-    `@mosaiq/sdk` specifier doesn't resolve from the workspace root
+    from `@runova/sdk` via a workspace-aware `file://` URL (the bare
+    `@runova/sdk` specifier doesn't resolve from the workspace root
     because pnpm only symlinks SDK into consumer packages'
     `node_modules`; the file-URL import side-steps the resolver and
     works from any cwd). Two modes:
@@ -300,8 +300,8 @@ detection-lab workflow's candidate artifact) and the actual
   (this entry).
   - `scripts/refresh-baseline.mts` (~600 LOC) — the driver. Imports
     `runDetection` / `stripRunForBaseline` / `diffRuns` from
-    `@mosaiq/sdk` source (via `.mts` extension so tsx uses ESM
-    resolution and matches `@mosaiq/persona-schema`'s `exports.import`
+    `@runova/sdk` source (via `.mts` extension so tsx uses ESM
+    resolution and matches `@runova/persona-schema`'s `exports.import`
     entry — the workspace root's `package.json` has no `"type"` field,
     so a plain `.ts` script would fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`
     on the persona-schema import). For each committed fixture persona,
@@ -443,12 +443,12 @@ detection-lab workflow's candidate artifact) and the actual
 
 The **"v0.10 npm distribution + publish-readiness"** release. Takes the
 v0.9 CLI parity work (which until now only existed inside the Mosaiq
-monorepo) and ships it to npm: `@mosaiq/persona-schema`, `@mosaiq/sdk`,
+monorepo) and ships it to npm: `@runova/persona-schema`, `@runova/sdk`,
 and `@mosaiq/cli` are now publicly installable as
 `npm i @mosaiq/<pkg>@0.10.0`. The 302-line `rebrowser-patches`
 playwright-core patch — previously only applied during workspace
 `pnpm install` via `pnpm.patchedDependencies` — is now shipped inside the
-`@mosaiq/sdk` tarball and applied to external consumers' `playwright-core`
+`@runova/sdk` tarball and applied to external consumers' `playwright-core`
 via a `patch-package` `postinstall` hook. Version management switches from
 hand-edited `chore(release):` commits to [changesets](https://github.com/changesets/changesets)
 with a `fixed` lock-step group across the three publishable packages
@@ -456,9 +456,9 @@ with a `fixed` lock-step group across the three publishable packages
 
 All 4 packages bumped 0.9 → 0.10 in lock-step:
 
-  - `@mosaiq/persona-schema` 0.9.0 → 0.10.0 (no schema changes; release
+  - `@runova/persona-schema` 0.9.0 → 0.10.0 (no schema changes; release
     sync + npm metadata baseline)
-  - `@mosaiq/sdk` 0.9.0 → 0.10.0 (no API changes; npm metadata + the
+  - `@runova/sdk` 0.9.0 → 0.10.0 (no API changes; npm metadata + the
     `patches/`+`postinstall.cjs` shipping mechanism; `SDK_VERSION`
     constant bumped to keep `DetectionRun.meta.sdkVersion` aligned)
   - `@mosaiq/cli` 0.9.0 → 0.10.0 (no CLI surface changes; `private: true`
@@ -485,7 +485,7 @@ REQUIRED/FORBIDDEN allow-lists).
 
 - **Phase 10.1 — package metadata baseline + LICENSE + sdk README**
   (`commit dc4cac3`).
-  - Three publishable packages (`@mosaiq/persona-schema` / `@mosaiq/sdk`
+  - Three publishable packages (`@runova/persona-schema` / `@runova/sdk`
     / `@mosaiq/cli`) gained the metadata fields npm registry expects:
     `repository{type,url,directory}` (per-package monorepo path), `bugs`,
     `homepage` (GitHub README anchor), `keywords` (mosaiq / antidetect /
@@ -513,10 +513,10 @@ REQUIRED/FORBIDDEN allow-lists).
     sub-packages) and confirmed `"private": true` is set (defensive
     guard against an accidental `pnpm publish` from the workspace root,
     which would otherwise publish a stub `mosaiq@0.1.0` placeholder).
-  - **Pack dry-run sizes** (verified post-build): `@mosaiq/persona-schema`
-    40.0 kB packed / 184.6 kB unpacked / 63 files; `@mosaiq/sdk` 187.5
+  - **Pack dry-run sizes** (verified post-build): `@runova/persona-schema`
+    40.0 kB packed / 184.6 kB unpacked / 63 files; `@runova/sdk` 187.5
     kB / 699.7 kB / 125 files; `@mosaiq/cli` 67.9 kB / 309.3 kB / 50
-    files. `npm publish --dry-run` against `@mosaiq/sdk` produces 0
+    files. `npm publish --dry-run` against `@runova/sdk` produces 0
     warnings (other than the expected "login required" notice).
 
 - **Phase 10.2 — `patch-package` postinstall ships rebrowser-patches to
@@ -524,7 +524,7 @@ REQUIRED/FORBIDDEN allow-lists).
   - Solves the structural gap noted in the v0.10 plan §2.2: in v0.9, the
     302-line `rebrowser-patches` `playwright-core@1.59.1.patch` is
     applied only by `pnpm.patchedDependencies` during workspace install.
-    External `npm i @mosaiq/sdk` consumers receive an unpatched
+    External `npm i @runova/sdk` consumers receive an unpatched
     `playwright-core` — sannysoft / creepjs gain back the `webdriver`
     surface hit. v0.10 closes this.
   - `packages/sdk/patches/playwright-core@1.59.1.patch`: byte-identical
@@ -536,7 +536,7 @@ REQUIRED/FORBIDDEN allow-lists).
     applicator. Detects whether the SDK is installed inside the Mosaiq
     monorepo (no `node_modules` in our resolved path → exit 0,
     `pnpm.patchedDependencies` already handles patching) or inside an
-    external consumer's `node_modules/@mosaiq/sdk/`. In the latter case
+    external consumer's `node_modules/@runova/sdk/`. In the latter case
     it walks up to find the consumer project root (closest ancestor
     `node_modules`'s parent), verifies `playwright-core` exists and is
     exactly version `1.59.1` (refuses to patch other versions —
@@ -595,7 +595,7 @@ REQUIRED/FORBIDDEN allow-lists).
     management switches from hand-edited `chore(release):` commits to
     automated changesets PRs.
   - `.changeset/config.json`: `"fixed":
-    [["@mosaiq/persona-schema","@mosaiq/sdk","@mosaiq/cli"]]` — the
+    [["@runova/persona-schema","@runova/sdk","@mosaiq/cli"]]` — the
     three publishable packages bump in lock-step. Touching any one
     via `pnpm changeset` triggers all three to bump together (matches
     the v0.9 manual `chore(release): v0.9.0` pattern in commit
@@ -622,7 +622,7 @@ REQUIRED/FORBIDDEN allow-lists).
     Concurrency-locked to prevent parallel publishes that could clash
     on version numbers.
   - **Lock-step verified**: dry-run added a `.changeset/*.md` for
-    `@mosaiq/sdk: minor`; `pnpm changeset status` reported all three
+    `@runova/sdk: minor`; `pnpm changeset status` reported all three
     publishable packages (sdk + cli + persona-schema) scheduled to
     bump together. `pnpm changeset version --snapshot test` confirmed
     desktop did **not** bump (the `ignore` config works). Test
@@ -678,8 +678,8 @@ comparison, in-app markdown export, and a side-by-side Compare Runs page.
 
 All 4 packages bumped 0.8 → 0.9 in lock-step:
 
-  - `@mosaiq/persona-schema` 0.8.0 → 0.9.0 (no schema changes; release sync)
-  - `@mosaiq/sdk` 0.8.0 → 0.9.0 (additive API: `formatDetectionRunMarkdown`
+  - `@runova/persona-schema` 0.8.0 → 0.9.0 (no schema changes; release sync)
+  - `@runova/sdk` 0.8.0 → 0.9.0 (additive API: `formatDetectionRunMarkdown`
     / `FormatMarkdownOptions` from phase 9.6; `diffRuns` / `RunDiff` /
     `RunSnapshot` / `ChangedHit` hoisted from CLI in phase 9.8 — both are
     pure data projections, zero behavior change for existing exports)
@@ -703,7 +703,7 @@ sdk + persona-schema test surface.
     [--only <ids>] [--skip <ids>] [--retries <n>] [--timeout <ms>]
     [--template <name>] [--json] [--quiet]
     [--fail-on-hits none|any|medium|high]`: thin wrapper over
-    `runDetection` from `@mosaiq/sdk`. Streams the same
+    `runDetection` from `@runova/sdk`. Streams the same
     `RunProgressEvent` phases the desktop renderer consumes (init /
     site-start / site-retry / site-end / done / canceled / error),
     prints a TTY-aware progress bar by default, `--quiet` collapses
@@ -714,7 +714,7 @@ sdk + persona-schema test surface.
     `~/.mosaiq/detection-runs/` store the desktop reads, so a CLI
     run shows up in the dashboard immediately.
   - Subcommand `mosaiq personas list [--json]`: reads
-    `~/.mosaiq/personas/` via `listPersonas` from `@mosaiq/sdk`
+    `~/.mosaiq/personas/` via `listPersonas` from `@runova/sdk`
     and pretty-prints an `ID / DISPLAY NAME / TEMPLATE / UPDATED`
     table. The `TEMPLATE` column is recovered from the convention
     `tags: ['template:<id>', ...]` (same rule the desktop main
@@ -795,7 +795,7 @@ sdk + persona-schema test surface.
     (full score) for each selected persona.
 - **Phase 9.5 — Persona CRUD CLI** (this entry).
   - `mosaiq personas templates list [--json]`: prints the
-    `TEMPLATE_CATALOG` from `@mosaiq/persona-schema/templates` (the
+    `TEMPLATE_CATALOG` from `@runova/persona-schema/templates` (the
     same data desktop's "新建 Persona" page renders as cards). Acts
     as the discovery surface for `--template` ids before calling
     `personas create`. `--json` emits `{ id, displayName,
@@ -944,7 +944,7 @@ sdk + persona-schema test surface.
     results / Footer. `options.headingLevel` (1/2/3) shifts every
     `#` in the report so it can be embedded into a larger Markdown
     document without breaking the outer TOC depth. Re-exported from
-    both `@mosaiq/sdk/detection-lab` and the package root.
+    both `@runova/sdk/detection-lab` and the package root.
   - **Tests:** 20 new vitest cases in
     `packages/sdk/src/detection-lab/run-format.test.ts` (clean runs,
     failed / canceled runs, surface matrix, severity ordering,
@@ -982,7 +982,7 @@ sdk + persona-schema test surface.
     break the protocol.
   - **Architecture decision:** the formatter call lives in the
     **main process**, not the renderer. Reason: the renderer
-    cannot do a runtime `import { ... } from '@mosaiq/sdk'` (Vite
+    cannot do a runtime `import { ... } from '@runova/sdk'` (Vite
     dep-optimization follows the SDK barrel into
     `playwright-core/bidi/...` → unresolvable in a browser bundle;
     documented as a "gotcha" in the 9.4 entry below). Main is a
@@ -1039,7 +1039,7 @@ sdk + persona-schema test surface.
     churn (9), delta math (2), site flips (4), site list
     discrepancies (3), `hasRegression` policy (5), failed /
     canceled runs (3).
-  - New SDK exports (`@mosaiq/sdk` + `@mosaiq/sdk/detection-lab`):
+  - New SDK exports (`@runova/sdk` + `@runova/sdk/detection-lab`):
     `diffRuns`, and types `RunDiff`, `RunSnapshot`, `ChangedHit`.
   - CLI `compare.ts` shrinks from 422 → 268 lines (-154 net, -180
     deleted from the pure-logic section). The remaining code is
@@ -1272,12 +1272,12 @@ sdk + persona-schema test surface.
 
 ### Documented gotchas
 
-- **Vite renderer cannot bundle `@mosaiq/sdk` runtime imports**
+- **Vite renderer cannot bundle `@runova/sdk` runtime imports**
   (lesson hit during 9.4 implementation). The SDK entry transitively
   pulls in `playwright-core/lib/server/bidi/...` which in turn
   requires `chromium-bidi/lib/cjs/...` — neither resolves in a
   browser-target Vite dep optimization pass. All renderer-side
-  imports from `@mosaiq/sdk` must be `import type { ... }` so tsc
+  imports from `@runova/sdk` must be `import type { ... }` so tsc
   erases them. The `PersonaPoolPage` now inlines a local
   `EMPTY_HITS_BY_SURFACE` constant (typed against the SDK's
   `HitsBySurface`) instead of importing the runtime
@@ -1292,7 +1292,7 @@ sdk + persona-schema test surface.
   writes the same `DetectionRun` files the desktop reads, and the
   desktop's run-list ↔ CLI's `list-runs` agree on row counts. No
   migrations.
-- `@mosaiq/sdk` public API unchanged. Existing consumers of
+- `@runova/sdk` public API unchanged. Existing consumers of
   `runDetection` / `loadDetectionRun` / `listDetectionRuns` /
   `deleteDetectionRun` are bit-compatible with v0.8.0.
 - The `mosaiq-artifact://` protocol scheme is desktop-only; nothing
@@ -1303,7 +1303,7 @@ sdk + persona-schema test surface.
 The **"v0.8 Detection Lab in the desktop app"** release. Closes the v0.7
 "`Detection Lab` button is a pixelscan/browserscan placeholder" UX gap by
 hoisting the entire bench-only detection pipeline (12 sites, scorer,
-12-surface attribution, severity-weighted hits) into `@mosaiq/sdk` public
+12-surface attribution, severity-weighted hits) into `@runova/sdk` public
 API and shipping a full renderer dashboard: history list with weighted-hits
 trend chart, per-run detail with hits-by-surface radar + per-site grid,
 live progress events with cancellation, and a 100KB-wire-format
@@ -1374,7 +1374,7 @@ documented long-term reds) is preserved.
     plain mocks. 31 vitest cases.
   - `packages/sdk/src/detection-lab/runner.ts` (310 LOC): thin wrapper
     that wires `runner-core` to real Playwright `launchPersona` from
-    `@mosaiq/sdk`. Exports `runDetection({ persona, onProgress, signal,
+    `@runova/sdk`. Exports `runDetection({ persona, onProgress, signal,
     onlySites?, artifactDir? })`. 16 vitest cases (lifecycle integration
     + retry semantics + abort propagation). Bench
     `baseline-detection.ts` was rewritten as a 137-line caller of the
@@ -1574,7 +1574,7 @@ follow-up loops v0.7.0 explicitly left open:
   hardware capture (Intel HD 520) committed, end-to-end pipeline validated
 - A latent ESM circular-dependency in v0.7.0's `webgl-profiles-captured.ts`
   bootstrap that would crash with `ReferenceError: Cannot access 'GL'
-  before initialization` on first import. **Anyone using `@mosaiq/sdk`
+  before initialization` on first import. **Anyone using `@runova/sdk`
   v0.7.0 with a non-empty captured registry should upgrade.** The 0.7.0
   release shipped with an empty registry so npm-installed users were not
   affected, but the bug would have surfaced for the first contributor
@@ -1588,7 +1588,7 @@ by default).
 
 - **Phase 7.1 — First real-hardware capture + capture-self automation**
   - **`bench/capture-self-webgl-profile.ts`** (new Playwright tsx
-    script, exposed as `pnpm --filter @mosaiq/sdk run bench:capture-self`):
+    script, exposed as `pnpm --filter @runova/sdk run bench:capture-self`):
     drives the headed Chromium capture HTML on the contributor's own
     machine, extracts the JSON payload, rejects software renderers via
     `detectSoftwareRenderer`, derives a clean filename stem via
@@ -1726,7 +1726,7 @@ organically across the user base.
     4 hand-curated entries (declaration order = match priority,
     hand-curated wins on conflict).
   - **`bench:integrate-profiles` script** in `packages/sdk/package.
-    json` (`pnpm --filter @mosaiq/sdk run bench:integrate-profiles`).
+    json` (`pnpm --filter @runova/sdk run bench:integrate-profiles`).
   - **`docs/CAPTURING-WEBGL-PROFILES.md`** end-to-end contributor
     guide: pre-flight checklist (rejecting software-renderer
     captures), step-by-step capture/verify/submit/integrate flow,
@@ -2459,8 +2459,8 @@ Electron foundation with two major anti-fingerprinting phases:
 ### Verification
 
 - **Tests**: persona-schema 21/21, sdk 248/248 (15 new canvas tests).
-- **Typecheck**: clean across 3 packages (`@mosaiq/persona-schema`,
-  `@mosaiq/sdk`, `@mosaiq/desktop`).
+- **Typecheck**: clean across 3 packages (`@runova/persona-schema`,
+  `@runova/sdk`, `@mosaiq/desktop`).
 - **Bench**: `packages/sdk/bench/baseline-detection.ts` available for
   end-to-end Chromium validation (user-runnable; not auto-executed).
 

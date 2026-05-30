@@ -1,4 +1,4 @@
-import type { DetectionRun, Persona } from '@mosaiq/sdk';
+import type { DetectionRun, Persona } from '@runova/sdk';
 import { describe, expect, it } from 'vitest';
 
 import {

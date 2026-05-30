@@ -17,7 +17,7 @@
 
 import type { Page } from 'playwright-core';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Surface / Hit

@@ -50,7 +50,7 @@ import { aggregateUsage, currentMonthWindowUtc } from '../usage/aggregate.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
-import { parsePersona, type Persona } from '@mosaiq/persona-schema';
+import { parsePersona, type Persona } from '@runova/persona-schema';
 
 export const sessionsRoute = new Hono();
 

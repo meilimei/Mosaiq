@@ -8,7 +8,7 @@
 
 ## 🚀 想立即跑起来？
 
-**v0.10.0 已发布**（2026-05-21）：v0.9 的桌面 + CLI + Detection Lab 全套能力首次**公开到 npm**——`npm i -g @mosaiq/cli` / `npm i @mosaiq/sdk` 直接用。SDK 通过 `patch-package` postinstall 自动应用 `rebrowser-patches` 给 `playwright-core@1.59.1`（关掉 `Runtime.enable` 自动暴露 execution context 这个最常见的 Playwright 检测向量）。版本管理切换为 [changesets](https://github.com/changesets/changesets) 自动化，三个发包包（persona-schema / sdk / cli）lock-step 同进同退；desktop 仍保持 `private`，不上 npm。
+**v0.10.0 已发布**（2026-05-21）：v0.9 的桌面 + CLI + Detection Lab 全套能力首次**公开到 npm**——`npm i -g @mosaiq/cli` / `npm i @runova/sdk` 直接用。SDK 通过 `patch-package` postinstall 自动应用 `rebrowser-patches` 给 `playwright-core@1.59.1`（关掉 `Runtime.enable` 自动暴露 execution context 这个最常见的 Playwright 检测向量）。版本管理切换为 [changesets](https://github.com/changesets/changesets) 自动化，三个发包包（persona-schema / sdk / cli）lock-step 同进同退；desktop 仍保持 `private`，不上 npm。
 
 ```bash
 # 最短路径
@@ -50,7 +50,7 @@ await browser.close();
 > ✅ **反指纹注入口径（v0.11 起：服务端注入默认开启）**：上面这条「改一行 baseURL」路径现在**就能拿到深层 stealth**——pod 在 chromium 起好后服务端注入与 desktop launcher 完全相同的 `injectAll`（canvas / WebGL / audio / UA-CH / 字体 / worker scope），裸 `connectOverCDP`（含 `@browserbasehq/sdk` 无脑迁移路径）的页面一加载就带全套深层伪装。本地实测：raw `connectOverCDP`（**不调** `injectInto`）即得 `navigator.hardwareConcurrency=8` / WebGL renderer = persona GPU 等深层 spoof 值。
 >
 > - 每 session 受 `stealth.inject` 约束（设 `false` = raw chromium 模式）；pod 侧 `POD_SERVER_INJECT` 是总 kill-switch。
-> - `@mosaiq/cloud-sdk` 的 `session.injectInto(context)` 仍可用（客户端注入），且与服务端注入**幂等**（`injectAll` 自带 realm 级守卫，双重注册同一文档只生效一次）。当默认服务端注入开启时，客户端无需再调。
+> - `@runova/cloud-sdk` 的 `session.injectInto(context)` 仍可用（客户端注入），且与服务端注入**幂等**（`injectAll` 自带 realm 级守卫，双重注册同一文档只生效一次）。当默认服务端注入开启时，客户端无需再调。
 > - 机制与验证细节见 [docs/CLOUD-RUNTIME-ARCH.md](./docs/CLOUD-RUNTIME-ARCH.md) §2.5。⚠️ 生产（Fly）侧建议先用 `cloud-runtime-e2e.yml` 的 e2e smoke 跑绿再依赖（本仓库已本地 + Docker build 验证）。
 
 验证路径：`scripts/stagehand-compat-smoke.mjs`。5 跑次 × 3 场景（空 body / userMetadata / browserSettings.viewport）= 15/15 sessions all-pass，mean acquire 35.5s / mean connect 6.3s / 0 retry。
@@ -178,8 +178,8 @@ Mosaiq/
 
 | Package | Version | 在 npm | 测试 | 角色 |
 |---|---|---|---|---|
-| `@mosaiq/persona-schema` | 0.10.0 | ✅ public | 26 | Persona Zod schema + 4 OS 模板（Win11 / Win10 / macOS / Ubuntu）的 canonical 源 |
-| `@mosaiq/sdk` | 0.10.0 | ✅ public (含 postinstall patch) | 593 | Playwright + CDP 注入引擎、humanize、persona store、Detection Lab runner + scorer + storage + 报告 formatter / diff |
+| `@runova/persona-schema` | 0.10.0 | ✅ public | 26 | Persona Zod schema + 4 OS 模板（Win11 / Win10 / macOS / Ubuntu）的 canonical 源 |
+| `@runova/sdk` | 0.10.0 | ✅ public (含 postinstall patch) | 593 | Playwright + CDP 注入引擎、humanize、persona store、Detection Lab runner + scorer + storage + 报告 formatter / diff |
 | `@mosaiq/cli` | 0.10.0 | ✅ public | 64 | `mosaiq` 命令行：Detection Lab 全 7 个 subcommand + Personas CRUD 全 9 个 subcommand |
 | `@mosaiq/desktop` | 0.10.0 | ❌ private（永久） | 45 | Electron + React + Vite 桌面应用：Persona 管理 + Detection Lab 完整 UI（trend / 雷达图 / per-site card / 池对比 / Compare Runs / Markdown 导出） |
 

@@ -13,7 +13,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { listDetectionRuns } from '@mosaiq/sdk';
+import { listDetectionRuns } from '@runova/sdk';
 
 import { fmt, renderTable } from '../../output.js';
 import { formatMs } from '../../output.js';

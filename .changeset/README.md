@@ -3,8 +3,8 @@
 This directory holds [changesets](https://github.com/changesets/changesets)
 metadata for the three publishable Mosaiq packages:
 
-- `@mosaiq/persona-schema`
-- `@mosaiq/sdk`
+- `@runova/persona-schema`
+- `@runova/sdk`
 - `@mosaiq/cli`
 
 `@mosaiq/desktop` is **ignored** (Electron app, never publishes to npm).
@@ -42,7 +42,7 @@ The result is a `.md` file under `.changeset/` named something like
 2. `.github/workflows/release.yml` (changesets/action) detects pending
    `.changeset/*.md` files on `main` and opens a `chore(release):
    version packages` PR that:
-   - Bumps `@mosaiq/persona-schema` / `@mosaiq/sdk` / `@mosaiq/cli`
+   - Bumps `@runova/persona-schema` / `@runova/sdk` / `@mosaiq/cli`
      versions in lock-step
    - Updates `pnpm-lock.yaml`
    - Removes the consumed `.changeset/*.md` files
@@ -52,7 +52,7 @@ The result is a `.md` file under `.changeset/` named something like
 4. Merging the release PR triggers `release.yml` to:
    - Run `pnpm changeset publish` — publishes the three packages to npm
      with `provenance: true` (npm OIDC attestation)
-   - Tag the commit `@mosaiq/persona-schema@X.Y.Z` etc.
+   - Tag the commit `@runova/persona-schema@X.Y.Z` etc.
 5. Maintainer creates the GitHub Release page off `vX.Y.Z` tag (manual,
    one-line creation in the web UI).
 
@@ -85,11 +85,11 @@ pnpm changeset publish
 - `"changelog": false` — disable changesets' auto-CHANGELOG.md
   generation. `CHANGELOG.md` is hand-written in Chinese; matching the
   existing v0.1 → v0.9 style is more important than auto-generation.
-- `"fixed": [[ "@mosaiq/persona-schema", "@mosaiq/sdk", "@mosaiq/cli" ]]`
+- `"fixed": [[ "@runova/persona-schema", "@runova/sdk", "@mosaiq/cli" ]]`
   — lock-step group. Touching any of the three triggers all three to
   bump.
-- `"updateInternalDependencies": "patch"` — when `@mosaiq/persona-schema`
-  bumps, `@mosaiq/sdk` (which depends on it) gets a `patch` bump if not
+- `"updateInternalDependencies": "patch"` — when `@runova/persona-schema`
+  bumps, `@runova/sdk` (which depends on it) gets a `patch` bump if not
   already bumping. With `"fixed"` this rarely matters but keeps
   consistency.
 - `"ignore": ["@mosaiq/desktop"]` — desktop is private + Electron, never

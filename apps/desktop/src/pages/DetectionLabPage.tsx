@@ -35,8 +35,8 @@ import { Button } from '@/components/ui/button.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.js';
 import { STATUS_BADGE_CLASS, STATUS_LABEL, formatMs } from '@/lib/detection-lab.js';
 import { cn, formatDate } from '@/lib/utils.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { DetectionRunSummary, RunProgressEvent } from '@mosaiq/sdk';
+import type { PersonaId } from '@runova/persona-schema';
+import type { DetectionRunSummary, RunProgressEvent } from '@runova/sdk';
 
 interface DetectionLabPageProps {
   personaId: PersonaId;

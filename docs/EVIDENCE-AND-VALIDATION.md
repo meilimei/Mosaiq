@@ -20,7 +20,7 @@
 
 ```bash
 pnpm install
-pnpm --filter @mosaiq/sdk build          # ci-compare-baseline / leaderboard 脚本读 sdk/dist
+pnpm --filter @runova/sdk build          # ci-compare-baseline / leaderboard 脚本读 sdk/dist
 npx playwright install chromium          # Detection Lab 跑真 chromium
 ```
 
@@ -101,7 +101,7 @@ Detection Lab 的 12 个站点是**自动化体检**，但**不能替代**真实
 -----|---------|--------|----------------------------|----------------------------|------------------|--------
 ```
 
-> 云端注意：走「裸 connectOverCDP / BB-SDK baseURL swap」**没有深层注入**（见 README 云端口径），实测云端 stealth 请用 `@mosaiq/cloud-sdk` + `injectInto()`。
+> 云端注意：走「裸 connectOverCDP / BB-SDK baseURL swap」**没有深层注入**（见 README 云端口径），实测云端 stealth 请用 `@runova/cloud-sdk` + `injectInto()`。
 
 ---
 
@@ -109,7 +109,7 @@ Detection Lab 的 12 个站点是**自动化体检**，但**不能替代**真实
 
 1. 开 issue（detection-report 模板自动带 `detection` label）。
 2. 复现 → 定位到 `packages/sdk/src/injection/runner.ts` 的对应 surface。
-3. 修 → 跑 `pnpm --filter @mosaiq/sdk test` + 针对性 `bench/diagnose-*.ts` 真 chromium 验证。
+3. 修 → 跑 `pnpm --filter @runova/sdk test` + 针对性 `bench/diagnose-*.ts` 真 chromium 验证。
 4. 更新受影响 persona 的 baseline（路径见 §2），让回归被锁住。
 
 ---
@@ -117,5 +117,5 @@ Detection Lab 的 12 个站点是**自动化体检**，但**不能替代**真实
 ## 6. 对外口径（别自己打脸）
 
 - 没有 committed baseline / 公开 leaderboard 之前：**不要**对外宣称具体通过率数字。
-- 云端深层反指纹：当前**需经 `@mosaiq/cloud-sdk`**；裸 baseURL swap 仅进程级加固（见 [`docs/CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5）。
+- 云端深层反指纹：当前**需经 `@runova/cloud-sdk`**；裸 baseURL swap 仅进程级加固（见 [`docs/CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5）。
 - 竞品对比分：必须可复现（跑法 + 日期 + 版本），否则不发。

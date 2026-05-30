@@ -2,7 +2,7 @@
  * baseline-detection — 用 SDK `runDetection` 跑反指纹基线检测的 CLI 包装。
  *
  * 用法（仓库根目录）：
- *   pnpm --filter @mosaiq/sdk exec tsx bench/baseline-detection.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts
  *
  * 选项（环境变量）：
  *   HEADED=1            显示浏览器（默认 headless）
@@ -25,7 +25,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import {
   type DetectionRunRaw,
   deletePersona,

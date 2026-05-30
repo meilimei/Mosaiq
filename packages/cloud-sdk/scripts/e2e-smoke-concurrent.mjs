@@ -33,7 +33,7 @@
  */
 
 import { MosaiqCloudClient } from '../dist/index.js';
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 const apiUrl = process.env.MOSAIQ_API_URL ?? 'http://127.0.0.1:8787';
 const apiKey = process.env.MOSAIQ_API_KEY;

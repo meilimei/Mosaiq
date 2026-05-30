@@ -8,7 +8,7 @@
  *   - 所有标签中文化，统一术语口径（与 docs/V0.8-DETECTION-LAB.md 对齐）
  */
 
-import type { DetectionRunSummary, HitSeverity, HitsBySurface, SurfaceName } from '@mosaiq/sdk';
+import type { DetectionRunSummary, HitSeverity, HitsBySurface, SurfaceName } from '@runova/sdk';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Surface

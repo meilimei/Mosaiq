@@ -373,7 +373,7 @@ A：技术上可以验证 Mosaiq 代理流程是否正常工作，但**不要用
 | sticky session 标签 | persona.network.proxy.label | 自由文本，便于审计/调试 |
 | Detection Lab 自动开启 | 列表页「自检」按钮 | 启动浏览器并自动打开 BrowserScan / Pixelscan |
 
-代理验证 SDK 入口：`@mosaiq/sdk` 的 `verifyProxy(config)` 函数（`packages/sdk/src/proxy.ts`）。
+代理验证 SDK 入口：`@runova/sdk` 的 `verifyProxy(config)` 函数（`packages/sdk/src/proxy.ts`）。
 
 ---
 

@@ -1,11 +1,11 @@
 /**
  * probe-uach — 验证 navigator.userAgentData 在 main / worker scope 各自显示什么 brand。
- *   pnpm --filter @mosaiq/sdk exec tsx bench/probe-uach.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/probe-uach.ts
  */
 import { rmSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 import {
   deletePersona,

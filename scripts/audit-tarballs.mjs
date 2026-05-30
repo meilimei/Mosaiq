@@ -3,7 +3,7 @@
 // scripts/audit-tarballs.mjs
 //
 // Verify that the npm tarballs for our four publishable packages
-// (@mosaiq/persona-schema, @mosaiq/sdk, @mosaiq/cli, @mosaiq/cloud-sdk)
+// (@runova/persona-schema, @runova/sdk, @mosaiq/cli, @runova/cloud-sdk)
 // contain exactly the expected files: all REQUIRED entries present, no
 // FORBIDDEN entries leaked.
 //
@@ -12,7 +12,7 @@
 //     mistakes happen (a typo, a missing entry after refactor, a stray
 //     bench/ directory accidentally globbed in). This script is a CI gate
 //     that catches them before `npm publish`.
-//   - Especially critical for @mosaiq/sdk: the workspace contains a 27 GB
+//   - Especially critical for @runova/sdk: the workspace contains a 27 GB
 //     `chromium-fork/` tree and a `bench/` directory with multi-MB captured
 //     fingerprint profiles. Both MUST stay out of the npm tarball.
 //
@@ -36,7 +36,7 @@ const ROOT = resolve(__dirname, '..');
 
 const PACKAGES = [
   {
-    name: '@mosaiq/persona-schema',
+    name: '@runova/persona-schema',
     dir: 'packages/persona-schema',
     required: [
       'package.json',
@@ -59,7 +59,7 @@ const PACKAGES = [
     ],
   },
   {
-    name: '@mosaiq/sdk',
+    name: '@runova/sdk',
     dir: 'packages/sdk',
     required: [
       'package.json',
@@ -98,7 +98,7 @@ const PACKAGES = [
     ],
   },
   {
-    name: '@mosaiq/cloud-sdk',
+    name: '@runova/cloud-sdk',
     dir: 'packages/cloud-sdk',
     required: [
       'package.json',

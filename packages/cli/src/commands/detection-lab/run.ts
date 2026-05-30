@@ -34,7 +34,7 @@ import {
   loadPersona,
   runDetection,
   saveDetectionRun,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 import { fmt, formatMs } from '../../output.js';
 import { printRunSummary } from './format.js';

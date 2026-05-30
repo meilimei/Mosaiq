@@ -17,7 +17,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
-import { type Persona, type PersonaId, deletePersona, loadPersona } from '@mosaiq/sdk';
+import { type Persona, type PersonaId, deletePersona, loadPersona } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 

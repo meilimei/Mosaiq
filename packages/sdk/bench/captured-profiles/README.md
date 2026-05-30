@@ -14,7 +14,7 @@ processed by `bench/integrate-captured-profiles.ts` into a typed
 2. **Verify** locally:
 
    ```bash
-   pnpm --filter @mosaiq/sdk run bench:convert-profile -- --file <your-capture>.json
+   pnpm --filter @runova/sdk run bench:convert-profile -- --file <your-capture>.json
    ```
 
    Confirm the verdict line. If it says `❌ FAIL (LowerEntropy.WEBGL)`,
@@ -33,7 +33,7 @@ processed by `bench/integrate-captured-profiles.ts` into a typed
 4. **Integrate**:
 
    ```bash
-   pnpm --filter @mosaiq/sdk run bench:integrate-profiles
+   pnpm --filter @runova/sdk run bench:integrate-profiles
    ```
 
    This regenerates `packages/sdk/src/injection/webgl-profiles-

@@ -220,7 +220,7 @@ await page.goto("https://example.com");
 
 ### Commit 4a: `feat(cloud-runtime): default persona pool seed for parameter-less BB-shape sessions` — LANDED
 
-- `apps/cloud-runtime/src/seed/default-personas.ts`：4 个 default persona 调用 `@mosaiq/persona-schema/templates` 上现有的 4 个生产级别模板（win11/win10/macos-sonoma/ubuntu-2204 都是 Chrome+US East）。每个项钉 hardcoded `masterSeed` 以保证跨部署 byte-stable。
+- `apps/cloud-runtime/src/seed/default-personas.ts`：4 个 default persona 调用 `@runova/persona-schema/templates` 上现有的 4 个生产级别模板（win11/win10/macos-sonoma/ubuntu-2204 都是 Chrome+US East）。每个项钉 hardcoded `masterSeed` 以保证跨部署 byte-stable。
   - 原计创 5 个，调查发现 TEMPLATE_CATALOG 仅 4 项；实事求是地复用这 4 个，不伪造未经考验的第 5 个。Operator 随时可通过 admin CLI 加更多。
 - `apps/cloud-runtime/src/db/bootstrap.ts`：新增 `ensureDefaultPersonas()`，独立于 `ensureSchema()`（让现有不需要 seed 的测试不受影响）。启动时 if 没有 source='seed' AND project_id IS NULL 行 → 一次性 insert 4 行。`src/index.ts` 启动顺序：ensureSchema → ensureDefaultPersonas → seedDevAuth。
 - `apps/cloud-runtime/src/routes/sessions.ts`：处理器里 `req.persona ?? { id: pickDefaultPersonaDbId() }` —— 随机抽一个 default id 后纳入现有 id-lookup 通道。Operator 误删 seed 时，404 会带上清晰的 `pers_default_xxx` id 提示重 seed。

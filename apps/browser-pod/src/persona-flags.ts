@@ -14,7 +14,7 @@
  * 同时支持「最强 stealth」和「raw chromium」两种 mode。
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 
 export interface SpawnFlagsInput {
   persona: Persona;

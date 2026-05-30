@@ -23,8 +23,8 @@
  *     仍调 `injectInto()`，同一文档跑两遍也只注入一次。
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
-import { buildInjectionConfig, injectAll } from '@mosaiq/sdk/injection';
+import type { Persona } from '@runova/persona-schema';
+import { buildInjectionConfig, injectAll } from '@runova/sdk/injection';
 import { type Browser, chromium } from 'playwright-core';
 
 import { getLogger } from './logger.js';

@@ -16,7 +16,7 @@ import {
   deriveSeed,
   parsePersona,
   randomNoiseSeed,
-} from '@mosaiq/persona-schema';
+} from '@runova/persona-schema';
 
 import { type PathConfig, getPersonaDir, getPersonaFile } from './paths.js';
 

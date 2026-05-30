@@ -133,7 +133,7 @@ class LicenseService : public KeyedService {
 
 ### 1.6 SDK 依赖表 → 独立 npm 包
 
-**Shieldly 没有 SDK**，但 Mosaiq Dev-First 策略要求发一套 `@mosaiq/sdk`。SDK 可复用 Shieldly 的：
+**Shieldly 没有 SDK**，但 Mosaiq Dev-First 策略要求发一套 `@runova/sdk`。SDK 可复用 Shieldly 的：
 
 - TypeScript build / lint / test 配置（`tsconfig.json`、`eslint`、`vitest` 选型）。
 - `pnpm` workspace 结构。
@@ -374,7 +374,7 @@ Shieldly 现有用户的数据**不应迁移**到 Mosaiq：
 - [ ] 迁入 `crypto.ts`（去 chrome.storage.local 依赖）
 - [ ] 提供 LicenseInfo TS 类型（从 mojom 生成或手写同步）
 - [ ] 迁入 crypto.test.ts 作为 SDK 侧测试参考
-- [ ] 发布 `@mosaiq/sdk` v0.0.1 到 npm （允许为空壳）
+- [ ] 发布 `@runova/sdk` v0.0.1 到 npm （允许为空壳）
 
 ### i18n（M2 ~ M3）
 - [ ] 写 `tools/i18n/convert-mv3-to-grd.ts` 转换脚本

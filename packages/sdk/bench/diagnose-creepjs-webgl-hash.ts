@@ -12,7 +12,7 @@
  * 输出：我们的 webglParams sorted unique numbers + 计算 hashes，以及是否 in 白名单。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { deletePersona, launchPersona, personaExists, savePersona } from '../src/index.js';
 
 const PERSONA_ID = `diag-webgl-hash-${Date.now().toString(36)}`;

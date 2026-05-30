@@ -3,7 +3,7 @@
  * v0.1 只覆盖 Chrome on Windows / macOS，其他浏览器走 persona.browser.userAgent 显式传入。
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 
 export function buildUserAgent(persona: Persona): string {
   const { os, screen: _screen } = persona.system;

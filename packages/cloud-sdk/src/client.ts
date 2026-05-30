@@ -13,7 +13,7 @@
  * 错误模型：所有非 2xx 响应抛 CloudApiError，code 镜像服务端 code。
  */
 
-import type { Persona } from '@mosaiq/persona-schema';
+import type { Persona } from '@runova/persona-schema';
 
 import { CloudApiError, fromServerErrorBody } from './errors.js';
 import { ManagedCloudSession } from './session.js';

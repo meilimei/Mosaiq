@@ -30,7 +30,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 import { type PathConfig, getDetectionRunFile, getDetectionRunsDir } from '../paths.js';
 import type { DetectionRun } from './types.js';

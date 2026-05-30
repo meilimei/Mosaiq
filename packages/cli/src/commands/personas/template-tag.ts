@@ -14,7 +14,7 @@
  * 没匹配上 → undefined，调用方自渲染 fallback（如 'unknown'）。
  */
 
-import { TEMPLATE_CATALOG } from '@mosaiq/persona-schema/templates';
+import { TEMPLATE_CATALOG } from '@runova/persona-schema/templates';
 
 export const TEMPLATE_TAG_PREFIX = 'template:';
 

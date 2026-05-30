@@ -27,7 +27,7 @@ COPY packages/sdk/scripts packages/sdk/scripts/
 COPY apps/browser-pod/package.json apps/browser-pod/
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile \
-      --filter @mosaiq/persona-schema --filter @mosaiq/sdk --filter @mosaiq/browser-pod
+      --filter @runova/persona-schema --filter @runova/sdk --filter @mosaiq/browser-pod
 
 COPY tsconfig.base.json ./
 COPY packages/persona-schema packages/persona-schema
@@ -40,9 +40,9 @@ COPY apps/browser-pod apps/browser-pod
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     rm -rf packages/persona-schema/node_modules packages/sdk/node_modules apps/browser-pod/node_modules && \
     pnpm install --frozen-lockfile \
-      --filter @mosaiq/persona-schema --filter @mosaiq/sdk --filter @mosaiq/browser-pod && \
-    pnpm --filter @mosaiq/persona-schema build && \
-    pnpm --filter @mosaiq/sdk build && \
+      --filter @runova/persona-schema --filter @runova/sdk --filter @mosaiq/browser-pod && \
+    pnpm --filter @runova/persona-schema build && \
+    pnpm --filter @runova/sdk build && \
     pnpm --filter @mosaiq/browser-pod build
 
 # pnpm deploy 把目标 workspace 包 + 所有 prod deps 展平成 symlink-free 目录。

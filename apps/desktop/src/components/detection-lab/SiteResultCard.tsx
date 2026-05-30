@@ -18,8 +18,8 @@ import { Badge } from '@/components/ui/badge.js';
 import { buildArtifactUrl } from '@/lib/artifact-url.js';
 import { formatMs } from '@/lib/detection-lab.js';
 import { cn } from '@/lib/utils.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { SiteResult, SurfaceHit } from '@mosaiq/sdk';
+import type { PersonaId } from '@runova/persona-schema';
+import type { SiteResult, SurfaceHit } from '@runova/sdk';
 
 import { ScreenshotLightbox } from './ScreenshotLightbox.js';
 import { SurfaceHitBadge } from './SurfaceHitBadge.js';

@@ -2,12 +2,12 @@
  * probe-fpcollect-source — fetch incolumitas fpCollect.min.js + 提取 webDriver
  *   字段的检测逻辑，定位 Phase 3.1 Error.stack hook 未能 cover 的真实路径。
  *
- *   pnpm --filter @mosaiq/sdk exec tsx bench/probe-fpcollect-source.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/probe-fpcollect-source.ts
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { setTimeout as wait } from 'node:timers/promises';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 import {
   deletePersona,

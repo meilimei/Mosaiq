@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 import pkg from '../package.json';
 import { ToastProvider } from './components/Toast.js';

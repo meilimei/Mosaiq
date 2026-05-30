@@ -127,13 +127,13 @@ jobs:
       # Build only the packages this workflow actually invokes — desktop's
       # Electron build is unnecessary here and would add ~30s.
       - name: Build workspace packages
-        run: pnpm --filter "@mosaiq/persona-schema" --filter "@mosaiq/sdk" --filter "@mosaiq/cli" build
+        run: pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/cli" build
 
       # `--with-deps` pulls the system libs (libnss3 etc) on ubuntu-latest.
       # Cached between runs by setup-node's pnpm store cache via the
       # transitive playwright-core dep entry.
       - name: Install Playwright Chromium
-        run: pnpm --filter "@mosaiq/sdk" exec playwright install --with-deps chromium
+        run: pnpm --filter "@runova/sdk" exec playwright install --with-deps chromium
 
       # Override the persona id via workflow_dispatch input if provided;
       # otherwise use the matrix value. This lets maintainers re-run a

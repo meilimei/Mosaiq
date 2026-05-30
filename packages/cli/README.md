@@ -26,7 +26,7 @@ npx playwright install chromium    # one-time Chromium binary install
 mosaiq personas templates list     # smoke test
 ```
 
-> Installing `@mosaiq/cli` also installs `@mosaiq/sdk` + `@mosaiq/persona-schema`
+> Installing `@mosaiq/cli` also installs `@runova/sdk` + `@runova/persona-schema`
 > as transitive deps. The SDK's `postinstall` script automatically applies
 > the `rebrowser-patches` patch to your `node_modules/playwright-core`
 > (302-line patch closing the `Runtime.enable` detection vector). If you use
@@ -595,7 +595,7 @@ existing scripts; passing anything other than `1` is rejected today.
 
 ## Notes
 
-- The CLI shares the same SDK (`@mosaiq/sdk`) and on-disk layout as the
+- The CLI shares the same SDK (`@runova/sdk`) and on-disk layout as the
   desktop app. Runs created here are visible in the desktop's
   `DetectionLabPage` history list, and vice versa.
 - `Ctrl-C` aborts a running pass cleanly — the in-flight site finishes

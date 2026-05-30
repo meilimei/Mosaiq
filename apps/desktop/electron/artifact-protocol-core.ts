@@ -21,7 +21,7 @@
 
 import { resolve, sep } from 'node:path';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 export const SCHEME = 'mosaiq-artifact';
 

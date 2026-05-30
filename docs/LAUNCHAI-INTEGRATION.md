@@ -14,7 +14,7 @@
 | Node | 20.10+（LaunchAI / Mosaiq 仓库都用 nvm pin 20.18） |
 | docker | 24+（Mosaiq cloud 用 docker compose 起 pod 池） |
 | pnpm | 9.12+ |
-| @mosaiq/cloud-sdk | workspace local（v0.11.0），prod 之后 npm 装 |
+| @runova/cloud-sdk | workspace local（v0.11.0），prod 之后 npm 装 |
 | playwright-core | 1.59.1（cloud-sdk 的 peer dep — 仅 type-only import；LaunchAI 主依赖是 `playwright`，但 pnpm isolated 模式不把内嵌 playwright-core 提到顶级 node_modules，要补装一份满足 TS 类型解析） |
 
 ---
@@ -57,8 +57,8 @@ LaunchAI 在 monorepo 之外（独立仓库），用 pnpm 的 dir-based link 直
 ```bash
 # 一次性：先在 Mosaiq 侧 build 出 cloud-sdk / persona-schema 的 dist
 cd D:/projects/Mosaiq
-pnpm --filter @mosaiq/persona-schema build
-pnpm --filter @mosaiq/cloud-sdk build
+pnpm --filter @runova/persona-schema build
+pnpm --filter @runova/cloud-sdk build
 
 # 装 link：在 LaunchAI 仓库内调用，路径指向 Mosaiq 源码目录
 cd D:/projects/LaunchAI
@@ -72,7 +72,7 @@ pnpm link D:/projects/Mosaiq/packages/persona-schema
 pnpm add -D playwright-core@1.59.1
 ```
 
-> **prod 之后**：`@mosaiq/cloud-sdk` 上 npm，直接 `pnpm add @mosaiq/cloud-sdk @mosaiq/persona-schema` 即可。
+> **prod 之后**：`@runova/cloud-sdk` 上 npm，直接 `pnpm add @runova/cloud-sdk @runova/persona-schema` 即可。
 
 ### 2.2 写 runtime-mosaiq.ts
 
@@ -99,7 +99,7 @@ LaunchAI 既有 BrowserRuntime 契约（见 `src/lib/browser/types.ts`）：
 import { chromium, type BrowserContext, type Page } from 'playwright'
 import { nanoid } from 'nanoid'
 
-import { MosaiqCloudClient, type ManagedCloudSession } from '@mosaiq/cloud-sdk'
+import { MosaiqCloudClient, type ManagedCloudSession } from '@runova/cloud-sdk'
 
 import type { BrowserRuntime, ManagedBrowser, StartSessionInput } from './types'
 
@@ -241,7 +241,7 @@ MOSAIQ_DEFAULT_PERSONA_ID=                                   # 见 §2.5
 
 ### 2.5 上一个 persona 进 cloud-runtime
 
-第一次跑前需要在控制平面注册一个 persona（v0.11 没有 seed pool，必须手工上）。Mosaiq 仓库带了一个幂等的注册脚本（重跑 → 409 duplicate 视作成功），它从 `@mosaiq/persona-schema` 的内置模板生成 PersonaJSON 并 POST 上去：
+第一次跑前需要在控制平面注册一个 persona（v0.11 没有 seed pool，必须手工上）。Mosaiq 仓库带了一个幂等的注册脚本（重跑 → 409 duplicate 视作成功），它从 `@runova/persona-schema` 的内置模板生成 PersonaJSON 并 POST 上去：
 
 ```powershell
 cd D:/projects/Mosaiq

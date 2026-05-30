@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
   "changelog": false,
   "commit": false,
-  "fixed": [["@mosaiq/persona-schema", "@mosaiq/sdk", "@mosaiq/cli"]],
+  "fixed": [["@runova/persona-schema", "@runova/sdk", "@mosaiq/cli"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

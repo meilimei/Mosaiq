@@ -1,7 +1,7 @@
 /**
  * Electron 主进程。
  *   - 创建窗口
- *   - 注册 IPC handlers（直接调用 @mosaiq/sdk）
+ *   - 注册 IPC handlers（直接调用 @runova/sdk）
  *   - 跟踪每个 persona 的运行中 session
  */
 
@@ -9,13 +9,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { BrowserWindow, app, dialog, ipcMain } from 'electron';
 
-import type { Persona, PersonaId } from '@mosaiq/persona-schema';
+import type { Persona, PersonaId } from '@runova/persona-schema';
 import {
   createMacosSonomaChromeUsPersona,
   createUbuntu2204ChromeUsPersona,
   createWin10ChromeUsPersona,
   createWin11ChromeUsPersona,
-} from '@mosaiq/persona-schema/templates';
+} from '@runova/persona-schema/templates';
 import {
   type BrowserSession,
   type DetectionRun,
@@ -45,7 +45,7 @@ import {
   listPersonas as sdkListPersonas,
   updatePersona as sdkUpdatePersona,
   verifyProxy,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 import { registerArtifactHandler, registerArtifactScheme } from './artifact-protocol.js';
 import {

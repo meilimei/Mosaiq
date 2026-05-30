@@ -20,7 +20,7 @@
  * 测试隔离：vitest 默认按文件隔离，本文件 polyfill 不污染 runner.test.ts。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { buildInjectionConfig } from './build-config.js';

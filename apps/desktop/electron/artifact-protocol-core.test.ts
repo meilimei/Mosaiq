@@ -8,7 +8,7 @@
 
 import { resolve } from 'node:path';
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 import { describe, expect, it } from 'vitest';
 
 import {

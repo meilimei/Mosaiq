@@ -28,7 +28,7 @@ import {
   type PersonaId,
   clonePersona,
   personaExists,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 import { type ParsedProxyInput, parseProxyUrl } from './proxy-url.js';

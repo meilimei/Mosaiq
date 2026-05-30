@@ -13,7 +13,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 
-import { type DetectionRun, deleteDetectionRun, loadDetectionRun } from '@mosaiq/sdk';
+import { type DetectionRun, deleteDetectionRun, loadDetectionRun } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 import { detectionRunPathHint, statusBadge } from './format.js';

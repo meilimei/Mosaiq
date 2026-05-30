@@ -32,7 +32,7 @@ import {
   type SurfaceHit,
   diffRuns,
   loadDetectionRun,
-} from '@mosaiq/sdk';
+} from '@runova/sdk';
 
 import { fmt, formatMs } from '../../output.js';
 import { detectionRunPathHint, statusBadge } from './format.js';
@@ -112,7 +112,7 @@ export async function runDetectionLabCompare(argv: readonly string[]): Promise<n
 // 内部 helpers — args 解析 + 渲染
 //
 // 注：`diffRuns` + `RunDiff` / `RunSnapshot` / `ChangedHit` 类型自 v0.9
-// phase 9.8 起上抬到 `@mosaiq/sdk`（src/detection-lab/run-compare.ts），便于
+// phase 9.8 起上抬到 `@runova/sdk`（src/detection-lab/run-compare.ts），便于
 // 桌面端复用同一份差异计算（计划 9.9+）。CLI 这层只剩 argv 解析 + 着色渲染。
 // ─────────────────────────────────────────────────────────────────────────────
 

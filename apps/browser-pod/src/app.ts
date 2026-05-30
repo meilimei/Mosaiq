@@ -13,7 +13,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 
-import { parsePersona } from '@mosaiq/persona-schema';
+import { parsePersona } from '@runova/persona-schema';
 
 import { getRunning, killChromium, spawnChromium } from './chromium.js';
 import { getLogger } from './logger.js';

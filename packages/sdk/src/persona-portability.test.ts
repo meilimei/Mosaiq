@@ -14,8 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { Persona, PersonaId } from '@mosaiq/persona-schema';
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import type { Persona, PersonaId } from '@runova/persona-schema';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 
 import {
   exportPersonaJson,

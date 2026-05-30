@@ -21,7 +21,7 @@
  * 的 39 个测试（vitest 默认按文件隔离）。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildInjectionConfig } from './build-config.js';

@@ -3,7 +3,7 @@
  * 供未来 Rust / C++ 端 serde 或 mojom codegen 消费。
  *
  * 用法：
- *   import { getPersonaJsonSchema } from '@mosaiq/persona-schema';
+ *   import { getPersonaJsonSchema } from '@runova/persona-schema';
  *   writeFileSync('persona.schema.json', JSON.stringify(getPersonaJsonSchema(), null, 2));
  */
 

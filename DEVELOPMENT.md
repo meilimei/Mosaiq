@@ -8,16 +8,16 @@
 
 ## 1. SDK 改动后必须重启 `pnpm dev:desktop`
 
-**现象**：改了 `packages/sdk/src/**`，跑 `pnpm --filter @mosaiq/sdk build`，再去测桌面应用 —— 改动**没有生效**。
+**现象**：改了 `packages/sdk/src/**`，跑 `pnpm --filter @runova/sdk build`，再去测桌面应用 —— 改动**没有生效**。
 
-**根因**：`apps/desktop/vite.config.ts` 的 `rollupOptions.external` 只列了 `electron / playwright-core / playwright`，**`@mosaiq/sdk` 不是 external**。这意味着 vite-plugin-electron bundle main.cjs 时会把 SDK 整个 inline 进去。但是 vite-plugin-electron **只监听 `electron/main.ts` 的变化**，不会监听 `packages/sdk/dist/**` —— 所以 SDK 重新 build 了，dev 进程里的 main.cjs 还是上一次启动时打包的旧版本。
+**根因**：`apps/desktop/vite.config.ts` 的 `rollupOptions.external` 只列了 `electron / playwright-core / playwright`，**`@runova/sdk` 不是 external**。这意味着 vite-plugin-electron bundle main.cjs 时会把 SDK 整个 inline 进去。但是 vite-plugin-electron **只监听 `electron/main.ts` 的变化**，不会监听 `packages/sdk/dist/**` —— 所以 SDK 重新 build 了，dev 进程里的 main.cjs 还是上一次启动时打包的旧版本。
 
 **解法**：
 
 ```powershell
 # 1. 停掉当前 dev:desktop 进程（Ctrl+C 或关 Electron 窗口）
 # 2. SDK 重 build
-pnpm --filter @mosaiq/sdk build
+pnpm --filter @runova/sdk build
 # 3. 再启动 desktop（重启时 vite 会重新 bundle main.cjs，吃到最新 SDK）
 pnpm dev:desktop
 ```
@@ -166,7 +166,7 @@ await context.addInitScript({ content: script });
 - `@d:/projects/Mosaiq/packages/sdk/src/launcher.test.ts` 白盒检查 launcher.ts 含 polyfill + 用 string 形式
 - `@d:/projects/Mosaiq/packages/sdk/bench/diagnose-webgl.ts` 启动真 chromium 验证 9 项 spoof 全生效
 
-**验证 polyfill 生效**：跑 `pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-webgl.ts`，看末尾 `summary: 9/9 pass, 0 fail` + `typeof_name: "function"`。任何回归会立刻把这数字打回 1/9。
+**验证 polyfill 生效**：跑 `pnpm --filter @runova/sdk exec tsx bench/diagnose-webgl.ts`，看末尾 `summary: 9/9 pass, 0 fail` + `typeof_name: "function"`。任何回归会立刻把这数字打回 1/9。
 
 **未来加新 init script 时**：所有 `addInitScript` 都必须用 string 形式 + 带 polyfill。如果有第二处需要注入，把 polyfill+IIFE 提成共享 helper（`packages/sdk/src/injection/inject-helper.ts`）。
 

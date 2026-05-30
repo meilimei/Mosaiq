@@ -35,8 +35,8 @@ import {
 } from 'recharts';
 
 import { SURFACE_LABEL, hitsBySurfaceToRadarData } from '@/lib/detection-lab.js';
-import type { PersonaId } from '@mosaiq/persona-schema';
-import type { HitsBySurface, SurfaceName } from '@mosaiq/sdk';
+import type { PersonaId } from '@runova/persona-schema';
+import type { HitsBySurface, SurfaceName } from '@runova/sdk';
 
 export interface PoolRadarEntry {
   personaId: PersonaId;

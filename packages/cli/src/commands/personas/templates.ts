@@ -2,7 +2,7 @@
  * `mosaiq personas templates list` — 列出可用 persona 模板。
  *
  * 用途：在跑 `personas create` 之前，让用户能 discover 合法的 `--template` 值。
- * 数据源：`@mosaiq/persona-schema/templates` 的 `TEMPLATE_CATALOG`，与 desktop
+ * 数据源：`@runova/persona-schema/templates` 的 `TEMPLATE_CATALOG`，与 desktop
  * `PersonaCreatePage` 渲染的卡片完全一致（同一份 catalog 不会漂移）。
  *
  * --json 输出 `Array<{ id, displayName, description }>`，便于 `jq -r '.[].id'`
@@ -11,7 +11,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { TEMPLATE_CATALOG } from '@mosaiq/persona-schema/templates';
+import { TEMPLATE_CATALOG } from '@runova/persona-schema/templates';
 
 import { fmt, renderTable } from '../../output.js';
 

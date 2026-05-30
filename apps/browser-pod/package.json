@@ -22,8 +22,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@mosaiq/persona-schema": "workspace:*",
-    "@mosaiq/sdk": "workspace:*",
+    "@runova/persona-schema": "workspace:*",
+    "@runova/sdk": "workspace:*",
     "hono": "^4.6.12",
     "@hono/node-server": "^1.13.7",
     "nanoid": "^5.0.9",

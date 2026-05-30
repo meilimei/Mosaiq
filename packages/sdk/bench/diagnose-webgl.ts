@@ -2,8 +2,8 @@
  * diagnose-webgl — 在真实 chromium 内验证 WebGL spoof 是否生效。
  *
  * 用法：
- *   pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-webgl.ts
- *   $env:HEADED='1'; pnpm --filter @mosaiq/sdk exec tsx bench/diagnose-webgl.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/diagnose-webgl.ts
+ *   $env:HEADED='1'; pnpm --filter @runova/sdk exec tsx bench/diagnose-webgl.ts
  *
  * 输出：每个 surface 的 expected vs actual 对比。
  *
@@ -16,7 +16,7 @@
  *   6. Worker 内（不在 v0.1 范围，记录 NOT_TESTED）
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { deletePersona, launchPersona, personaExists, savePersona } from '../src/index.js';
 
 const PERSONA_ID = 'webgl-diag' as const;

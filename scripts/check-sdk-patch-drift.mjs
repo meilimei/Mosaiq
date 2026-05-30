@@ -9,7 +9,7 @@
 // Why this exists:
 //   - Workspace install (pnpm) uses `patches/playwright-core@1.59.1.patch`
 //     via `pnpm.patchedDependencies` in the root package.json.
-//   - Consumer install (npm i @mosaiq/sdk) uses
+//   - Consumer install (npm i @runova/sdk) uses
 //     `packages/sdk/patches/playwright-core@1.59.1.patch` via the SDK's
 //     postinstall script (see packages/sdk/scripts/postinstall.cjs).
 //   - These two MUST stay byte-identical so workspace + consumer behavior is
@@ -66,4 +66,4 @@ or vice versa, depending on which one is the source of truth.
 }
 
 // eslint-disable-next-line no-console
-console.log('✓ playwright-core@1.59.1 patch is in sync between workspace root and @mosaiq/sdk.');
+console.log('✓ playwright-core@1.59.1 patch is in sync between workspace root and @runova/sdk.');

@@ -20,7 +20,7 @@
  * `runner-canvas.test.ts`（vitest 按文件隔离 worker）。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { buildInjectionConfig } from './build-config.js';

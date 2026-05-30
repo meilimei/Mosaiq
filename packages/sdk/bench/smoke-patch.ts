@@ -2,7 +2,7 @@
  * smoke-patch — 验证 rebrowser playwright-core patch 不破基本浏览器流程。
  *
  * 跑法（仓库根目录）：
- *   pnpm --filter @mosaiq/sdk exec tsx bench/smoke-patch.ts
+ *   pnpm --filter @runova/sdk exec tsx bench/smoke-patch.ts
  *
  * 环境变量：
  *   HEADED=1     显示浏览器（默认 headless）
@@ -11,7 +11,7 @@
  * 每一步打时间戳；若卡在某步，能直接看出卡点。
  */
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { deletePersona, launchPersona, savePersona } from '../src/index.js';
 
 function t(label: string): void {

@@ -35,7 +35,7 @@
 import { type Stats, existsSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-import { getDetectionRunArtifactDir } from '@mosaiq/sdk';
+import { getDetectionRunArtifactDir } from '@runova/sdk';
 import { net, protocol } from 'electron';
 
 import { SCHEME, extensionOf, mimeForExt, resolveArtifactPath } from './artifact-protocol-core.js';

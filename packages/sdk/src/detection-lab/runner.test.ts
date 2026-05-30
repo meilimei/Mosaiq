@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { createWin11ChromeUsPersona } from '@mosaiq/persona-schema/templates';
+import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import type { Page } from 'playwright-core';
 
 import type { BrowserSession } from '../browser-session.js';

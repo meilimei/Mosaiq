@@ -13,7 +13,7 @@
 这次「证据 → 用户 → 夯实」的第一刀已经动了：
 
 - **云端差异化矛盾（已修复，Option A 落地）**：服务端注入**已实现并默认开启**（pod `apps/browser-pod/src/inject.ts`）——裸 `connectOverCDP` / BB-SDK baseURL swap 现在就带深层 stealth（canvas/WebGL/audio/UA-CH/字体/worker）。本地（真 pod + 真 chromium，**不调** `injectInto` 即 spoof：`hardwareConcurrency`/WebGL renderer 命中 persona）+ Docker build 均已验证；`injectAll` 的 realm 级幂等守卫保证与客户端 `injectInto` 不双注入。详见 [`CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5。
-- **质量护栏**：CI 加了 browser-pod 单测 + 一个 **non-blocking** 的 biome changed-files 可见性 gate；CLI 版本号改为从 package.json 读（消除 0.9.0-dev vs 0.10.0 漂移）；`audit-tarballs` 纳入 `@mosaiq/cloud-sdk`；cloud-runtime README / ci.yml 注释的大面积 doc 漂移已修。
+- **质量护栏**：CI 加了 browser-pod 单测 + 一个 **non-blocking** 的 biome changed-files 可见性 gate；CLI 版本号改为从 package.json 读（消除 0.9.0-dev vs 0.10.0 漂移）；`audit-tarballs` 纳入 `@runova/cloud-sdk`；cloud-runtime README / ci.yml 注释的大面积 doc 漂移已修。
 - **证据通路**：新增 [`EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md) runbook + GitHub detection-report issue 模板。
 - **技术债登记**：[`DEVELOPMENT.md`](../DEVELOPMENT.md) §8 集中记录了所有暂缓项与触发条件。
 
@@ -37,7 +37,7 @@
 **目标**：从「0 用户」到「1 个 dogfood + 1–2 个外部实测用户」。实战反馈优先级最高。
 
 1. **Dogfood LaunchAI**——按 [`LAUNCHAI-INTEGRATION.md`](./LAUNCHAI-INTEGRATION.md) 把自己的 LaunchAI 项目切到 Mosaiq Cloud 跑起来，当设计伙伴 #0；记录真实使用中暴露的问题。
-2. **npm @mosaiq scope go-live**（需真实 npm 账号，人工）——按 [`RELEASING.md`](./RELEASING.md) §8 清单：注册 scope → 手工首发 0.10 三包 + cloud-sdk(0.11) → 翻开 `release.yml` 的 push 触发。让 `npm i @mosaiq/cli` / `@mosaiq/cloud-sdk` 真能装。
+2. **npm @mosaiq scope go-live**（需真实 npm 账号，人工）——按 [`RELEASING.md`](./RELEASING.md) §8 清单：注册 scope → 手工首发 0.10 三包 + cloud-sdk(0.11) → 翻开 `release.yml` 的 push 触发。让 `npm i @mosaiq/cli` / `@runova/cloud-sdk` 真能装。
 3. **拉 1–2 个外部用户实测**——目标 Stagehand / browser-use / Playwright 用户，给免费额度，重点收集：能否无痛迁移、stealth 是否真比 Browserbase 强（用 §1 的证据背书）。
 
 **出阶段标准**：LaunchAI 在 Mosaiq Cloud 上稳定跑；npm 包可公开安装；≥1 个外部用户给出真实反馈。

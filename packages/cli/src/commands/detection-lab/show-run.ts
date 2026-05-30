@@ -9,7 +9,7 @@
 
 import { parseArgs } from 'node:util';
 
-import { type DetectionRun, loadDetectionRun } from '@mosaiq/sdk';
+import { type DetectionRun, loadDetectionRun } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 import { printRunSummary } from './format.js';

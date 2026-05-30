@@ -7,7 +7,7 @@ import * as https from 'node:https';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 
-import type { ProxyConfig } from '@mosaiq/persona-schema';
+import type { ProxyConfig } from '@runova/persona-schema';
 
 /**
  * 构造 Chromium --proxy-server= 值。

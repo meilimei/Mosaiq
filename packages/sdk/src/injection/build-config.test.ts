@@ -9,13 +9,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { seedToUint32 } from '@mosaiq/persona-schema';
+import { seedToUint32 } from '@runova/persona-schema';
 import {
   createMacosSonomaChromeUsPersona,
   createUbuntu2204ChromeUsPersona,
   createWin10ChromeUsPersona,
   createWin11ChromeUsPersona,
-} from '@mosaiq/persona-schema/templates';
+} from '@runova/persona-schema/templates';
 
 import { buildInjectionConfig } from './build-config.js';
 

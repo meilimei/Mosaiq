@@ -17,7 +17,7 @@
  *   - sleep / now / isoTimestamp 都可注入，方便测试不真睡 + 时间戳确定。
  */
 
-import type { PersonaId } from '@mosaiq/persona-schema';
+import type { PersonaId } from '@runova/persona-schema';
 
 import type { DetectionRunRaw, RunProgressEvent, SiteResult, SiteSpec } from './types.js';
 

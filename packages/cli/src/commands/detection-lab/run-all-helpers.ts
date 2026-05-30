@@ -9,7 +9,7 @@
  *     batch run 页面也能直接消费）
  *   - 不抛错：边界情况返回空数组 / 0 / null，让调用方决定渲染或 exit code
  */
-import type { DetectionRun, Persona } from '@mosaiq/sdk';
+import type { DetectionRun, Persona } from '@runova/sdk';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Persona 选择

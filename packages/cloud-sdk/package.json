@@ -1,5 +1,5 @@
 {
-  "name": "@mosaiq/cloud-sdk",
+  "name": "@runova/cloud-sdk",
   "version": "0.11.0",
   "description": "Mosaiq Cloud client SDK — REST + CDP-over-WebSocket access to managed anti-detect browser sessions.",
   "license": "Apache-2.0",
@@ -50,8 +50,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@mosaiq/persona-schema": "workspace:*",
-    "@mosaiq/sdk": "workspace:*"
+    "@runova/persona-schema": "workspace:*",
+    "@runova/sdk": "workspace:*"
   },
   "peerDependencies": {
     "playwright-core": "1.59.1"

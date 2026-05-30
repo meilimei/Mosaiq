@@ -24,7 +24,7 @@
 import { writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-import { exportPersonaJson } from '@mosaiq/sdk';
+import { exportPersonaJson } from '@runova/sdk';
 
 import { fmt } from '../../output.js';
 

@@ -4,19 +4,19 @@
  * 封装：
  *   - 服务端创建出来的 session 元信息（cdpUrl, persona, stealth）
  *   - injectInto(context)：把 persona 的 JS-level spoof 注入到 connectOverCDP
- *     之后拿到的 BrowserContext。SDK 内部用 @mosaiq/sdk/injection 的
+ *     之后拿到的 BrowserContext。SDK 内部用 @runova/sdk/injection 的
  *     buildInjectionConfig + injectAll —— 与 desktop launcher 完全相同的注入
  *     脚本，保证 cloud session 与 desktop launchPersona() 行为一致。
  *   - close()：调控制平面 DELETE /v1/sessions/:id
  *
- * Humanize 由调用方通过 `import { Humanize } from '@mosaiq/sdk'` 直接构建，
+ * Humanize 由调用方通过 `import { Humanize } from '@runova/sdk'` 直接构建，
  * 这里不强绑（cloud session 没有"first page"概念，page 由调用方掌控）。
  */
 
 import type { BrowserContext } from 'playwright-core';
 
-import type { Persona } from '@mosaiq/persona-schema';
-import { buildInjectionConfig, injectAll } from '@mosaiq/sdk/injection';
+import type { Persona } from '@runova/persona-schema';
+import { buildInjectionConfig, injectAll } from '@runova/sdk/injection';
 
 import type { CreatedSession, MosaiqCloudClient, StealthInput } from './client.js';
 

@@ -152,7 +152,7 @@ const stagehand = new Stagehand({
 
 **实现方式**：Mosaiq Cloud API 在 `/v1/sessions` 端点上**镜像 Browserbase 数据格式**，让 Stagehand SDK 无感切换。这是 Cloud GTM 的核心钩子。
 
-> ✅ **口径（v0.11 起）**：「改一行 endpoint」现在迁移的是**连通性 + 进程级加固 + 深层 JS-layer 反指纹**——服务端注入已实现并默认开启（见 §2.5），裸 `connectOverCDP` / BB-SDK baseURL swap 的页面一加载就带 canvas / WebGL / audio / UA-CH / 字体 / worker scope 全套深层伪装。`@mosaiq/cloud-sdk` 的 `injectInto()` 仍可用且与服务端注入幂等。
+> ✅ **口径（v0.11 起）**：「改一行 endpoint」现在迁移的是**连通性 + 进程级加固 + 深层 JS-layer 反指纹**——服务端注入已实现并默认开启（见 §2.5），裸 `connectOverCDP` / BB-SDK baseURL swap 的页面一加载就带 canvas / WebGL / audio / UA-CH / 字体 / worker scope 全套深层伪装。`@runova/cloud-sdk` 的 `injectInto()` 仍可用且与服务端注入幂等。
 
 ### 2.3 Playwright / Puppeteer 直连
 
@@ -195,7 +195,7 @@ const browser = await puppeteer.connect({
 **两层模型（现状）：**
 
 1. **进程级（pod 侧）** — `apps/browser-pod/src/persona-flags.ts` 把 persona 翻成 chromium 启动 flag：`--lang`、`--window-size`、`--proxy-server`、WebRTC policy、`--disable-blink-features=AutomationControlled`。所有经 pod 起的 chromium 都带这层。
-2. **深层 JS-layer（现默认服务端注入）** — canvas / WebGL / audio / UA-CH / 字体 / worker scope 由 **pod 服务端**注入（`apps/browser-pod/src/inject.ts`），复用 `@mosaiq/sdk` 的 `buildInjectionConfig` + `injectAll`（与 desktop launcher / cloud-sdk 完全同款脚本）。客户端 `@mosaiq/cloud-sdk` 的 `injectInto()` 仍可用，但默认开启服务端注入时无需再调。
+2. **深层 JS-layer（现默认服务端注入）** — canvas / WebGL / audio / UA-CH / 字体 / worker scope 由 **pod 服务端**注入（`apps/browser-pod/src/inject.ts`），复用 `@runova/sdk` 的 `buildInjectionConfig` + `injectAll`（与 desktop launcher / cloud-sdk 完全同款脚本）。客户端 `@runova/cloud-sdk` 的 `injectInto()` 仍可用，但默认开启服务端注入时无需再调。
 
 **历史矛盾（已消除）**：此前纯 `connectOverCDP` 只拿到第 1 层，深层 stealth 必须靠客户端 `injectInto()`——与「比 Browserbase 强」的定位矛盾。现服务端注入默认开启后，两条路径都拿到全套深层伪装。
 
@@ -206,12 +206,12 @@ const browser = await puppeteer.connect({
 - **覆盖客户端页面**：playwright connectOverCDP 的 `Target.setAutoAttach(waitForDebuggerOnStart)` 保证 pod 注册的 init script 在**客户端另一条 connectOverCDP 创建的页面**文档加载前就生效（已用本地 probe + 真 pod 实测验证）。
 - **幂等**：`injectAll` 自带 realm 级守卫（`packages/sdk/src/injection/runner.ts`），「服务端注入 + 客户端 injectInto」双重注册同一文档只生效一次。
 - **gate / kill-switch**：每 session 受 `stealth.inject`（默认 true，全程透传 `routes/sessions.ts` → `AcquireSpec` → `callPodStart` → pod `StartSchema.stealth`）；pod 受 env `POD_SERVER_INJECT`（默认 true）总开关；任一为 false = raw chromium 模式即时回退。
-- **依赖 / Docker**：pod 加了 `@mosaiq/sdk` 依赖；Dockerfile 用 `MOSAIQ_SDK_SKIP_POSTINSTALL=1` 跳过 sdk 的 rebrowser-patch postinstall（那 patch 是给客户端 playwright 的，pod 不需要）。pod 镜像 `docker build` 已验证通过。
+- **依赖 / Docker**：pod 加了 `@runova/sdk` 依赖；Dockerfile 用 `MOSAIQ_SDK_SKIP_POSTINSTALL=1` 跳过 sdk 的 rebrowser-patch postinstall（那 patch 是给客户端 playwright 的，pod 不需要）。pod 镜像 `docker build` 已验证通过。
 
 **验证状态：**
 
 - ✅ 本地单元：真 pod（`app.ts`→`spawnChromium`→`applyServerStealth`）+ 真 chromium，裸 `connectOverCDP`**不调 injectInto** 即得 `navigator.hardwareConcurrency=8` / WebGL renderer=persona GPU。
-- ✅ Docker 构建：pod + cloud-runtime 镜像均构建通过（含 `@mosaiq/sdk`，`MOSAIQ_SDK_SKIP_POSTINSTALL=1`）。
+- ✅ Docker 构建：pod + cloud-runtime 镜像均构建通过（含 `@runova/sdk`，`MOSAIQ_SDK_SKIP_POSTINSTALL=1`）。
 - ✅ **全链路 docker-compose e2e（本地跑绿）**：`docker-compose.local-docker.yml`（cloud-runtime → LocalDocker manager → 经 docker.sock 拉起 pod 容器 → CDP ws 反代）+ `dev-local-docker-smoke.mjs`。`e2e-smoke.mjs` 现含「不调 `injectInto` 也 spoof」断言：实测 `✅ server-side injection active: hardwareConcurrency=8 (no injectInto)`，单 session + 并发 smoke 全绿。
   - 顺带修复：`LocalDockerMachineManager` 的 `podStartTimeoutMs` 35s→75s（与 Fly 对齐；pod 内 chromium boot 默认 60s，35s 会在慢机器上提前 abort 误判 `pod_unhealthy`）。
 - ⏳ **待办**：CI（`cloud-runtime-e2e.yml`，ubuntu runner 已自动跑该 smoke）+ Fly 生产侧用同 smoke 跑绿后正式对外承诺。

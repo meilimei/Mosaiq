@@ -3,7 +3,7 @@
  *
  * 这一层只覆盖 v0.8 第一锤可见的、纯 POJO 的契约：
  *   - `emptyHitsBySurface()` 形状 + 不变量（每个 SurfaceName key 都要有，初值 0）
- *   - 公共 barrel (`@mosaiq/sdk` 顶层 + `./index.js`) 真的 re-export 了它们
+ *   - 公共 barrel (`@runova/sdk` 顶层 + `./index.js`) 真的 re-export 了它们
  *
  * scorer / runner / storage 等 IO-aware 模块还没落地（v0.8 后续锤），那些自己附测试。
  * 这里的目的是：**让 `SurfaceName` union 的修改强制走单测**，未来加新 surface 不会
