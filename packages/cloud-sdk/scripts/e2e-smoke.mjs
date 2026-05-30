@@ -74,6 +74,13 @@ const health = await client.health();
 log('health', health);
 if (!health.ok) fail('health.ok'); else ok('health.ok');
 if (health.pool.cap < 1) fail('pool.cap >= 1'); else ok(`pool.cap=${health.pool.cap}`);
+// Fly prod 开 machine pool 时，capacity().busy 含预热 stopped 机，session 关掉后 busy 也常 > 0。
+const poolBusyBaseline = health.pool.busy;
+const relaxPoolBusyAfterRelease =
+  health.machineManager === 'fly' && health.pool.cap > 1;
+if (relaxPoolBusyAfterRelease) {
+  ok(`pool post-release: relaxed busy check (fly cap=${health.pool.cap}, baseline busy=${poolBusyBaseline})`);
+}
 
 // ─── POST /v1/sessions ──────────────────────────────────────────────────────
 log('createSession (inline persona)');
@@ -255,8 +262,19 @@ if (info?.err) {
 
 const health3 = await client.health();
 log('health after release', health3);
-if (health3.pool.busy !== 0) fail('pool.busy == 0 after release', health3.pool);
-else ok('pool.busy == 0 after release');
+if (relaxPoolBusyAfterRelease) {
+  // 允许 replenish 抖动：相对 baseline 最多 +2（防 session 泄漏时 busy 飙高）。
+  const maxBusy = poolBusyBaseline + 2;
+  if (health3.pool.busy > maxBusy) {
+    fail(`pool.busy <= ${maxBusy} after release (fly pool)`, health3.pool);
+  } else {
+    ok(`pool.busy=${health3.pool.busy} after release (fly pool relaxed, baseline=${poolBusyBaseline})`);
+  }
+} else if (health3.pool.busy !== 0) {
+  fail('pool.busy == 0 after release', health3.pool);
+} else {
+  ok('pool.busy == 0 after release');
+}
 
 const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 console.log('');
