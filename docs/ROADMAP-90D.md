@@ -26,7 +26,7 @@
 1. **Bootstrap 第一份 committed baseline**（`win11-chrome-us` 起，再扩 4 模板）——按 [`EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md) §2。让 detection-lab CI gate 真正生效。
 2. **公开 leaderboard**——`pnpm build-leaderboard` + 启用 GitHub Pages（[EVIDENCE §3]）。诚实标注过不了的项 + 竞品分可复现。
 3. **硬目标 + 真账号实测一周**（人工）——4 模板 persona 跑 Cloudflare/DataDome 站 + Reddit/X/Google 登录，按 [EVIDENCE §4] 协议记录，被识破点用 detection-report 模板回流成 issue。
-4. **服务端注入（Option A）已落地**——剩余仅 CI/Fly 验证：`cloud-runtime-e2e.yml` 的 e2e-smoke 已加「不调 `injectInto` 也能 spoof」断言作回归门；在 CI 跑绿 + Fly 上拉一次 session 实测后，即可正式对外承诺「比 Browserbase 强 + 无脑迁移」。
+4. **服务端注入（Option A）已落地**——本地 Docker e2e + **Fly prod 实测通过**（`scripts/prod-smoke-cloud.mjs` → `server_inject_ok`，2026-05-31）；剩余：GitHub `cloud-runtime-e2e.yml` 定期跑绿作回归门。
 
 **出阶段标准**：`tests/fixtures/baseline-runs/` 有至少 1 个真实 baseline；leaderboard 可访问；≥1 周真账号实测记录 + 对应 issue。
 
@@ -36,8 +36,8 @@
 
 **目标**：从「0 用户」到「1 个 dogfood + 1–2 个外部实测用户」。实战反馈优先级最高。
 
-1. **Dogfood LaunchAI**——按 [`LAUNCHAI-INTEGRATION.md`](./LAUNCHAI-INTEGRATION.md) 把自己的 LaunchAI 项目切到 Mosaiq Cloud 跑起来，当设计伙伴 #0；记录真实使用中暴露的问题。
-2. **npm @mosaiq scope go-live**（需真实 npm 账号，人工）——按 [`RELEASING.md`](./RELEASING.md) §8 清单：注册 scope → 手工首发 0.10 三包 + cloud-sdk(0.11) → 翻开 `release.yml` 的 push 触发。让 `npm i @mosaiq/cli` / `@runova/cloud-sdk` 真能装。
+1. **Dogfood LaunchAI**——按 [`LAUNCHAI-INTEGRATION.md`](./LAUNCHAI-INTEGRATION.md) 切到 Mosaiq Cloud；**Fly prod smoke + `dev:mosaiq-smoke` 14/14 已通过**（需 `MOSAIQ_REQUEST_TIMEOUT_MS=180000`）。下一步：LaunchAI worker/日常任务固定走 prod URL，记录真实 Reddit 等长会话问题。
+2. **npm `@runova` scope go-live**（需真实 npm 账号，人工）——按 [`RELEASING.md`](./RELEASING.md) §8：`@mosaiq` npm scope 已被占用，三包 + CLI 均发在 **`@runova/*`**（`npm i -g @runova/cli`）。手工首发 0.10 三包 + cloud-sdk(0.11) → 翻开 `release.yml`。
 3. **拉 1–2 个外部用户实测**——目标 Stagehand / browser-use / Playwright 用户，给免费额度，重点收集：能否无痛迁移、stealth 是否真比 Browserbase 强（用 §1 的证据背书）。
 
 **出阶段标准**：LaunchAI 在 Mosaiq Cloud 上稳定跑；npm 包可公开安装；≥1 个外部用户给出真实反馈。
@@ -65,7 +65,7 @@
 ## 5. 仍待拍板的决策
 
 - 服务端注入：**已落地 Option A（默认开启，本地 + Docker build 验证）**。待确认：Fly 生产是否默认保持开启（建议 `cloud-runtime-e2e.yml` 跑绿后保持）。
-- `@mosaiq` npm scope 现在就正式发布，还是继续内部迭代？
+- ~~`@mosaiq` npm scope~~ 已决：发 **`@runova/cli`**（`@mosaiq` 被占用）。
 - 接受把战略楔子定在 **Cloud / Dev-First**（Desktop 暂缓）吗？
 
 ---

@@ -8,11 +8,11 @@
 
 ## 🚀 想立即跑起来？
 
-**v0.10.0 已发布**（2026-05-21）：v0.9 的桌面 + CLI + Detection Lab 全套能力首次**公开到 npm**——`npm i -g @mosaiq/cli` / `npm i @runova/sdk` 直接用。SDK 通过 `patch-package` postinstall 自动应用 `rebrowser-patches` 给 `playwright-core@1.59.1`（关掉 `Runtime.enable` 自动暴露 execution context 这个最常见的 Playwright 检测向量）。版本管理切换为 [changesets](https://github.com/changesets/changesets) 自动化，三个发包包（persona-schema / sdk / cli）lock-step 同进同退；desktop 仍保持 `private`，不上 npm。
+**v0.10.0 已发布**（2026-05-21）：v0.9 的桌面 + CLI + Detection Lab 全套能力首次**公开到 npm**——`npm i -g @runova/cli` / `npm i @runova/sdk` 直接用。SDK 通过 `patch-package` postinstall 自动应用 `rebrowser-patches` 给 `playwright-core@1.59.1`（关掉 `Runtime.enable` 自动暴露 execution context 这个最常见的 Playwright 检测向量）。版本管理切换为 [changesets](https://github.com/changesets/changesets) 自动化，三个发包包（persona-schema / sdk / cli）lock-step 同进同退；desktop 仍保持 `private`，不上 npm。
 
 ```bash
 # 最短路径
-npm i -g @mosaiq/cli
+npm i -g @runova/cli
 npx playwright install chromium
 mosaiq personas templates list   # 看 4 个 OS 模板
 ```
@@ -180,7 +180,7 @@ Mosaiq/
 |---|---|---|---|---|
 | `@runova/persona-schema` | 0.10.0 | ✅ public | 26 | Persona Zod schema + 4 OS 模板（Win11 / Win10 / macOS / Ubuntu）的 canonical 源 |
 | `@runova/sdk` | 0.10.0 | ✅ public (含 postinstall patch) | 593 | Playwright + CDP 注入引擎、humanize、persona store、Detection Lab runner + scorer + storage + 报告 formatter / diff |
-| `@mosaiq/cli` | 0.10.0 | ✅ public | 64 | `mosaiq` 命令行：Detection Lab 全 7 个 subcommand + Personas CRUD 全 9 个 subcommand |
+| `@runova/cli` | 0.10.0 | ✅ public | 64 | `mosaiq` 命令行（npm 包在 `@runova` org；`@mosaiq` scope 已被占用）：Detection Lab + Personas CRUD |
 | `@mosaiq/desktop` | 0.10.0 | ❌ private（永久） | 45 | Electron + React + Vite 桌面应用：Persona 管理 + Detection Lab 完整 UI（trend / 雷达图 / per-site card / 池对比 / Compare Runs / Markdown 导出） |
 
 里程碑时间线：
@@ -212,7 +212,7 @@ v0.11 候选方向（**未定**，待选）：
 
 实战反馈优先级最高。如果你打算用 Mosaiq 跑真账号：
 
-1. `npm i -g @mosaiq/cli && npx playwright install chromium` 走 npm 路径起步
+1. `npm i -g @runova/cli && npx playwright install chromium` 走 npm 路径起步
 2. `mosaiq personas create alice --template win11-chrome-us --display-name "Alice"`
 3. `mosaiq detection-lab run alice` 体感反检测 score
 4. 找几个 sensitive 站点（Reddit / X / Cloudflare 严格站）实战跑一周

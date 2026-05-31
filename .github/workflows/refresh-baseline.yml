@@ -98,7 +98,7 @@ jobs:
       # Only the packages refresh-baseline.mts actually imports — saves
       # ~30s vs `pnpm -r build`.
       - name: Build workspace packages
-        run: pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/cli" build
+        run: pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@runova/cli" build
 
       - name: Install Playwright Chromium
         run: pnpm --filter "@runova/sdk" exec playwright install --with-deps chromium

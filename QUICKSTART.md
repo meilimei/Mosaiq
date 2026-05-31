@@ -1,8 +1,8 @@
 # Mosaiq v0.10 — Quickstart
 
 > **当前里程碑**：v0.10.0 已发布（2026-05-21）。架构是 **Playwright + CDP 注入**，不是 Chromium fork（fork 路径冷藏中，详见 [`chromium-fork/STATUS.md`](./chromium-fork/STATUS.md)）。
-> 4-package monorepo，三个发包包 0.10.0 lock-step 公开在 npm：`@runova/persona-schema` / `@runova/sdk` / `@mosaiq/cli`；`@mosaiq/desktop` 永久 private（Electron app）。
-> **v0.10 的关键新事**：从 git clone-only 走到 `npm i @mosaiq/cli` 直装；SDK 通过 `patch-package` postinstall 自动应用 rebrowser-patches 给 `playwright-core@1.59.1`；changesets 接管版本。
+> 4-package monorepo，三个发包包 0.10.0 lock-step 公开在 npm：`@runova/persona-schema` / `@runova/sdk` / `@runova/cli`；`@mosaiq/desktop` 永久 private（Electron app）。
+> **v0.10 的关键新事**：从 git clone-only 走到 `npm i @runova/cli` 直装；SDK 通过 `patch-package` postinstall 自动应用 rebrowser-patches 给 `playwright-core@1.59.1`；changesets 接管版本。
 
 ---
 
@@ -39,7 +39,7 @@
 - `permissions.query`、`mediaDevices.enumerateDevices` 一致化
 - 字体探测对 fallback metric 加噪
 
-### CLI（`@mosaiq/cli`，v0.9 新增）
+### CLI（`@runova/cli`，v0.9 新增）
 
 `mosaiq` 一行入口，与桌面读同一个 `~/.mosaiq/` store：
 
@@ -80,7 +80,7 @@
 ```bash
 # 1. 全局装 mosaiq CLI （会自动装 @runova/sdk + @runova/persona-schema）
 #    安装时 SDK 的 postinstall 会自动应用 rebrowser-patches 给 playwright-core
-npm i -g @mosaiq/cli
+npm i -g @runova/cli
 
 # 2. 装 Playwright Chromium（约 140 MB，跨项目共用）
 npx playwright install chromium
@@ -257,7 +257,7 @@ pnpm -r test
 # 单包测试
 pnpm --filter @runova/persona-schema test
 pnpm --filter @runova/sdk test
-pnpm --filter @mosaiq/cli test
+pnpm --filter @runova/cli test
 pnpm --filter @mosaiq/desktop test
 
 # 启动 desktop 应用（dev 模式 + 热重载）
@@ -333,7 +333,7 @@ pnpm --filter @runova/sdk demo:humanize
 
 ## CLI 入门
 
-`@mosaiq/cli` 是 v0.9 新增的 headless 入口，跟桌面读同一个 `~/.mosaiq/` store。**所有桌面能做的 persona / Detection Lab 操作，CLI 都能脚本化**。完整 per-command 文档见 [`packages/cli/README.md`](./packages/cli/README.md)（580 行）；这里只列最常用的几条。
+`@runova/cli` 是 v0.9 新增的 headless 入口，跟桌面读同一个 `~/.mosaiq/` store。**所有桌面能做的 persona / Detection Lab 操作，CLI 都能脚本化**。完整 per-command 文档见 [`packages/cli/README.md`](./packages/cli/README.md)（580 行）；这里只列最常用的几条。
 
 ```powershell
 # 第一次：列出现有 persona（与桌面 PersonaListPage 一致）
@@ -397,7 +397,7 @@ CLI 没有自己的反检测/注入逻辑 — 它是 `@runova/sdk` 公共 API（
 
 ✅ **v0.10 比 v0.9 多解决的事**：
 
-- ✅ **三发包包公开在 npm** — `@runova/persona-schema` / `@runova/sdk` / `@mosaiq/cli` 都是 0.10.0 lock-step 公开，外部 `npm i` 直装；之前必须 git clone monorepo
+- ✅ **三发包包公开在 npm** — `@runova/persona-schema` / `@runova/sdk` / `@runova/cli` 都是 0.10.0 lock-step 公开，外部 `npm i` 直装；之前必须 git clone monorepo
 - ✅ **playwright-core 补丁随 SDK 分发** — `rebrowser-patches` 302 行 patch 通过 `patch-package` postinstall 自动作用到消费者的 `playwright-core@1.59.1`；之前只在 monorepo 内 pnpm 装时生效
 - ✅ **版本管理自动化** — changesets 接管, 三发包包 `fixed` group 同进同退; 之前手工编辑 4 个 package.json + commit
 - ✅ **发布前 tarball 审计** — `scripts/audit-tarballs.mjs` 在 CI + release.yml 都过, 防 `bench/` / `chromium-fork` / `*.test.*` 等意外漏进 npm

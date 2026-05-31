@@ -101,7 +101,7 @@ Detection Lab 的 12 个站点是**自动化体检**，但**不能替代**真实
 -----|---------|--------|----------------------------|----------------------------|------------------|--------
 ```
 
-> 云端注意：走「裸 connectOverCDP / BB-SDK baseURL swap」**没有深层注入**（见 README 云端口径），实测云端 stealth 请用 `@runova/cloud-sdk` + `injectInto()`。
+> 云端注意（v0.11 起）：裸 `connectOverCDP` / `@browserbasehq/sdk` baseURL swap **默认带服务端深层注入**（与 desktop 同套 `injectAll`）。`stealth.inject: false` 或 pod `POD_SERVER_INJECT=0` 时才是 raw chromium。客户端 `injectInto()` 仍可用且与服务端注入幂等。
 
 ---
 
@@ -117,5 +117,5 @@ Detection Lab 的 12 个站点是**自动化体检**，但**不能替代**真实
 ## 6. 对外口径（别自己打脸）
 
 - 没有 committed baseline / 公开 leaderboard 之前：**不要**对外宣称具体通过率数字。
-- 云端深层反指纹：当前**需经 `@runova/cloud-sdk`**；裸 baseURL swap 仅进程级加固（见 [`docs/CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5）。
+- 云端深层反指纹：v0.11 起**默认服务端注入**（裸 baseURL swap 即有深层 stealth）；关闭注入见 session `stealth.inject` / `POD_SERVER_INJECT`（见 [`docs/CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5）。
 - 竞品对比分：必须可复现（跑法 + 日期 + 版本），否则不发。

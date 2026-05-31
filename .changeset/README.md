@@ -5,7 +5,7 @@ metadata for the three publishable Mosaiq packages:
 
 - `@runova/persona-schema`
 - `@runova/sdk`
-- `@mosaiq/cli`
+- `@runova/cli`
 
 `@mosaiq/desktop` is **ignored** (Electron app, never publishes to npm).
 
@@ -42,7 +42,7 @@ The result is a `.md` file under `.changeset/` named something like
 2. `.github/workflows/release.yml` (changesets/action) detects pending
    `.changeset/*.md` files on `main` and opens a `chore(release):
    version packages` PR that:
-   - Bumps `@runova/persona-schema` / `@runova/sdk` / `@mosaiq/cli`
+   - Bumps `@runova/persona-schema` / `@runova/sdk` / `@runova/cli`
      versions in lock-step
    - Updates `pnpm-lock.yaml`
    - Removes the consumed `.changeset/*.md` files
@@ -85,7 +85,7 @@ pnpm changeset publish
 - `"changelog": false` — disable changesets' auto-CHANGELOG.md
   generation. `CHANGELOG.md` is hand-written in Chinese; matching the
   existing v0.1 → v0.9 style is more important than auto-generation.
-- `"fixed": [[ "@runova/persona-schema", "@runova/sdk", "@mosaiq/cli" ]]`
+- `"fixed": [[ "@runova/persona-schema", "@runova/sdk", "@runova/cli" ]]`
   — lock-step group. Touching any of the three triggers all three to
   bump.
 - `"updateInternalDependencies": "patch"` — when `@runova/persona-schema`

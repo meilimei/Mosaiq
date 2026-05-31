@@ -1,4 +1,4 @@
-# @mosaiq/cli
+# @runova/cli
 
 Command-line interface for [Mosaiq](../../README.md). Run Detection Lab passes
 and inspect personas without launching the desktop app.
@@ -14,9 +14,9 @@ and inspect personas without launching the desktop app.
 ### From npm (v0.10+)
 
 ```bash
-npm i -g @mosaiq/cli
+npm i -g @runova/cli
 # or scoped to a project
-npm i @mosaiq/cli --save-dev
+npm i @runova/cli --save-dev
 ```
 
 Then:
@@ -26,7 +26,7 @@ npx playwright install chromium    # one-time Chromium binary install
 mosaiq personas templates list     # smoke test
 ```
 
-> Installing `@mosaiq/cli` also installs `@runova/sdk` + `@runova/persona-schema`
+> Installing `@runova/cli` also installs `@runova/sdk` + `@runova/persona-schema`
 > as transitive deps. The SDK's `postinstall` script automatically applies
 > the `rebrowser-patches` patch to your `node_modules/playwright-core`
 > (302-line patch closing the `Runtime.enable` detection vector). If you use
@@ -35,7 +35,7 @@ mosaiq personas templates list     # smoke test
 
 ### From the Mosaiq monorepo (contributors)
 
-`@mosaiq/cli` is a workspace package and gets linked automatically by
+`@runova/cli` is a workspace package and gets linked automatically by
 `pnpm install` at the repo root.
 
 For local development the easiest invocation goes through the root script
@@ -45,7 +45,7 @@ For local development the easiest invocation goes through the root script
 pnpm mosaiq <command> [args...]
 ```
 
-If you've run `pnpm --filter @mosaiq/cli build`, you can also call the
+If you've run `pnpm --filter @runova/cli build`, you can also call the
 compiled binary directly:
 
 ```bash

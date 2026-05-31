@@ -501,7 +501,8 @@ $resp = Invoke-WebRequest `
   -Uri 'https://mosaiq-cloud-runtime.fly.dev/v1/personas' `
   -Headers @{ Authorization = "Bearer $plaintext" } -UseBasicParsing
 $resp.StatusCode  # 期望 200
-# (如果要跑完整 e2e 含 session create，用 scripts/prod-smoke-cloud.mjs，但会真起一台 Fly machine)
+# 完整 e2e（session create + 裸 connectOverCDP Option A 探针 + DELETE）：
+#   node scripts/prod-smoke-cloud.mjs  → 期望 "label":"server_inject_ok"
 
 # 4) 客户端 / LaunchAI 把 MOSAIQ_API_KEY 切到新 plaintext，确认线上业务正常后，列旧 key
 flyctl ssh console -a mosaiq-cloud-runtime `

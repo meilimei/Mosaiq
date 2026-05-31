@@ -1,7 +1,7 @@
 # Releasing Mosaiq
 
 > Maintainer runbook for cutting an npm release of the publishable packages
-> (`@runova/persona-schema`, `@runova/sdk`, `@mosaiq/cli` on the lock-step 0.10
+> (`@runova/persona-schema`, `@runova/sdk`, `@runova/cli` on the lock-step 0.10
 > trio; `@runova/cloud-sdk` on the independent 0.11 cloud track) and shipping the
 > Detection Lab CI baseline alongside. npm scope go-live checklist: [§8](#8-当前状态--go-live-checklistnpm-mosaiq-scope).
 >
@@ -21,21 +21,21 @@
 # 1. 在干净 main 上跑一次完整 release dry-run
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm -r test
-pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/cli" build
+pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@runova/cli" build
 pnpm audit-tarballs                 # tarball 文件清单 + size sanity
 pnpm check-sdk-patch-drift          # 确认 patches/playwright-core.patch 与 SDK 同步
 pnpm --filter "@runova/persona-schema" publish --dry-run --access public
 pnpm --filter "@runova/sdk"            publish --dry-run --access public
-pnpm --filter "@mosaiq/cli"            publish --dry-run --access public
+pnpm --filter "@runova/cli"            publish --dry-run --access public
 
 # 2. 真发（顺序敏感: persona-schema → sdk → cli）
 pnpm --filter "@runova/persona-schema" publish --access public
 pnpm --filter "@runova/sdk"            publish --access public
-pnpm --filter "@mosaiq/cli"            publish --access public
+pnpm --filter "@runova/cli"            publish --access public
 
 # 3. 外部 smoke（新机器视角）
 cd $(mktemp -d) && npm init -y >/dev/null
-npm i @mosaiq/cli@0.10.0
+npm i @runova/cli@0.10.0
 npx mosaiq --version          # → 0.10.0
 npx playwright install chromium
 npx mosaiq personas templates list   # → win11/win10/macos/ubuntu 4 个模板
@@ -72,12 +72,12 @@ gh       >= 2.40      # GitHub CLI, 用于 release 页 + artifact 下载
 
 ### 1.2 npm org + 2FA
 
-1. 在 npmjs.com 注册并启用 **2FA (TOTP)** — 公开 scope `@mosaiq` 强制要求
-2. 在 https://www.npmjs.com/org/create 创建 org `mosaiq`，Free plan（公开包免费）
-3. 把 maintainer 账号加为 owner
+1. 在 npmjs.com 注册并启用 **2FA (TOTP)**。
+2. 使用已有 org **`runova`**（`@runova/*`）。**不要**尝试创建 `@mosaiq` org（该 scope 已被他人占用）。
+3. 把 maintainer 账号加为 `@runova` org 的 owner / developers team（read-write）。
 4. 在 https://www.npmjs.com/settings/<user>/tokens 创建 **Granular Access
    Token**（**不要** Classic）:
-   - Permissions: `Read and write` on packages under `@mosaiq` scope
+   - Permissions: `Read and write` on packages under `@runova` scope
    - Expiry: 90 days（强制 rotate）
    - **不要** 给 owner / admin / org-management 权限
 5. 把 token 存到本地 `~/.npmrc`:
@@ -97,7 +97,7 @@ cd mosaiq-release
 pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm -r test
-pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/cli" build
+pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@runova/cli" build
 ```
 
 全绿 = 环境 OK。任何一项失败 → 先修，不要发版。
@@ -203,7 +203,7 @@ pnpm -r test
 pnpm lint
 pnpm check-sdk-patch-drift
 pnpm audit-tarballs
-pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/cli" build
+pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@runova/cli" build
 ```
 
 任何一项红 → 修，不要硬发。
@@ -213,7 +213,7 @@ pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/
 ```bash
 pnpm --filter "@runova/persona-schema" publish --dry-run --access public
 pnpm --filter "@runova/sdk"            publish --dry-run --access public
-pnpm --filter "@mosaiq/cli"            publish --dry-run --access public
+pnpm --filter "@runova/cli"            publish --dry-run --access public
 ```
 
 每包 stdout 末尾会列 tarball contents。逐个 review:
@@ -229,16 +229,20 @@ pnpm --filter "@mosaiq/cli"            publish --dry-run --access public
 ### 3.5 真发
 
 > ⚠️ 顺序敏感: `@runova/sdk` 依赖 `@runova/persona-schema`，
-> `@mosaiq/cli` 依赖前两者。**必须按 schema → sdk → cli 顺序**，
+> `@runova/cli` 依赖前两者。**必须按 schema → sdk → cli 顺序**，
 > 否则 npm 解析依赖会拉到旧版本（不存在的版本）然后失败。
 
 ```bash
+# 本地首发请关 provenance（无 GitHub OIDC 会 EUSAGE）：
+#   cd packages/<pkg> && npm publish --access public --provenance=false
+# 或 PowerShell 一键（repo 根目录）：
+#   .\scripts\npm-first-publish.ps1
+
 pnpm --filter "@runova/persona-schema" publish --access public
 # 等 npm OTP prompt → 输入 6 位
 pnpm --filter "@runova/sdk"            publish --access public
-# 同样 OTP
-pnpm --filter "@mosaiq/cli"            publish --access public
-# 同样 OTP
+pnpm --filter "@runova/cli"            publish --access public
+pnpm --filter "@runova/cloud-sdk"      publish --access public
 ```
 
 发完每包后 sanity:
@@ -246,7 +250,7 @@ pnpm --filter "@mosaiq/cli"            publish --access public
 ```bash
 npm view @runova/persona-schema version    # → 0.10.0
 npm view @runova/sdk version               # → 0.10.0
-npm view @mosaiq/cli version               # → 0.10.0
+npm view @runova/cli version               # → 0.10.0
 ```
 
 ### 3.6 External smoke
@@ -258,7 +262,7 @@ npm view @mosaiq/cli version               # → 0.10.0
 TMP=$(mktemp -d)
 cd "$TMP"
 npm init -y >/dev/null
-npm i @mosaiq/cli@0.10.0
+npm i @runova/cli@0.10.0
 npx mosaiq --version                       # 应该是 0.10.0
 npx mosaiq personas templates list         # 应该列 4 个 (win11/win10/macos/ubuntu)
 npx playwright install chromium            # @runova/sdk 依赖 playwright-core
@@ -271,7 +275,7 @@ grep -c "REBROWSER_PATCHES" node_modules/playwright-core/lib/server/chromium/crP
 任一步 fail → **立刻** `npm unpublish` 撤回（72h 内可全撤；之后只能 deprecate）：
 
 ```bash
-npm unpublish @mosaiq/cli@0.10.0 --force
+npm unpublish @runova/cli@0.10.0 --force
 npm unpublish @runova/sdk@0.10.0 --force
 npm unpublish @runova/persona-schema@0.10.0 --force
 ```
@@ -428,7 +432,7 @@ surface 的 added hit。验证完关 PR、删 branch。
 ### 6.1 72h 内（npm unpublish 窗口）
 
 ```bash
-npm unpublish @mosaiq/cli@X.Y.Z --force
+npm unpublish @runova/cli@X.Y.Z --force
 npm unpublish @runova/sdk@X.Y.Z --force
 npm unpublish @runova/persona-schema@X.Y.Z --force
 
@@ -448,7 +452,7 @@ permanent ID）。所以 hotfix 必须 bump 版本号。
 # 2. 跑 pnpm changeset 选 patch bump
 # 3. 走 §4 自动化流程
 # 4. 旧版本可选 deprecate:
-npm deprecate @mosaiq/cli@X.Y.Z "Critical bug, use X.Y.(Z+1) or later"
+npm deprecate @runova/cli@X.Y.Z "Critical bug, use X.Y.(Z+1) or later"
 npm deprecate @runova/sdk@X.Y.Z "Critical bug, use X.Y.(Z+1) or later"
 npm deprecate @runova/persona-schema@X.Y.Z "Critical bug, use X.Y.(Z+1) or later"
 ```
@@ -474,13 +478,15 @@ npm deprecate @runova/persona-schema@X.Y.Z "Critical bug, use X.Y.(Z+1) or later
 
 ---
 
-## 8. 当前状态 & go-live checklist（npm @mosaiq scope）
+## 8. 当前状态 & go-live checklist（npm `@runova` scope）
 
 ✅ **代码侧**: v0.10（persona-schema / sdk / cli）+ v0.11（cloud-sdk + 私有 cloud-runtime / browser-pod）均已 ship 到 `main`。`audit-tarballs` 现覆盖 **4** 个发包包（含 cloud-sdk）。
 
 ⏳ **仍待 maintainer 一次性操作**（需真实 npm 账号 / 凭据，自动化 agent 做不了；这是「npm 上线」与「翻开自动发布」的完整清单）：
 
-1. [ ] 注册 npm `@mosaiq` org（[§1.2](#12-npm-org--2fa)）——目前 scope 未注册，任何 publish 返回 E404。
+✅ **预检（2026-05-31）**：`pnpm audit-tarballs` 四包通过；`publish --dry-run --no-git-checks` 四包均可打包上传。Fly prod：`scripts/prod-smoke-cloud.mjs` → `server_inject_ok`（本地密钥文件跑通）。
+
+1. [x] npm org **`runova`**（`@runova/*`）——`@mosaiq` scope 已被他人占用；CLI 发 **`@runova/cli`**（命令仍为 `mosaiq`）。见 [`NPM-SCOPE-TROUBLESHOOTING.md`](./NPM-SCOPE-TROUBLESHOOTING.md)。
 2. [ ] 第一次手工 publish 0.10 三包（[§3](#3-首次发版-v0100-手工)）。
 3. [ ] 第一次手工 publish `@runova/cloud-sdk@0.11.0`（**0.11 cloud track**，独立于三包 lock-step）：
    ```bash
@@ -492,6 +498,7 @@ npm deprecate @runova/persona-schema@X.Y.Z "Critical bug, use X.Y.(Z+1) or later
 5. [ ] Detection Lab baseline bootstrap（[§5.1](#51-一次性-bootstrap每个-fixture-persona-一次)）+ 完整实测见 [`docs/EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md)。
 6. [ ] **翻开自动发布**：以上都 OK 后，去掉 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 顶部 `push: branches: [main]` 注释 + 配 `NPM_TOKEN`（或 trusted publishing）。之后走 changesets 自动化（[§4](#4-后续发布-via-changesets)）。
    - cloud-sdk **不在** `fixed` lock-step 组（它在 0.11 cloud track、独立 bump），但 `changeset publish` 仍会发它（public + 不在 ignore）；release.yml 已 build 4 包。
+7. [ ] **可选**：在 GitHub repo Settings → Secrets 设 `MOSAIQ_API_KEY`，用 [`.github/workflows/prod-smoke-cloud.yml`](../.github/workflows/prod-smoke-cloud.yml) `workflow_dispatch` 做 Fly 回归（期望日志含 `server_inject_ok`）。
 
 估时: 全跑通 ~2-4h（含 detection-lab.yml 首跑 10-15 min 等待）。
 

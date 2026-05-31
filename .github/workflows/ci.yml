@@ -181,7 +181,7 @@ jobs:
           pnpm --filter "@runova/persona-schema" \
                --filter "@runova/sdk" \
                --filter "@runova/cloud-sdk" \
-               --filter "@mosaiq/cli" \
+               --filter "@runova/cli" \
                build
 
       - name: Typecheck (all packages)
@@ -197,7 +197,7 @@ jobs:
       # (selectPersonas / aggregateBatch / decideBatchExitCode / template-
       # tag parsing / proxy-url shaping). Does not spawn Chromium.
       - name: Test — cli
-        run: pnpm --filter @mosaiq/cli test
+        run: pnpm --filter @runova/cli test
 
       # Desktop vitest covers pure renderer helpers (artifact-url) and the
       # main-process artifact protocol core (path resolution, MIME). No

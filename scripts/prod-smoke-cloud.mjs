@@ -5,7 +5,8 @@
  * End-to-end smoke test against a deployed mosaiq-cloud-runtime instance.
  * Proves the full path:
  *   client → cloud-runtime → FlyMachineManager → fly machines API
- *          → spawn browser-pod → /healthz → CDP URL → DELETE → release
+ *          → spawn browser-pod → /healthz → CDP URL
+ *          → connectOverCDP (no injectInto) → server-side inject probe → DELETE → release
  *
  * Costs ~$0.0001-0.001 per run (one shared-2x machine for <2 min).
  *
@@ -17,17 +18,22 @@
  * Optional:
  *   $env:MOSAIQ_PROJECT_ID = "proj_launchai"   # default: proj_launchai
  *   $env:MOSAIQ_TTL_SECONDS = "120"            # default: 120 (2 min)
+ *   $env:MOSAIQ_SKIP_CDP_PROBE = "1"           # skip playwright CDP probe (REST-only)
+ *
+ * Requires `npx playwright install chromium` when CDP probe is enabled.
  *
  * Exit 0 on success, 1 on any failure. Pipes structured JSON to stdout
  * for grep / CI assertion.
  */
 
 import { createWin11ChromeUsPersona } from '../packages/persona-schema/dist/templates/index.js';
+import { chromium } from 'playwright-core';
 
 const baseUrl = (process.env.MOSAIQ_BASE_URL ?? '').replace(/\/+$/, '');
 const apiKey = process.env.MOSAIQ_API_KEY ?? '';
 const projectId = process.env.MOSAIQ_PROJECT_ID ?? 'proj_launchai';
 const ttlSeconds = Number(process.env.MOSAIQ_TTL_SECONDS ?? '120');
+const skipCdpProbe = process.env.MOSAIQ_SKIP_CDP_PROBE === '1';
 
 if (!baseUrl) {
   console.error('FAIL: MOSAIQ_BASE_URL is required');
@@ -72,6 +78,7 @@ async function main() {
   const createBody = {
     project_id: projectId,
     persona: { inline: persona },
+    stealth: { inject: true, humanize: false, rebrowserPatches: false },
     lifecycle: { ttl_seconds: ttlSeconds },
     client_label: 'prod-smoke-cloud',
   };
@@ -107,7 +114,43 @@ async function main() {
     throw new Error(`session get failed: HTTP ${getRes.status}`);
   }
 
-  // ── 4. DELETE /v1/sessions/:id ─────────────────────────────────────────────
+  // ── 4. CDP: server-side injection (Option A regression gate on prod) ───────
+  const expectedCores = persona.hardware.cpu.cores;
+  if (skipCdpProbe) {
+    logStep('server_inject_skipped', { reason: 'MOSAIQ_SKIP_CDP_PROBE=1' });
+  } else {
+    const tCdp = Date.now();
+    let browser;
+    try {
+      browser = await chromium.connectOverCDP(cdpUrl, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        timeout: 60_000,
+      });
+    } catch (err) {
+      throw new Error(`connectOverCDP failed: ${err?.message ?? err}`);
+    }
+    try {
+      const ctx = browser.contexts()[0] ?? (await browser.newContext());
+      const page = await ctx.newPage();
+      await page.goto('https://example.com', { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const hc = await page.evaluate(() => navigator.hardwareConcurrency);
+      await page.close().catch(() => {});
+      if (hc !== expectedCores) {
+        throw new Error(
+          `server-side injection inactive: hardwareConcurrency=${hc} expected=${expectedCores}`,
+        );
+      }
+      logStep('server_inject_ok', {
+        ms: Date.now() - tCdp,
+        hardwareConcurrency: hc,
+        expected: expectedCores,
+      });
+    } finally {
+      await browser.close().catch(() => {});
+    }
+  }
+
+  // ── 5. DELETE /v1/sessions/:id ─────────────────────────────────────────────
   const t4 = Date.now();
   const delRes = await fetch(`${baseUrl}/v1/sessions/${sessionId}`, {
     method: 'DELETE',
@@ -126,6 +169,7 @@ async function main() {
   logStep('done', {
     sessionId,
     cdpUrl,
+    cdpProbe: !skipCdpProbe,
     timings: { create_ms: createMs, delete_ms: delMs, total_ms: Date.now() - t1 },
   });
 }

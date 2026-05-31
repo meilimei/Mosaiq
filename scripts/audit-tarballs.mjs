@@ -3,7 +3,7 @@
 // scripts/audit-tarballs.mjs
 //
 // Verify that the npm tarballs for our four publishable packages
-// (@runova/persona-schema, @runova/sdk, @mosaiq/cli, @runova/cloud-sdk)
+// (@runova/persona-schema, @runova/sdk, @runova/cli, @runova/cloud-sdk)
 // contain exactly the expected files: all REQUIRED entries present, no
 // FORBIDDEN entries leaked.
 //
@@ -85,7 +85,7 @@ const PACKAGES = [
     ],
   },
   {
-    name: '@mosaiq/cli',
+    name: '@runova/cli',
     dir: 'packages/cli',
     required: ['package.json', 'README.md', 'LICENSE', 'bin/mosaiq.js', 'dist/cli.js'],
     forbidden: [

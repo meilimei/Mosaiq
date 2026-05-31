@@ -1,6 +1,6 @@
 {
-  "name": "@mosaiq/cli",
-  "version": "0.10.0",
+  "name": "@runova/cli",
+  "version": "0.10.2",
   "description": "Mosaiq CLI — run Detection Lab and manage personas from the terminal",
   "license": "Apache-2.0",
   "homepage": "https://github.com/meilimei/Mosaiq/tree/main/packages/cli#readme",
@@ -26,14 +26,14 @@
   ],
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "provenance": false
   },
   "engines": {
     "node": ">=20.10.0"
   },
   "type": "module",
   "bin": {
-    "mosaiq": "./bin/mosaiq.js"
+    "mosaiq": "bin/mosaiq.js"
   },
   "main": "./dist/cli.js",
   "files": ["dist", "bin", "README.md", "LICENSE"],

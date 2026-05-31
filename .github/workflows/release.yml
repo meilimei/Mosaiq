@@ -2,10 +2,10 @@
 #
 # CURRENTLY MANUAL-ONLY (workflow_dispatch). Re-enable push:main trigger
 # when ALL of the following are true:
-#   1. The `@mosaiq` npm org exists and the actor running this workflow has
+#   1. The `@runova` npm org exists and the actor running this workflow has
 #      publish rights to every package below.
 #   2. EITHER `NPM_TOKEN` secret is set in repo settings (`automation`
-#      granular token, scoped to @mosaiq) OR each package has trusted
+#      granular token, scoped to @runova) OR each package has trusted
 #      publishing configured on npmjs.com pointing at this exact workflow.
 #   3. The first publish (0.10.0 / 0.11.0) has been done from a maintainer's
 #      shell with NPM_TOKEN — see docs/V0.10-NPM-DISTRIBUTION-AND-CI-GATE.md §8.
@@ -13,7 +13,7 @@
 #      bootstrap the very first version.
 #
 # Why this is locked down right now (phase 11.x):
-#   - npm scope `@mosaiq` is unregistered → every PUT returns E404.
+#   - CLI publishes as @runova/cli (@mosaiq scope is taken on npm).
 #   - phase 11.x is internal dev iteration, not a release cadence; we don't
 #     want every push to main to attempt a publish.
 #   - Re-enable by uncommenting the `push:` block below.
@@ -24,7 +24,7 @@
 #     lock-step `fixed` group and removes the consumed changeset files.
 #   - When the release PR merges (and no pending changesets remain), runs
 #     `pnpm changeset publish` — publishes the four publishable packages
-#     (@runova/persona-schema + @runova/sdk + @mosaiq/cli + @runova/cloud-sdk)
+#     (@runova/persona-schema + @runova/sdk + @runova/cli + @runova/cloud-sdk)
 #     to npm with provenance attestation.
 
 name: Release
@@ -92,7 +92,7 @@ jobs:
           pnpm --filter "@runova/persona-schema" \
                --filter "@runova/sdk" \
                --filter "@runova/cloud-sdk" \
-               --filter "@mosaiq/cli" \
+               --filter "@runova/cli" \
                build
 
       # Defense-in-depth: even the release path must pass the same audit

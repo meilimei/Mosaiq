@@ -265,16 +265,16 @@ Puppeteer-style：把 CDP endpoint 暴露给 `puppeteer.connect()` 即可。
 
 ## CLI
 
-如果你不想写 TypeScript，[`@mosaiq/cli`](https://www.npmjs.com/package/@mosaiq/cli)
+如果你不想写 TypeScript，[`@runova/cli`](https://www.npmjs.com/package/@runova/cli)
 提供同等能力的命令行入口：
 
 ```bash
-npm i -g @mosaiq/cli
+npm i -g @runova/cli
 mosaiq detection-lab run reddit-alice
 mosaiq personas create alice --template win11-chrome-us --display-name "Alice"
 ```
 
-详见 [`@mosaiq/cli` README](https://github.com/meilimei/Mosaiq/tree/main/packages/cli#readme)。
+详见 [`@runova/cli` README](https://github.com/meilimei/Mosaiq/tree/main/packages/cli#readme)。
 
 ---
 

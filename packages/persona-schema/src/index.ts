@@ -5,7 +5,7 @@
  * 被以下组件消费：
  *   - @runova/sdk          浏览器启动与注入
  *   - @mosaiq/desktop      桌面 GUI
- *   - @mosaiq/cli          命令行
+ *   - @runova/cli          命令行（npm 包名；`mosaiq` 命令）
  *   - @mosaiq/mcp-server   Agent 集成
  *   - chromium-fork        未来 C++ PersonaService
  */

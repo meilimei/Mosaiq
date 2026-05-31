@@ -180,7 +180,7 @@ await context.addInitScript({ content: script });
 |---|---|---|
 | **Biome 全仓清理** | `pnpm lint` 仍约 500 条 legacy findings（pre-v0.8 bench 脚本 + 部分 renderer 页面 + 2k 行 `runner.ts`）。CI 的 `lint` job 因此设为 **non-blocking**（`biome ci --changed` 会整文件 lint，碰到 legacy 文件会 false-fail）。 | 全仓清理（注意 `--unsafe` 自动修复别碰 `runner.ts`，手工逐条）后，去掉 `.github/workflows/ci.yml` `lint` job 的 `continue-on-error`，翻成 blocking。 |
 | **`runner.ts` worker-scope 注入串重复** | worker spoof 是约 270 行内嵌字符串（`src/injection/runner.ts` §11），与 main scope 逻辑手工保持同步，易漂移。 | 提取共享生成器。**高风险**（crown-jewel 文件，esbuild 序列化 + 真 Chromium 行为只能 E2E 验证，见 §7），动手前先补 `bench/diagnose-*.ts` 的真 Chromium 回归覆盖。 |
-| **Cloud 服务端注入** | ✅ **已实现（v0.11，默认开启）**：pod `src/inject.ts` `applyServerStealth` 用 connectOverCDP + addInitScript 注册 `injectAll`，裸 connectOverCDP 也带深层 stealth。**三重验证**：真 pod 本地实测 + pod/cloud-runtime Docker build + **全链路 `docker-compose.local-docker.yml` e2e 跑绿**（e2e-smoke 的「不调 injectInto 也 spoof」断言通过）。 | 剩余：CI（`cloud-runtime-e2e.yml`）+ Fly 生产侧用同 smoke 跑绿后正式对外承诺。每 session `stealth.inject`、pod `POD_SERVER_INJECT` 可即时回退。 |
+| **Cloud 服务端注入** | ✅ **已实现（v0.11，默认开启）**：pod `applyServerStealth` + 裸 connectOverCDP 深层 stealth。**已验证**：本地 Docker e2e + **Fly prod**（`scripts/prod-smoke-cloud.mjs` → `server_inject_ok`，2026-05-31）+ LaunchAI `dev:mosaiq-smoke` 14/14。 | 剩余：CI `cloud-runtime-e2e.yml` 定期绿。`stealth.inject` / `POD_SERVER_INJECT` 可即时回退。 |
 | **Cloud 单点拓扑** | `cloud-runtime` 单 SQLite 卷 + 单 region + 内存态（rate-limit / sticky registry / machine pool）= 单实例、单点。alpha 可接受。 | 接真实付费客户 / 需要 SLA 前，定多实例 + Postgres / 共享存储 + 分布式锁方案。 |
 
 ---

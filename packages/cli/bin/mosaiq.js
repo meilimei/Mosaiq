@@ -4,7 +4,7 @@
  *
  * Kept as plain .js (not .ts) so npm/pnpm can mark it executable without
  * relying on tsx at install time. The actual logic lives in `dist/cli.js`,
- * which is produced by `pnpm --filter @mosaiq/cli build`.
+ * which is produced by `pnpm --filter @runova/cli build`.
  *
  * For local development you can skip the build step by running:
  *   pnpm mosaiq detection-lab run <persona-id>
@@ -12,11 +12,11 @@
  */
 import('../dist/cli.js').catch((err) => {
   // Most likely cause: someone invoked `node bin/mosaiq.js` before running
-  // `pnpm --filter @mosaiq/cli build`. Surface a friendly hint rather than
+  // `pnpm --filter @runova/cli build`. Surface a friendly hint rather than
   // a raw ERR_MODULE_NOT_FOUND.
   if (err && err.code === 'ERR_MODULE_NOT_FOUND') {
     process.stderr.write(
-      '[mosaiq] dist/cli.js not found. Run `pnpm --filter @mosaiq/cli build` first,\n' +
+      '[mosaiq] dist/cli.js not found. Run `pnpm --filter @runova/cli build` first,\n' +
         '         or use `pnpm mosaiq <args>` from the workspace root to run via tsx.\n',
     );
     process.exit(127);

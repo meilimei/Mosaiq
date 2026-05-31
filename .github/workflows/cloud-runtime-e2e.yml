@@ -10,7 +10,7 @@
 #     daemon via undici's unix-socket Agent.
 #   - The full wire path: REST createSession → manager acquire → docker run
 #     pod → /healthz → /control/start → CDP ws proxy → playwright-core
-#     connectOverCDP → injectInto → page.evaluate persona assertions.
+#     connectOverCDP → server-side inject probe (no injectInto) → injectInto → assertions.
 #
 # Why a separate workflow from ci.yml (mirrors detection-lab.yml split):
 #   - ci.yml is the "code layer" gate: ~2 min, runs on every PR.

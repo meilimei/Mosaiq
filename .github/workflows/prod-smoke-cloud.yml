@@ -1,0 +1,46 @@
+# Fly production smoke — REST lifecycle + server-side injection (Option A).
+#
+# Requires repository secret MOSAIQ_API_KEY (msq_sk_live_... for proj_launchai).
+# Optional: MOSAIQ_BASE_URL (default https://mosaiq-cloud-runtime.fly.dev).
+#
+# Trigger: workflow_dispatch only (~1 min acquire + CDP probe; costs one Fly session).
+
+name: Prod Smoke (Fly)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-prod-smoke
+  cancel-in-progress: true
+
+jobs:
+  prod-smoke:
+    name: prod-smoke-cloud.mjs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @runova/persona-schema build
+
+      - run: npx playwright install chromium
+
+      - name: Run prod smoke
+        env:
+          MOSAIQ_BASE_URL: https://mosaiq-cloud-runtime.fly.dev
+          MOSAIQ_API_KEY: ${{ secrets.MOSAIQ_API_KEY }}
+          MOSAIQ_PROJECT_ID: proj_launchai
+        run: node scripts/prod-smoke-cloud.mjs

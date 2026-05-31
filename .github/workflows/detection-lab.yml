@@ -127,7 +127,7 @@ jobs:
       # Build only the packages this workflow actually invokes — desktop's
       # Electron build is unnecessary here and would add ~30s.
       - name: Build workspace packages
-        run: pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@mosaiq/cli" build
+        run: pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" --filter "@runova/cli" build
 
       # `--with-deps` pulls the system libs (libnss3 etc) on ubuntu-latest.
       # Cached between runs by setup-node's pnpm store cache via the
