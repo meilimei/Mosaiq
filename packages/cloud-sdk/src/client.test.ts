@@ -83,6 +83,40 @@ describe('MosaiqCloudClient.createSession', () => {
     expect(reqBody.lifecycle.ttl_seconds).toBe(1800);
   });
 
+  it('keepAlive + userMetadata → request body 含 BB-shape 字段', async () => {
+    let body: Record<string, unknown> | null = null;
+    const fetchImpl = makeFakeFetch(async (_url, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({
+          id: 'ses_xyz',
+          project_id: 'proj_test',
+          status: 'live',
+          cdp_url: 'ws://x',
+          persona: PERSONA,
+          stealth: { inject: true, humanize: true, rebrowserPatches: true },
+          expires_at: 'x',
+          last_seen_at: 'x',
+          created_at: 'x',
+          live_view_url: null,
+          client_label: null,
+        }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    await client.createSession({
+      persona: { id: 'pers_abc' },
+      keepAlive: true,
+      userMetadata: { stickyKey: 'reddit:user_1' },
+      ttlSeconds: 86_400,
+    });
+    expect(body!.keepAlive).toBe(true);
+    expect(body!.userMetadata).toEqual({ stickyKey: 'reddit:user_1' });
+    expect((body!.lifecycle as { keep_alive: boolean }).keep_alive).toBe(true);
+    expect((body!.lifecycle as { ttl_seconds: number }).ttl_seconds).toBe(86_400);
+  });
+
   it('persona.id 形式 → request body { id }', async () => {
     let body: { persona: unknown } | null = null;
     const fetchImpl = makeFakeFetch(async (_url, init) => {
@@ -133,6 +167,71 @@ describe('MosaiqCloudClient.createSession', () => {
     await expect(client.createSession({ persona: { inline: PERSONA } })).rejects.toMatchObject({
       code: 'transport.network',
     } as CloudApiError);
+  });
+
+  it('createSessionOrRejoin: sticky_conflict 409 → rejoin 已有 session', async () => {
+    let postCount = 0;
+    const fetchImpl = makeFakeFetch(async (url, init) => {
+      if (init?.method === 'POST') {
+        postCount++;
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 'session.sticky_conflict',
+              message: 'sticky key in use',
+              detail: {
+                existingSessionId: 'ses_existing',
+                connectUrl: 'ws://api.test/v1/sessions/ses_existing/cdp?token=t',
+                expiresAt: '2026-06-02T00:00:00Z',
+              },
+            },
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/v1/sessions/ses_existing') && init?.method !== 'DELETE') {
+        return new Response(
+          JSON.stringify({
+            id: 'ses_existing',
+            project_id: 'proj_test',
+            status: 'live',
+            cdp_url: 'ws://api.test/v1/sessions/ses_existing/cdp',
+            persona_id: 'pers_abc',
+            stealth: { inject: true, humanize: true, rebrowserPatches: true },
+            expires_at: '2026-06-02T00:00:00Z',
+            last_seen_at: '2026-06-01T00:00:00Z',
+            opened_at: '2026-05-30T00:00:00Z',
+            closed_at: null,
+            client_label: 'launchai:u:reddit',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (url.includes('/v1/personas/pers_abc')) {
+        return new Response(
+          JSON.stringify({
+            id: 'pers_abc',
+            source: 'seed',
+            project_id: 'proj_test',
+            persona: PERSONA,
+            created_at: 'x',
+            updated_at: 'x',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    const sess = await client.createSessionOrRejoin({
+      persona: { id: 'pers_abc' },
+      keepAlive: true,
+      userMetadata: { stickyKey: 'launchai:u:reddit' },
+    });
+    expect(postCount).toBe(1);
+    expect(sess.id).toBe('ses_existing');
+    expect(sess.cdpUrl).toContain('ses_existing');
+    expect(sess.keepAlive).toBe(true);
   });
 });
 

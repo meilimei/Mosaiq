@@ -23,6 +23,8 @@ import type { CreatedSession, MosaiqCloudClient, StealthInput } from './client.j
 export interface ManagedCloudSessionOptions {
   client: MosaiqCloudClient;
   created: CreatedSession;
+  /** Phase 11.5：true 时 disconnect() 只断 CDP，不 DELETE session。 */
+  keepAlive?: boolean;
 }
 
 export class ManagedCloudSession {
@@ -33,6 +35,7 @@ export class ManagedCloudSession {
   readonly stealth: Required<StealthInput>;
   readonly expiresAt: string;
   readonly createdAt: string;
+  readonly keepAlive: boolean;
 
   readonly #client: MosaiqCloudClient;
   #closed = false;
@@ -46,6 +49,7 @@ export class ManagedCloudSession {
     this.stealth = opts.created.stealth;
     this.expiresAt = opts.created.expiresAt;
     this.createdAt = opts.created.createdAt;
+    this.keepAlive = opts.keepAlive ?? false;
   }
 
   /**
@@ -81,7 +85,12 @@ export class ManagedCloudSession {
     await context.addInitScript({ content: script });
   }
 
-  /** 通过控制平面 DELETE /v1/sessions/:id 关闭。幂等。 */
+  /** 断开客户端侧句柄，不 DELETE 远端 session（keepAlive  grooming 周期结束用）。 */
+  disconnect(): void {
+    this.#closed = true;
+  }
+
+  /** 通过控制平面 DELETE /v1/sessions/:id 销毁 session + pod。幂等。 */
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;

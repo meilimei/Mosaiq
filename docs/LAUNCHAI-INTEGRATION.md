@@ -237,6 +237,7 @@ MOSAIQ_API_URL=http://localhost:8787
 MOSAIQ_API_KEY=msq_sk_dev_seed_xxxxxxxxxxxxxxxxxxxxxx        # 与 .env.cloud 一致
 MOSAIQ_PROJECT_ID=proj_launchai
 MOSAIQ_DEFAULT_PERSONA_ID=                                   # 见 §2.5
+MOSAIQ_REQUEST_TIMEOUT_MS=180000                             # Fly 冷启动 acquire 常需 45–60s（SDK 默认 15s 会超时）
 ```
 
 ### 2.5 上一个 persona 进 cloud-runtime
@@ -333,13 +334,38 @@ interface BrowserStorageState {
 切到 Mosaiq Cloud 后这个模型仍然有效，但**实际持久化层换位**：
 
 - **cookies** —— LaunchAI 还是自己 DB 存（saveStorageState → ctx.storageState）。Mosaiq 不存 cookies
-- **localStorage / IndexedDB** —— 交给 browser-pod 的 `/data/profile` user-data-dir。`docker-compose.cloud.yml` 给每个 pod 一个独立 volume，pod 重启数据保留
-- **session 之间的 sticky 路由** —— v0.11 phase 11.1 没有 sticky，每次 startSession 拿哪个 pod 是 round-robin 的。这意味着同 (userId, platform) 的两次 startSession **可能拿到不同 pod**，IndexedDB / Service Worker 不连续
+- **localStorage / IndexedDB** —— 交给 browser-pod 的 `/data/profile` user-data-dir
+- **session 之间的 sticky 路由** —— ✅ phase 11.5 已落地：`keepAlive: true` +
+  `userMetadata.stickyKey: launchai:{userId}:{platform}` 让同 user+platform 的 grooming
+  周期 rejoin 同一 pod，IndexedDB / Service Worker 连续
 
 **解决方案**：
 
-- v0.11 phase 11.1：LaunchAI 把关键状态（cookie + 关键 localStorage 项）走 BrowserStorageState 走自己 DB，不依赖 pod-side 持久化
-- v0.13 phase 11.3：Mosaiq Cloud 加 `keep_alive: true` + sticky 路由（同 sessionId 永远同 pod，pod 闲置不立即回收）
+- v0.11 phase 11.1：cookies 走 LaunchAI `BrowserStorageState` 自管
+- ✅ v0.15 phase 11.5：keepAlive + sticky rejoin（见 §5b）
+
+---
+
+## 5b. Phase 11.5 — keepAlive 长会话（Reddit grooming 必备）
+
+Mosaiq phase 11.5 已落地 `keepAlive: true` + `userMetadata.stickyKey`。LaunchAI
+`runtime-mosaiq.ts` 已接入 `createSessionOrRejoin()`：
+
+```typescript
+await client.createSessionOrRejoin({
+  persona: { id: personaId },
+  keepAlive: true,
+  userMetadata: { stickyKey: `launchai:${userId}:${platform}` },
+  ttlSeconds: 86_400,
+});
+// grooming 周期结束：browser.close() + sess.disconnect() —— 不 DELETE pod
+```
+
+**验收**：`pnpm dev:mosaiq-smoke` 内置双周期——第二次应 rejoin 同一 sticky session，
+connect 时延明显低于第一次冷启动。
+
+详见 [`PHASE-11.5-KEEPALIVE-LONG-SESSION.md`](./PHASE-11.5-KEEPALIVE-LONG-SESSION.md) 与
+LaunchAI [`MOSAIQ-INTEGRATION-REQUESTS.md`](https://github.com/meilimei/LaunchAI/blob/master/docs/MOSAIQ-INTEGRATION-REQUESTS.md) Request 1。
 
 ---
 
@@ -351,7 +377,8 @@ interface BrowserStorageState {
 | `CloudApiError(transport.network)` | docker 没起来 / 端口被占 | `curl localhost:8787/v1/health` 验证 |
 | `CloudApiError(auth.invalid_key)` | LaunchAI .env.local 的 SEED_API_KEY 与 cloud-runtime 不一致 | docker compose down + 改 .env.cloud + up |
 | `chromium.connectOverCDP` 挂 30s 然后 timeout | cdp_url 用了 `cloud-runtime` hostname（仅 docker 内可达） | PUBLIC_BASE_URL 设 `http://localhost:8787` |
-| navigator.userAgent 仍是 raw chromium | session.injectInto() 没在 page.goto 前调 | 顺序：`browser=connectOverCDP → ctx=contexts[0] → injectInto(ctx) → ctx.newPage() → page.goto` |
+| `CloudApiError(transport.timeout)` on createSession | SDK 默认 15s，Fly 冷启动常 45s+ | `MOSAIQ_REQUEST_TIMEOUT_MS=180000`（`runtime-mosaiq.ts` 已默认） |
+| navigator.userAgent 仍是 raw chromium | inject 关或 pod 镜像过旧 | 确认 `stealth.inject: true`；Fly 跑 `node scripts/prod-smoke-cloud.mjs` 看 `server_inject_ok` |
 | pod busy 第二个 session 拿不到 → `pool.exhausted` | 两个 pod 都被先前请求占了 | 关掉旧 session 或 docker-compose.yml 里加 `browser-pod-3/4` |
 
 ---
@@ -360,14 +387,15 @@ interface BrowserStorageState {
 
 | 时间点 | 我能跑什么 |
 |---|---|
-| **v0.11 phase 11.1（now）** | LaunchAI dev 切 `BROWSER_RUNTIME=mosaiq`，1 个 user 在本机端到端 |
-| **v0.12 phase 11.2** | LaunchAI prod env 切 `MOSAIQ_API_URL=https://api.mosaiq.dev`（Fly 部署） |
+| **v0.11 phase 11.1（now）** | LaunchAI dev/prod smoke 对 Fly 14/14；worker `fly.toml` pin Mosaiq URL |
+| **v0.12 phase 11.2** | LaunchAI worker secrets 齐后日常任务全走 prod Mosaiq |
 | **v0.13 phase 11.3** | Stagehand 接入：LaunchAI 内部别处用 Stagehand 时只改 apiUrl，不改 runtime |
 | **v0.14 phase 11.4** | persona filter（不再 hand-pick `MOSAIQ_DEFAULT_PERSONA_ID`） |
-| **v0.15 phase 11.5** | Stripe metered 计费：LaunchAI 知道每 user 用了多少 browser-min |
+| **v0.15 phase 11.5** | ✅ keepAlive + sticky rejoin 已落地；LaunchAI runtime 已接入 |
+| **v0.16 phase 11.7** | Stripe metered 计费：LaunchAI 知道每 user 用了多少 browser-min |
 
 ---
 
 **owner（Mosaiq 侧）**：cloud infra
 **owner（LaunchAI 侧）**：browser runtime maintainer
-**最后更新**：2026-05-23（v0.11 phase 11.1 落地 + LaunchAI 端集成验收 14/14）
+**最后更新**：2026-05-31（Fly prod Option A 验收 + prod-smoke / dev:mosaiq-smoke + worker fly.toml pin）

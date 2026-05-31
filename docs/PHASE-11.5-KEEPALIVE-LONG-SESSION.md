@@ -504,7 +504,7 @@ owner（LaunchAI 侧）：browser runtime maintainer
 - [x] `scripts/keepalive-reconnect-smoke.mjs` 5 跑次全 pass，§7.1 表填实测
 - [ ] §7.3 边界场景（quota / idle / TTL / sticky）人工或脚本验证全过 — quota 与 sticky 已通过 smoke 间接验证（5/5 都触发了 sticky 409 路径），idle/TTL 边界仍待跨小时验证
 - [x] `/v1/metrics` 暴露 `keepalive_sessions_active`、`mm_acquire_duration_seconds{keepalive=...}`、`sessions_closed_total{reason='expired-idle'}` 三组新指标（v18 deploy + smoke 时已 scrape 验过）
-- [ ] LaunchAI 侧跨仓 smoke（§7.2）双方联合验过 — Mosaiq 侧 ready，等 LaunchAI maintainer 改 `runtime-mosaiq.ts:93`
+- [ ] LaunchAI 侧跨仓 smoke（§7.2）双方联合验过 — ✅ 本地联合验过（2026-05-31）：`dev-mosaiq-smoke` 双周期 cycle1=9.3s / cycle2=627ms rejoin + `keepalive-reconnect-smoke` localStorage/IndexedDB 保留；Fly prod 待 redeploy worker（tsx fix）
 
 ### 11.3 文档
 

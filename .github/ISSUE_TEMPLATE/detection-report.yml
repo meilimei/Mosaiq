@@ -39,7 +39,7 @@ body:
     id: path
     attributes:
       label: 使用的 Mosaiq 路径
-      description: 注意——云端「裸 connectOverCDP / BB-SDK baseURL swap」目前不含深层注入（见 README 云端口径）。
+      description: 云端默认带服务端深层注入（v0.11+ Option A）；stealth.inject=false 或 pod POD_SERVER_INJECT=0 时才是 raw chromium。客户端 injectInto() 仍可用且幂等。
       options:
         - Desktop（launchPersona）
         - CLI（mosaiq detection-lab run）
@@ -101,7 +101,7 @@ body:
     attributes:
       label: 确认
       options:
-        - label: 我已确认走的是带深层注入的路径（Desktop / CLI / SDK / cloud-sdk injectInto），而非裸 connectOverCDP。
+        - label: 我已确认走的是带深层注入的路径（Desktop / CLI / SDK；云端默认服务端注入，或 cloud-sdk injectInto；若 stealth.inject=false 请注明）。
           required: false
         - label: 我用的是当前版本（已 `npm i` 最新 / 已 rebuild SDK）。
           required: false

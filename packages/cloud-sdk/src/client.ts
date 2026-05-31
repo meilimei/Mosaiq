@@ -47,8 +47,12 @@ export type CreateSessionPersonaInput =
 export interface CreateSessionInput {
   persona: CreateSessionPersonaInput;
   stealth?: StealthInput;
-  /** TTL 秒数，max 7200。默认 1800。 */
+  /** TTL 秒数。默认 1800；非 keepAlive max 7200，keepAlive max 86400。 */
   ttlSeconds?: number;
+  /** Phase 11.5：WS 断开后 pod 不销毁，IndexedDB / SW 状态保留。 */
+  keepAlive?: boolean;
+  /** Phase 11.5：keepAlive=true 时用于 sticky 路由；同 (projectId, stickyKey) 二次创建 409。 */
+  userMetadata?: Record<string, unknown>;
   viewport?: { width: number; height: number };
   clientLabel?: string;
 }
@@ -160,12 +164,62 @@ export class MosaiqCloudClient {
         ? { inline: input.persona.inline }
         : { id: input.persona.id },
       stealth,
-      lifecycle: { ttl_seconds: input.ttlSeconds ?? 1800 },
+      lifecycle: {
+        ttl_seconds: input.ttlSeconds ?? 1800,
+        ...(input.keepAlive ? { keep_alive: true } : {}),
+      },
+      ...(input.keepAlive ? { keepAlive: true } : {}),
+      ...(input.userMetadata ? { userMetadata: input.userMetadata } : {}),
       ...(input.viewport ? { viewport: input.viewport } : {}),
       ...(input.clientLabel ? { client_label: input.clientLabel } : {}),
     };
 
     const resp = await this.#req<CreateSessionApiResponse>('POST', '/v1/sessions', body);
+    return this.#toManagedSession(resp, input.keepAlive ?? false);
+  }
+
+  /**
+   * createSession + sticky rejoin：同 (projectId, stickyKey) 已有 live session 时
+   * 服务端 409 session.sticky_conflict，detail 含 connectUrl —— 直接 rejoin，不抛错。
+   */
+  async createSessionOrRejoin(input: CreateSessionInput): Promise<ManagedCloudSession> {
+    try {
+      return await this.createSession(input);
+    } catch (err) {
+      if (!(err instanceof CloudApiError) || err.code !== 'session.sticky_conflict') {
+        throw err;
+      }
+      const detail = err.detail ?? {};
+      const sessionId = detail['existingSessionId'];
+      const cdpUrl = detail['connectUrl'];
+      if (typeof sessionId !== 'string' || typeof cdpUrl !== 'string') {
+        throw err;
+      }
+      const info = await this.getSession(sessionId);
+      const persona = input.persona.inline
+        ? input.persona.inline
+        : (await this.getPersona(input.persona.id)).persona;
+      return new ManagedCloudSession({
+        client: this,
+        created: {
+          id: sessionId,
+          projectId: info.projectId,
+          status: info.status,
+          cdpUrl,
+          persona,
+          stealth: info.stealth,
+          expiresAt: info.expiresAt,
+          lastSeenAt: info.lastSeenAt,
+          createdAt: info.openedAt,
+          liveViewUrl: null,
+          clientLabel: info.clientLabel,
+        },
+        keepAlive: input.keepAlive ?? false,
+      });
+    }
+  }
+
+  #toManagedSession(resp: CreateSessionApiResponse, keepAlive = false): ManagedCloudSession {
     const created: CreatedSession = {
       id: resp.id,
       projectId: resp.project_id,
@@ -179,11 +233,7 @@ export class MosaiqCloudClient {
       liveViewUrl: resp.live_view_url,
       clientLabel: resp.client_label,
     };
-
-    return new ManagedCloudSession({
-      client: this,
-      created,
-    });
+    return new ManagedCloudSession({ client: this, created, keepAlive });
   }
 
   async getSession(id: string): Promise<SessionInfo> {

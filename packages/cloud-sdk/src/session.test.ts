@@ -104,4 +104,33 @@ describe('ManagedCloudSession.close', () => {
     await sess.close();
     expect(calls.filter((c) => c.startsWith('DELETE')).length).toBe(1);
   });
+
+  it('disconnect() 不 DELETE session', async () => {
+    const calls: string[] = [];
+    const fetchImpl = makeFakeFetch(async (url, init) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      return new Response(null, { status: 204 });
+    });
+    const client = new MosaiqCloudClient({ ...baseOpts, fetchImpl });
+    const sess = new ManagedCloudSession({
+      client,
+      created: {
+        id: 'ses_keep',
+        projectId: 'proj_test',
+        status: 'live',
+        cdpUrl: 'x',
+        persona: PERSONA,
+        stealth: { inject: true, humanize: true, rebrowserPatches: true },
+        expiresAt: 'x',
+        lastSeenAt: 'x',
+        createdAt: 'x',
+        liveViewUrl: null,
+        clientLabel: null,
+      },
+      keepAlive: true,
+    });
+    sess.disconnect();
+    expect(sess.closed).toBe(true);
+    expect(calls.filter((c) => c.startsWith('DELETE')).length).toBe(0);
+  });
 });

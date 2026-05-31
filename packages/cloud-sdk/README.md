@@ -83,10 +83,26 @@ interface CreateSessionInput {
     humanize?: boolean;          // default true
     rebrowserPatches?: boolean;  // default true
   };
-  ttlSeconds?: number;           // default 1800, max 7200
+  ttlSeconds?: number;           // default 1800; keepAlive max 86400
+  keepAlive?: boolean;           // phase 11.5: WS 断开后 pod 不销毁
+  userMetadata?: Record<string, unknown>;  // stickyKey 用于跨 grooming 周期 rejoin
   viewport?: { width: number; height: number };
   clientLabel?: string;          // 审计 tag
 }
+```
+
+### `client.createSessionOrRejoin(input)` → `ManagedCloudSession`
+
+同 `createSession`，但 sticky 冲突（409 `session.sticky_conflict`）时自动 rejoin
+已有 live session（用 `detail.connectUrl`），不抛错。LaunchAI grooming 路径推荐用这个。
+
+```typescript
+const sess = await client.createSessionOrRejoin({
+  persona: { id: 'win11-chrome-us' },
+  keepAlive: true,
+  userMetadata: { stickyKey: 'launchai:user_42:reddit' },
+  ttlSeconds: 86_400,
+});
 ```
 
 ### `ManagedCloudSession`
@@ -97,9 +113,11 @@ interface CreateSessionInput {
 | `cdpUrl` | `wss://api.mosaiq.dev/v1/sessions/<id>/cdp` |
 | `persona` | 完整 Persona JSON（用于客户端注入 / 调试） |
 | `stealth` | 服务端最终生效的 stealth opts |
+| `keepAlive` | phase 11.5 flag |
 | `expiresAt` | session 自动 GC 的时间 |
-| **`await session.injectInto(ctx)`** | 必须在 `page.goto()` 前调；inject=false 时 no-op |
-| `await session.close()` | 幂等，DELETE /v1/sessions/:id |
+| **`await session.injectInto(ctx)`** | 服务端注入已默认开启时可选；inject=false 时 no-op |
+| `session.disconnect()` | 只断客户端 CDP 句柄，不 DELETE pod（keepAlive grooming 周期结束用） |
+| `await session.close()` | 幂等，DELETE /v1/sessions/:id 销毁 pod |
 
 ### Persona / Health 辅助
 
