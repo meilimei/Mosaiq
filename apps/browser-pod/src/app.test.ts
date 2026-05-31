@@ -13,7 +13,9 @@ describe('browser-pod createApp() — route smoke', () => {
       service: 'browser-pod',
       busy: false,
     });
-    expect(body['version']).toBe('0.11.0');
+    expect(body.version).toBe('0.11.0');
+    // captcha 计数字段恒存在；空闲 pod 为 null。
+    expect(body.captcha).toBeNull();
   });
 
   it('GET / → 200 with service marker', async () => {
@@ -21,7 +23,7 @@ describe('browser-pod createApp() — route smoke', () => {
     const resp = await app.fetch(new Request('http://pod.local/'));
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as Record<string, unknown>;
-    expect(body['service']).toBe('mosaiq-browser-pod');
+    expect(body.service).toBe('mosaiq-browser-pod');
   });
 
   it('GET /unknown → 404', async () => {

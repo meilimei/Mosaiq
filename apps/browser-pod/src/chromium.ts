@@ -31,6 +31,7 @@ import { chromium } from 'playwright-core';
 
 import type { Persona } from '@runova/persona-schema';
 
+import { applyCaptchaWatcher, type CaptchaWatcherHandle } from './captcha.js';
 import { loadContext, snapshotContext } from './context-io.js';
 import { loadEnv } from './env.js';
 import { applyServerStealth, type ServerStealthHandle } from './inject.js';
@@ -42,6 +43,11 @@ export interface RunningChromium {
   pid: number;
   cdpUrl: string;
   startedAt: number;
+  /**
+   * captcha watcher 计数（observe-first 阶段可观测；未来计费数据基础）。
+   * watcher 未挂（session 未请求 solveCaptchas）时为 null。
+   */
+  captcha: { detected: number; solved: number } | null;
 }
 
 export interface ChromiumSpawnInput {
@@ -53,6 +59,12 @@ export interface ChromiumSpawnInput {
    * 也受 pod env `POD_SERVER_INJECT` 总开关约束（kill-switch）。
    */
   stealthInject?: boolean;
+  /**
+   * 是否挂 captcha 自动求解 watcher。从 session `stealth.solveCaptchas` 透传。
+   * 真正是否调用付费 provider 还受 pod env `POD_CAPTCHA_SOLVER` 约束——本 flag
+   * 关时连 watcher 都不挂（零开销）。
+   */
+  stealthSolveCaptchas?: boolean;
   viewport?: { width: number; height: number };
   ttlSeconds: number;
   /**
@@ -96,6 +108,8 @@ let current:
       managedKill: boolean;
       /** Option A: pod 侧服务端注入连接句柄；kill 时先 close 再 SIGTERM。null = 未注入。 */
       injectHandle: ServerStealthHandle | null;
+      /** captcha watcher 句柄；kill 时与 injectHandle 一并 close。null = 未挂。 */
+      captchaHandle: CaptchaWatcherHandle | null;
     }
   | null = null;
 
@@ -249,11 +263,14 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
       if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
       const wasManaged = current.managedKill;
       const handle = current.injectHandle;
+      const captcha = current.captchaHandle;
       current = null;
       // Option A: 关掉服务端注入的 playwright 连接。unmanaged 退出（crash/TTL/self-
       // death）时 chromium 已死，连接会自然报错；managed 退出时 killChromium 已先关，
       // 这里 double-close 是安全的（close 内部 best-effort catch）。
       void handle?.close();
+      // captcha watcher 同理：double-close 安全（内部 best-effort catch）。
+      void captcha?.close();
       // Phase 11.6: managed kill（killChromium）会在 snapshot 之后自己 rm，这里
       // 跳过避免在 snapshot 读取 user-data-dir 之前就把它删了。Unmanaged 退出
       // （crash / TTL SIGTERM / chromium self-death）照常立即清理，不 snapshot。
@@ -330,11 +347,29 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
       })
     : null;
 
+  // ── Captcha 自动求解 watcher（gap fill phase A）──
+  // 仅当 session 请求 stealth.solveCaptchas 时才挂（关时零开销）。watcher 内部再按
+  // pod env POD_CAPTCHA_SOLVER / provider 决定「真正求解」还是「仅观察+日志」。
+  // 同样 fail-soft，绝不抛错。挂在 inject 之后，确保检测页面已带深层 spoof。
+  const captchaStats = input.stealthSolveCaptchas ? { detected: 0, solved: 0 } : null;
+  const captchaHandle =
+    input.stealthSolveCaptchas && captchaStats
+      ? await applyCaptchaWatcher({
+          browserWSEndpoint: internalCdpUrl,
+          env,
+          onEvent: (event) => {
+            if (event === 'detected') captchaStats.detected += 1;
+            else captchaStats.solved += 1;
+          },
+        })
+      : null;
+
   const info: RunningChromium = {
     machineId: input.machineId,
     pid: proc.pid ?? -1,
     cdpUrl, // ws://127.0.0.1:<EXTERNAL>/devtools/browser/<uuid>，cloud-runtime swap host
     startedAt: Date.now(),
+    captcha: captchaStats,
   };
 
   // TTL 看门狗：超时自动 kill。控制平面正常关闭通过 /control/stop 触发。
@@ -351,9 +386,16 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     contextProjectId: input.context?.projectId ?? null,
     managedKill: false,
     injectHandle,
+    captchaHandle,
   };
   log.info(
-    { machineId: info.machineId, pid: info.pid, cdpUrl, serverInject: doInject },
+    {
+      machineId: info.machineId,
+      pid: info.pid,
+      cdpUrl,
+      serverInject: doInject,
+      captchaWatcher: Boolean(captchaHandle),
+    },
     'chromium ready',
   );
   return info;
@@ -399,12 +441,14 @@ export async function killChromium(machineId: string, opts: KillOptions = {}): P
   const sessionUserDir = current.sessionUserDir;
   const contextProjectId = current.contextProjectId;
   const injectHandle = current.injectHandle;
+  const captchaHandle = current.captchaHandle;
   current.managedKill = true; // exit handler 跳过 rm，交给本函数
   if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
 
   // Option A: 先关服务端注入的 playwright 连接，再 SIGTERM chromium —— 避免连接在
-  // chromium 被杀时报一堆 disconnect 错误。best-effort。
+  // chromium 被杀时报一堆 disconnect 错误。best-effort。captcha watcher 同样先关。
   await injectHandle?.close();
+  await captchaHandle?.close();
 
   proc.kill('SIGTERM');
   const killed = await waitForExit(proc, 5_000);

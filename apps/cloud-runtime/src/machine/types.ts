@@ -35,6 +35,8 @@ export interface AcquireSpec {
     inject: boolean;
     humanize: boolean;
     rebrowserPatches: boolean;
+    /** pod 服务端自动求解 captcha（reCAPTCHA / hCaptcha / Turnstile）。 */
+    solveCaptchas: boolean;
   };
   viewport?: { width: number; height: number };
   /** session ttl，pod 内部的看门狗超时使用。 */

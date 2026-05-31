@@ -27,6 +27,8 @@ const StartSchema = z.object({
       inject: z.boolean(),
       humanize: z.boolean(),
       rebrowserPatches: z.boolean(),
+      // 11.x 之前的 cloud-runtime 不发这个字段；optional 保证向后兼容。
+      solveCaptchas: z.boolean().optional(),
     })
     .optional(),
   viewport: z
@@ -64,6 +66,8 @@ export function createApp(): Hono {
       busy: running !== null,
       machineId: running?.machineId ?? null,
       pid: running?.pid ?? null,
+      // captcha watcher 计数（无运行 chromium / 未启用 solveCaptchas 时为 null）。
+      captcha: running?.captcha ?? null,
     });
   });
 
@@ -102,6 +106,7 @@ export function createApp(): Hono {
         // Option A: 默认 true（控制平面也默认 stealth.inject=true）。仅当客户端显式
         // 关闭（raw chromium 模式）时为 false。pod env POD_SERVER_INJECT 是总开关。
         stealthInject: req.stealth?.inject ?? true,
+        stealthSolveCaptchas: req.stealth?.solveCaptchas ?? false,
         ttlSeconds: req.ttlSeconds,
         ...(req.viewport ? { viewport: req.viewport } : {}),
         ...(req.context ? { context: req.context } : {}),

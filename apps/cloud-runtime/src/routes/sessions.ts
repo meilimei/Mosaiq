@@ -59,8 +59,16 @@ const StealthInputSchema = z
     inject: z.boolean().default(true),
     humanize: z.boolean().default(true),
     rebrowserPatches: z.boolean().default(true),
+    // 默认 false：求解会引入第三方调用与延迟，必须显式开启。pod 侧未配置求解
+    // 服务时退化为「仅观察 + 日志」。BB `browserSettings.solveCaptchas` 也会折叠进来。
+    solveCaptchas: z.boolean().default(false),
   })
-  .default({ inject: true, humanize: true, rebrowserPatches: true });
+  .default({
+    inject: true,
+    humanize: true,
+    rebrowserPatches: true,
+    solveCaptchas: false,
+  });
 
 const ViewportSchema = z.object({
   width: z.number().int().min(320).max(7680),
@@ -106,15 +114,16 @@ const ContextInputSchema = z.object({
 });
 
 /**
- * Browserbase `browserSettings` 子结构 —— 我们挑出 `viewport`（与原生同形）与
- * `context`（phase 11.6 honored），其他字段（fingerprint / blockAds / solveCaptchas
- * / ...）一律收集到 unsupportedFields 并 warn-log。passthrough 让未知 key 不被
- * strip 掉，方便后续记录。
+ * Browserbase `browserSettings` 子结构 —— 我们挑出 `viewport`（与原生同形）、
+ * `context`（phase 11.6 honored）与 `solveCaptchas`（honored：折叠进 stealth），
+ * 其他字段（fingerprint / blockAds / ...）一律收集到 unsupportedFields 并 warn-log。
+ * passthrough 让未知 key 不被 strip 掉，方便后续记录。
  */
 const BrowserSettingsSchema = z
   .object({
     viewport: ViewportSchema.optional(),
     context: ContextInputSchema.optional(),
+    solveCaptchas: z.boolean().optional(),
   })
   .passthrough();
 
@@ -262,10 +271,17 @@ function shapeSession(
  * 输出一致。
  */
 function stealthFromRow(row: typeof sessionsTable.$inferSelect): StealthOpts {
-  const fallback: StealthOpts = { inject: true, humanize: true, rebrowserPatches: true };
+  const fallback: StealthOpts = {
+    inject: true,
+    humanize: true,
+    rebrowserPatches: true,
+    solveCaptchas: false,
+  };
   try {
-    const meta = JSON.parse(row.metadataJson) as { stealth?: StealthOpts };
-    return meta.stealth ?? fallback;
+    const meta = JSON.parse(row.metadataJson) as { stealth?: Partial<StealthOpts> };
+    // 旧行（11.x 之前落库）的 stealth 没有 solveCaptchas，用 fallback 补齐，保证
+    // 响应形状对 Required<StealthInput> 客户端始终完整。
+    return meta.stealth ? { ...fallback, ...meta.stealth } : fallback;
   } catch {
     return fallback;
   }
@@ -314,9 +330,10 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   if (req.region !== undefined) unsupportedFields.push('region');
   if (req.timezone !== undefined) unsupportedFields.push('timezone');
   if (req.browserSettings) {
-    // browserSettings.viewport + context 会被 honor，其他子字段全归到 unsupported。
+    // browserSettings.viewport + context + solveCaptchas 会被 honor，其他子字段全归到 unsupported。
+    const honoredBrowserSettings = new Set(['viewport', 'context', 'solveCaptchas']);
     for (const key of Object.keys(req.browserSettings)) {
-      if (key !== 'viewport' && key !== 'context') {
+      if (!honoredBrowserSettings.has(key)) {
         unsupportedFields.push(`browserSettings.${key}`);
       }
     }
@@ -531,7 +548,11 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
 
   const sessionId = newId('ses');
   const signingKey = newId('sks');
-  const stealth: StealthOpts = req.stealth;
+  // 折叠 BB `browserSettings.solveCaptchas` 进 native stealth：任一为 true 即生效。
+  const stealth: StealthOpts = {
+    ...req.stealth,
+    solveCaptchas: req.stealth.solveCaptchas || req.browserSettings?.solveCaptchas === true,
+  };
   // viewport 优先级：native viewport > BB browserSettings.viewport（同形）。
   const viewport = req.viewport ?? req.browserSettings?.viewport;
 

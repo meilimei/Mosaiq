@@ -29,6 +29,7 @@ export interface PodStartRequest {
     inject: boolean;
     humanize: boolean;
     rebrowserPatches: boolean;
+    solveCaptchas: boolean;
   };
   viewport?: { width: number; height: number };
   ttlSeconds: number;

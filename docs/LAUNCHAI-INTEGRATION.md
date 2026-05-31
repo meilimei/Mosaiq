@@ -369,6 +369,48 @@ LaunchAI [`MOSAIQ-INTEGRATION-REQUESTS.md`](https://github.com/meilimei/LaunchAI
 
 ---
 
+## 5c. Captcha 自动求解（gap fill phase A）
+
+LaunchAI 自主发帖遇到 captcha（reCAPTCHA v2/v3 / hCaptcha / Cloudflare Turnstile）
+时，可让 Mosaiq pod 服务端自动识别 + 求解 + 回填 token，业务代码无需感知。
+
+**LaunchAI 侧**：`runtime-mosaiq.ts` 的 `createSession` 传 `stealth.solveCaptchas`：
+
+```typescript
+await client.createSession({
+  persona: { id: personaId },
+  stealth: { inject: true, humanize: true, rebrowserPatches: true, solveCaptchas: true },
+  // ...
+});
+```
+
+> 也兼容 Browserbase 形状：`browserSettings.solveCaptchas: true` 会被折叠进 stealth。
+
+**Mosaiq pod 侧**（控制谁来真正求解，避免误花钱）：
+
+| env | 默认 | 说明 |
+|---|---|---|
+| `POD_CAPTCHA_SOLVER` | `false` | 总开关（kill-switch）。关时即使 session 请求了 solveCaptchas，watcher 也只**检测 + 日志**，不调任何第三方、不产生费用 |
+| `POD_CAPTCHA_PROVIDER` | `none` | `none` = 仅观察；`capsolver` = 调 CapSolver token 模式 API |
+| `POD_CAPTCHA_API_KEY` | `''` | provider 的 API key；缺失时 watcher 退回仅观察 |
+| `POD_CAPTCHA_TIMEOUT_MS` | `120000` | 单次求解（createTask → 轮询 getTaskResult）总预算 |
+| `POD_CAPTCHA_POLL_INTERVAL_MS` | `2000` | 页面 captcha 检测轮询间隔 |
+
+**推荐上线节奏**：先 `solveCaptchas: true` + `POD_CAPTCHA_SOLVER=false`（observe-only），
+跑一段时间看命中率与站点分布，再决定是否 `POD_CAPTCHA_SOLVER=true` + 配 provider/key
+接入付费求解。
+
+**观测信号**：
+- pod 日志：`captcha detected`（每次命中）/ `captcha token injected`（每次成功求解）。
+- pod `GET /healthz` 的 `captcha` 字段：当前 session 的 `{ detected, solved }` 累计计数
+  （无运行 / 未启用时为 `null`）。observe-only 阶段靠它量命中率，未来计费也读这份计数。
+
+> ⚠️ 现为 phase A 脚手架：检测选择器 + token 回填覆盖主流站点常见嵌入方式，不保证
+> 100%（站点自定义 callback / shadow DOM / 多 widget 等边界后续按真实数据迭代）。
+> 实现见 `apps/browser-pod/src/captcha.ts`。
+
+---
+
 ## 6. 故障排查
 
 | 症状 | 可能原因 | 处理 |

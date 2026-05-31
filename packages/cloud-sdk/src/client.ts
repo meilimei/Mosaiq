@@ -38,6 +38,13 @@ export interface StealthInput {
   humanize?: boolean;
   /** rebrowser-patches（pod 镜像默认带）。默认 true。 */
   rebrowserPatches?: boolean;
+  /**
+   * 是否让 pod 服务端自动识别并求解页面里的 captcha（reCAPTCHA / hCaptcha /
+   * Cloudflare Turnstile）。默认 false —— 仅当 pod 侧配置了求解服务
+   * （POD_CAPTCHA_SOLVER / provider / api key）时才真正生效，否则只观察+日志。
+   * 与 Browserbase `browserSettings.solveCaptchas` 语义对齐。
+   */
+  solveCaptchas?: boolean;
 }
 
 export type CreateSessionPersonaInput =
@@ -156,6 +163,7 @@ export class MosaiqCloudClient {
       inject: input.stealth?.inject ?? true,
       humanize: input.stealth?.humanize ?? true,
       rebrowserPatches: input.stealth?.rebrowserPatches ?? true,
+      solveCaptchas: input.stealth?.solveCaptchas ?? false,
     };
 
     const body = {

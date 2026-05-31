@@ -77,6 +77,28 @@ const EnvSchema = z.object({
    * cloud-runtime 上一版 good blob。
    */
   POD_CONTEXT_SIZE_MAX_MB: z.coerce.number().int().min(1).max(1024).default(200),
+
+  // ─── Captcha 自动求解（gap fill phase A：集成层求解下沉到 pod） ────────────
+  /**
+   * pod 侧 captcha 求解总开关（kill-switch）。默认 false：即使 session
+   * `stealth.solveCaptchas=true`，未开此开关时 watcher 也只观察 + 日志，不调用任何
+   * 第三方服务、不产生费用。设 'true' 才真正求解。
+   */
+  POD_CAPTCHA_SOLVER: z
+    .union([z.boolean(), z.string()])
+    .default('false')
+    .transform((v) => (typeof v === 'boolean' ? v : v.toLowerCase() === 'true')),
+  /**
+   * 求解服务 provider。'none' = 仅检测/日志（默认，便于先验证检测命中率）；
+   * 'capsolver' = 调 CapSolver token 模式 API（需 POD_CAPTCHA_API_KEY）。
+   */
+  POD_CAPTCHA_PROVIDER: z.enum(['none', 'capsolver']).default('none'),
+  /** 求解服务 API key（CapSolver 等）。空 + provider!=none → watcher 退回仅观察。 */
+  POD_CAPTCHA_API_KEY: z.string().default(''),
+  /** 单次求解轮询上限 ms（createTask → getTaskResult 总预算）。默认 120s。 */
+  POD_CAPTCHA_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(300_000).default(120_000),
+  /** 页面 captcha 检测轮询间隔 ms。默认 2s。 */
+  POD_CAPTCHA_POLL_INTERVAL_MS: z.coerce.number().int().min(500).max(30_000).default(2_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
