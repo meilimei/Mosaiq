@@ -79,7 +79,12 @@ describe('MosaiqCloudClient.createSession', () => {
     };
     expect(reqBody.project_id).toBe('proj_test');
     expect(reqBody.persona).toHaveProperty('inline');
-    expect(reqBody.stealth).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
+    expect(reqBody.stealth).toEqual({
+      inject: true,
+      humanize: true,
+      rebrowserPatches: true,
+      solveCaptchas: false,
+    });
     expect(reqBody.lifecycle.ttl_seconds).toBe(1800);
   });
 

@@ -149,3 +149,9 @@ packages/sdk/bench/results/
 
 # tshy 临时输出
 .tshy-build-tmp/
+
+# ────────────────────────────────────────
+# npm pack / publish 产物（npm pack / npm publish 留下的本地 tarball）
+# ────────────────────────────────────────
+# 发包用 `npm pack` 会在包目录留一个 <name>-<version>.tgz，仅本地中转用，不入库。
+*.tgz
