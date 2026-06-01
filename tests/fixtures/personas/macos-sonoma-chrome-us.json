@@ -3,11 +3,7 @@
   "metadata": {
     "id": "macos-sonoma-chrome-us",
     "displayName": "CI Fixture — macOS Sonoma Chrome US",
-    "tags": [
-      "template:macos-sonoma-chrome-us",
-      "fixture",
-      "ci"
-    ],
+    "tags": ["template:macos-sonoma-chrome-us", "fixture", "ci"],
     "notes": "Deterministic fixture for the v0.10 Detection Lab CI gate. Do not hand-edit — regenerate via `pnpm build-fixture-personas`.",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "updatedAt": "1970-01-01T00:00:00.000Z",
@@ -22,10 +18,7 @@
       "platformLabel": "MacIntel"
     },
     "locale": "en-US",
-    "languages": [
-      "en-US",
-      "en"
-    ],
+    "languages": ["en-US", "en"],
     "timezone": "America/Los_Angeles",
     "screen": {
       "width": 1470,

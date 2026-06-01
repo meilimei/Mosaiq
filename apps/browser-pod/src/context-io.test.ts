@@ -9,14 +9,14 @@
  * 正确且 snapshot 永不抛。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { loadContext, snapshotContext } from './context-io.js';
-import { deriveKey, decryptBlob } from './crypto.js';
+import { decryptBlob, deriveKey } from './crypto.js';
 
 const MASTER = randomBytes(32).toString('base64');
 const BIG = 500 * 1024 * 1024; // effectively-unbounded maxBytes for round-trip tests
@@ -85,15 +85,16 @@ describe('snapshotContext → loadContext round-trip', () => {
     expect(snap.ok).toBe(true);
     expect(put.captured.body).not.toBeNull();
 
-    const load = await loadContext(
-      { loadUrl: 'http://runtime/dl', projectId: 'proj_a' },
-      dstDir,
-      { fetchImpl: returningGet(put.captured.body), masterKey: MASTER },
-    );
+    const load = await loadContext({ loadUrl: 'http://runtime/dl', projectId: 'proj_a' }, dstDir, {
+      fetchImpl: returningGet(put.captured.body),
+      masterKey: MASTER,
+    });
     expect(load.loaded).toBe(true);
 
     expect(await readFileOrNull(dstDir, 'Default/Cookies')).toBe('cookie-jar-contents');
-    expect(await readFileOrNull(dstDir, 'Default/Local Storage/leveldb/000003.log')).toBe('ls-data');
+    expect(await readFileOrNull(dstDir, 'Default/Local Storage/leveldb/000003.log')).toBe(
+      'ls-data',
+    );
     expect(await readFileOrNull(dstDir, 'Local State')).toBe('{"os_crypt":{}}');
   });
 
@@ -104,16 +105,15 @@ describe('snapshotContext → loadContext round-trip', () => {
     await writeFile(srcDir, 'ShaderCache/GPUCache/y', 'discard');
 
     const put = capturingPut(204);
-    await snapshotContext(
-      { uploadUrl: 'http://runtime/snap', projectId: 'proj_a' },
-      srcDir,
-      { fetchImpl: put.fetchImpl, masterKey: MASTER, maxBytes: BIG },
-    );
-    await loadContext(
-      { loadUrl: 'http://runtime/dl', projectId: 'proj_a' },
-      dstDir,
-      { fetchImpl: returningGet(put.captured.body), masterKey: MASTER },
-    );
+    await snapshotContext({ uploadUrl: 'http://runtime/snap', projectId: 'proj_a' }, srcDir, {
+      fetchImpl: put.fetchImpl,
+      masterKey: MASTER,
+      maxBytes: BIG,
+    });
+    await loadContext({ loadUrl: 'http://runtime/dl', projectId: 'proj_a' }, dstDir, {
+      fetchImpl: returningGet(put.captured.body),
+      masterKey: MASTER,
+    });
 
     expect(await readFileOrNull(dstDir, 'Default/Cookies')).toBe('keep-me');
     expect(await readFileOrNull(dstDir, 'Default/Cache/data_0')).toBeNull();
@@ -124,11 +124,11 @@ describe('snapshotContext → loadContext round-trip', () => {
   it('cross-project key cannot decrypt (auth failure on load)', async () => {
     await writeFile(srcDir, 'Default/Cookies', 'secret');
     const put = capturingPut(204);
-    await snapshotContext(
-      { uploadUrl: 'http://runtime/snap', projectId: 'proj_a' },
-      srcDir,
-      { fetchImpl: put.fetchImpl, masterKey: MASTER, maxBytes: BIG },
-    );
+    await snapshotContext({ uploadUrl: 'http://runtime/snap', projectId: 'proj_a' }, srcDir, {
+      fetchImpl: put.fetchImpl,
+      masterKey: MASTER,
+      maxBytes: BIG,
+    });
     // load as a DIFFERENT project → derived key differs → GCM auth fails
     await expect(
       loadContext({ loadUrl: 'http://runtime/dl', projectId: 'proj_b' }, dstDir, {
@@ -141,11 +141,10 @@ describe('snapshotContext → loadContext round-trip', () => {
 
 describe('loadContext failure / edge paths', () => {
   it('404 → { loaded: false }, dst untouched', async () => {
-    const res = await loadContext(
-      { loadUrl: 'http://runtime/dl', projectId: 'proj_a' },
-      dstDir,
-      { fetchImpl: returningGet(null, 404), masterKey: MASTER },
-    );
+    const res = await loadContext({ loadUrl: 'http://runtime/dl', projectId: 'proj_a' }, dstDir, {
+      fetchImpl: returningGet(null, 404),
+      masterKey: MASTER,
+    });
     expect(res.loaded).toBe(false);
     expect(await fs.readdir(dstDir)).toHaveLength(0);
   });
@@ -224,11 +223,11 @@ describe('snapshotContext failure / edge paths (never throws)', () => {
   it('encrypted blob is decryptable with the matching project key (wire-format sanity)', async () => {
     await writeFile(srcDir, 'Default/Cookies', 'verify-wire-format');
     const put = capturingPut(204);
-    await snapshotContext(
-      { uploadUrl: 'http://runtime/snap', projectId: 'proj_a' },
-      srcDir,
-      { fetchImpl: put.fetchImpl, masterKey: MASTER, maxBytes: BIG },
-    );
+    await snapshotContext({ uploadUrl: 'http://runtime/snap', projectId: 'proj_a' }, srcDir, {
+      fetchImpl: put.fetchImpl,
+      masterKey: MASTER,
+      maxBytes: BIG,
+    });
     const key = deriveKey(MASTER, 'proj_a');
     // decrypt → gzipped tar; we only assert it decrypts + has gzip magic (0x1f 0x8b)
     const tarball = decryptBlob(put.captured.body!, key);

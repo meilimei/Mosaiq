@@ -14,25 +14,27 @@
  *   6) graceful shutdown 接 SIGTERM（先停 expiry job，再 close http，再放 mm + db）
  */
 
-import { createServer, type RequestListener } from 'node:http';
+import { type RequestListener, createServer } from 'node:http';
 
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app.js';
-import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
-import { seedDevAuth } from './db/seed.js';
-import { disposeDb, getDb } from './db/client.js';
-import { loadEnv } from './env.js';
-import { getMachineManager, shutdownMachineManager } from './machine/factory.js';
 import { createCdpProxy } from './cdp/proxy.js';
+import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
+import { disposeDb, getDb } from './db/client.js';
+import { seedDevAuth } from './db/seed.js';
+import { loadEnv } from './env.js';
 import { startSessionExpiryJob } from './jobs/session-expiry.js';
 import { startUsageReportJob } from './jobs/usage-report.js';
+import { getMachineManager, shutdownMachineManager } from './machine/factory.js';
+import { logSingleInstanceAssumption } from './ops/single-instance-guard.js';
 import { getMeterReporter } from './usage/reporter.js';
 import { getLogger } from './utils/logger.js';
 
 async function bootstrap() {
   const env = loadEnv();
   const log = getLogger();
+  logSingleInstanceAssumption(log, env);
 
   await ensureSchema();
   await ensureDefaultPersonas();

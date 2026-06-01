@@ -34,7 +34,7 @@ function profileToPayload(profile: typeof INTEL_UHD_730_D3D11, renderer: string)
   ): Record<string, number | readonly number[] | string> => {
     const out: Record<string, number | readonly number[] | string> = {};
     for (const [k, v] of m) {
-      out['0x' + k.toString(16).padStart(4, '0')] = v;
+      out[`0x${k.toString(16).padStart(4, '0')}`] = v;
     }
     return out;
   };

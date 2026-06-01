@@ -43,3 +43,15 @@ describe('browser-pod env defaults — IPv6 dual-stack (regression)', () => {
     expect(env.POD_CDP_HOST).toBe('0.0.0.0');
   });
 });
+
+describe('browser-pod captcha env — observe-only default (phase A)', () => {
+  it('POD_CAPTCHA_SOLVER defaults to false (no paid provider calls)', () => {
+    const env = loadWith({});
+    expect(env.POD_CAPTCHA_SOLVER).toBe(false);
+  });
+
+  it('POD_CAPTCHA_PROVIDER defaults to none', () => {
+    const env = loadWith({});
+    expect(env.POD_CAPTCHA_PROVIDER).toBe('none');
+  });
+});

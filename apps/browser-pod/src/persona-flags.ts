@@ -48,7 +48,7 @@ export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
     // 这个 flag 依然必要 —— 因为 cdp proxy 拨到 relay 时的 Host 头是 relay 外部
     // ip:port（172.18.0.3:9223），chromium 拿到 Host 后仍要校验。'*' 通配安全：
     // pod CDP 只在 docker user-defined network / Fly 6PN 内部可达，安全边界在网络层。
-    `--remote-allow-origins=*`,
+    '--remote-allow-origins=*',
 
     // 持久化
     `--user-data-dir=${userDataDir}`,

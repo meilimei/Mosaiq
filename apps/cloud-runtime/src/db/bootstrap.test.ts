@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { resetEnvCache } from '../env.js';
-import { disposeDb, getDb } from './client.js';
 import { ensureDefaultPersonas, ensureSchema } from './bootstrap.js';
+import { disposeDb, getDb } from './client.js';
 
 describe('ensureSchema', () => {
   beforeEach(() => {

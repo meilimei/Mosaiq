@@ -16,8 +16,8 @@ import { z } from 'zod';
 import { parsePersona } from '@runova/persona-schema';
 
 import { getRunning, killChromium, spawnChromium } from './chromium.js';
-import { getLogger } from './logger.js';
 import { newId } from './ids.js';
+import { getLogger } from './logger.js';
 
 const StartSchema = z.object({
   sessionId: z.string().min(1),

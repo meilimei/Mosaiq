@@ -23,6 +23,14 @@
 #     persona-schema / docker-compose.local-docker.yml / smoke script changes
 #     trigger the run. Doc-only / desktop-only / cli-only PRs skip.
 #   - push:main: always run after merge.
+#   - schedule:weekly: standing regression gate (ROADMAP-90D §1). The server-
+#     side injection path (Option A: raw connectOverCDP gets deep stealth with
+#     NO client injectInto — asserted in e2e-smoke.mjs §"SERVER-SIDE injection
+#     probe") is the cloud crown jewel. A path-filtered PR gate alone can't
+#     catch drift that originates OUTSIDE our code: a new mcr.microsoft.com/
+#     playwright base image, a chromium behavior change, a transitive dep bump.
+#     The weekly cron re-runs the full docker wire path so such drift surfaces
+#     within a week instead of at the next unrelated cloud PR.
 #   - workflow_dispatch: manual handle for debugging.
 #
 # Not gated by detection-lab path filter: those are independent surfaces
@@ -55,6 +63,12 @@ on:
       - 'scripts/dev-local-docker-smoke.mjs'
       - '.env.cloud.example'
       - '.github/workflows/cloud-runtime-e2e.yml'
+  schedule:
+    # Mondays 04:30 UTC — standing regression gate for the server-side
+    # injection wire path. Staggered before detection-lab (06:00) and
+    # stealth-regression (05:30) so a shared-infra failure (e.g. Actions
+    # docker hiccup) is easy to correlate across the three weekly readings.
+    - cron: '30 4 * * 1'
   workflow_dispatch:
 
 # Cancel superseded runs.

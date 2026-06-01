@@ -50,10 +50,7 @@ function compositeKey(projectId: string, stickyKey: string): string {
  * 误阻挡新建（reaper 标 closed 时会 evict，但如果 evict 与新建并发，仍可能
  * 短暂看到 stale entry）。
  */
-export function stickyRegistryGet(
-  projectId: string,
-  stickyKey: string,
-): StickyEntry | undefined {
+export function stickyRegistryGet(projectId: string, stickyKey: string): StickyEntry | undefined {
   return stickyMap.get(compositeKey(projectId, stickyKey));
 }
 
@@ -63,11 +60,7 @@ export function stickyRegistryGet(
  * 若同 key 已有 entry，**覆盖**之 —— 这种 case 一般出现在 stickyRegistryDelete
  * 漏掉的清理路径（理论上不应发生，但容错好于报错）。
  */
-export function stickyRegistrySet(
-  projectId: string,
-  stickyKey: string,
-  entry: StickyEntry,
-): void {
+export function stickyRegistrySet(projectId: string, stickyKey: string, entry: StickyEntry): void {
   stickyMap.set(compositeKey(projectId, stickyKey), entry);
 }
 

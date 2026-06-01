@@ -137,13 +137,11 @@ function coldHappyPathRoutes(machineId: string, ip: string): Route[] {
         ),
     },
     {
-      match: (u, init) =>
-        init?.method === 'GET' && u.includes(`/machines/${machineId}`),
+      match: (u, init) => init?.method === 'GET' && u.includes(`/machines/${machineId}`),
       handler: () =>
-        new Response(
-          JSON.stringify({ id: machineId, state: 'started', private_ip: ip }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify({ id: machineId, state: 'started', private_ip: ip }), {
+          status: 200,
+        }),
     },
     {
       match: (u) => u === `http://[${ip}]:9222/healthz`,
@@ -220,8 +218,7 @@ describe('FlyPooledMachineManager — tickReplenish provisions stopped entries',
     const { fetchImpl, calls } = makeStubFetch([
       // POST /machines with skip_launch
       {
-        match: (u, init) =>
-          init?.method === 'POST' && u.endsWith('/machines'),
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: (_u, init) => {
           createCount++;
           const id = `mch_pool_${createCount}`;
@@ -243,10 +240,9 @@ describe('FlyPooledMachineManager — tickReplenish provisions stopped entries',
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_pool_'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: ips[id] ?? '' }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: ips[id] ?? '' }), {
+            status: 200,
+          });
         },
       },
     ]);
@@ -261,9 +257,8 @@ describe('FlyPooledMachineManager — tickReplenish provisions stopped entries',
     expect(createCount).toBe(2);
 
     // metadata 必须带 mosaiq_pool=true + image_tag
-    const createBody = calls.find(
-      (c) => c.method === 'POST' && c.url.endsWith('/machines'),
-    )?.body as Record<string, unknown>;
+    const createBody = calls.find((c) => c.method === 'POST' && c.url.endsWith('/machines'))
+      ?.body as Record<string, unknown>;
     const config = (createBody as { config: Record<string, unknown> })?.config;
     const metadata = config?.metadata as Record<string, string>;
     expect(metadata[POOL_METADATA_KEY]).toBe(POOL_METADATA_VALUE);
@@ -282,20 +277,18 @@ describe('FlyPooledMachineManager — tickReplenish provisions stopped entries',
         handler: () => {
           createCount++;
           const id = `mch_${createCount}`;
-          return new Response(
-            JSON.stringify({ id, state: 'created', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'created', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
     ]);
@@ -340,10 +333,9 @@ describe('FlyPooledMachineManager — acquire: warm path consumes pool entry', (
         match: (u, init) =>
           init?.method === 'POST' && u === `${FLY_BASE}/apps/mosaiq-browser-pod-test/machines`,
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_warm', state: 'created', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_warm', state: 'created', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_warm'),
@@ -361,8 +353,7 @@ describe('FlyPooledMachineManager — acquire: warm path consumes pool entry', (
       },
       // POST /start
       {
-        match: (u, init) =>
-          init?.method === 'POST' && u.endsWith('/machines/mch_warm/start'),
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines/mch_warm/start'),
         handler: () => {
           machineStates.set('mch_warm', 'started');
           return new Response(null, { status: 200 });
@@ -429,18 +420,16 @@ describe('FlyPooledMachineManager — acquire: warm path consumes pool entry', (
           );
         },
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_bad', state: 'created', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_bad', state: 'created', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_bad'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_bad', state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_bad', state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
       // POST /start fails
       {
@@ -551,9 +540,7 @@ describe('FlyPooledMachineManager — release routing', () => {
     // /control/stop + DELETE /machines/mch_pool_acq must have been called
     expect(calls.some((c) => c.url.endsWith('/control/stop'))).toBe(true);
     expect(
-      calls.some(
-        (c) => c.method === 'DELETE' && c.url.includes('/machines/mch_pool_acq'),
-      ),
+      calls.some((c) => c.method === 'DELETE' && c.url.includes('/machines/mch_pool_acq')),
     ).toBe(true);
     expect(mm.inspectPoolAlive()).toEqual([]);
   });
@@ -614,8 +601,7 @@ describe('FlyPooledMachineManager — release routing', () => {
         handler: () => new Response(null, { status: 204 }),
       },
       {
-        match: (u, init) =>
-          init?.method === 'DELETE' && u.includes('/machines/mch_pool_hold'),
+        match: (u, init) => init?.method === 'DELETE' && u.includes('/machines/mch_pool_hold'),
         handler: () => new Response(null, { status: 200 }),
       },
     ]);
@@ -657,9 +643,7 @@ describe('FlyPooledMachineManager — release routing', () => {
 
     await mm.release(m.id);
 
-    expect(
-      calls.some((c) => c.method === 'DELETE' && c.url.includes('mch_cold')),
-    ).toBe(true);
+    expect(calls.some((c) => c.method === 'DELETE' && c.url.includes('mch_cold'))).toBe(true);
   });
 });
 
@@ -682,10 +666,9 @@ describe('FlyPooledMachineManager — capacity and cap exhaustion', () => {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_cap_'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
     ]);
@@ -721,10 +704,9 @@ describe('FlyPooledMachineManager — capacity and cap exhaustion', () => {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_full_'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
     ]);
@@ -811,9 +793,7 @@ describe('FlyPooledMachineManager — bootstrap reconcile', () => {
   });
 
   it('poolBootstrapEvictForeign=false → keeps foreign stopped machines (skips them entirely)', async () => {
-    const machines = [
-      { id: 'mch_foreign', state: 'stopped', private_ip: POD_IP_1, config: {} },
-    ];
+    const machines = [{ id: 'mch_foreign', state: 'stopped', private_ip: POD_IP_1, config: {} }];
     const destroyed = new Set<string>();
     const { fetchImpl } = makeStubFetch([
       {
@@ -854,10 +834,9 @@ describe('FlyPooledMachineManager — concurrent consume safety', () => {
           return body.skip_launch === true;
         },
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_only', state: 'created', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_only', state: 'created', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
       // Cold fallback POST /machines (no skip_launch) — 由 coldHappyPathRoutes 提供
       ...coldHappyPathRoutes('mch_fallback', POD_IP_2),
@@ -893,10 +872,9 @@ describe('FlyPooledMachineManager — concurrent consume safety', () => {
       {
         match: (u) => u === `http://[${POD_IP_1}]:9222/control/start`,
         handler: () =>
-          new Response(
-            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'mch_only' }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'mch_only' }), {
+            status: 200,
+          }),
       },
     ]);
 
@@ -944,10 +922,9 @@ describe('FlyPooledMachineManager — stale eviction', () => {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
       {
@@ -995,10 +972,9 @@ describe('FlyPooledMachineManager — shutdown', () => {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
       {
@@ -1041,10 +1017,7 @@ describe('FlyPooledMachineManager — metrics', () => {
   }
 
   /** 读 labeled counter 在指定 label set 下的值（找不到 → 0）。 */
-  async function labeledValue(
-    c: Counter<string>,
-    labels: Record<string, string>,
-  ): Promise<number> {
+  async function labeledValue(c: Counter<string>, labels: Record<string, string>): Promise<number> {
     const snap = await c.get();
     const match = snap.values.find((v) =>
       Object.entries(labels).every(
@@ -1072,10 +1045,9 @@ describe('FlyPooledMachineManager — metrics', () => {
         match: (u, init) =>
           init?.method === 'POST' && u === `${FLY_BASE}/apps/mosaiq-browser-pod-test/machines`,
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_warm', state: 'created', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_warm', state: 'created', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_warm'),
@@ -1090,8 +1062,7 @@ describe('FlyPooledMachineManager — metrics', () => {
           ),
       },
       {
-        match: (u, init) =>
-          init?.method === 'POST' && u.endsWith('/machines/mch_warm/start'),
+        match: (u, init) => init?.method === 'POST' && u.endsWith('/machines/mch_warm/start'),
         handler: () => {
           machineStates.set('mch_warm', 'started');
           return new Response(null, { status: 200 });
@@ -1131,18 +1102,16 @@ describe('FlyPooledMachineManager — metrics', () => {
       {
         match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_p1', state: 'created', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_p1', state: 'created', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_p1'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_p1', state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_p1', state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          }),
       },
     ]);
 
@@ -1169,8 +1138,7 @@ describe('FlyPooledMachineManager — metrics', () => {
     await mm.tickReplenish();
     // tickReplenish kicks fire-and-forget; poll until provision settles
     await waitForCondition(
-      async () =>
-        (await labeledValue(machinePoolProvisionsTotal, { outcome: 'failed' })) >= 1,
+      async () => (await labeledValue(machinePoolProvisionsTotal, { outcome: 'failed' })) >= 1,
       1000,
     );
 
@@ -1234,10 +1202,9 @@ describe('FlyPooledMachineManager — metrics', () => {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_s_'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'stopped', private_ip: POD_IP_1 }), {
+            status: 200,
+          });
         },
       },
       {

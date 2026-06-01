@@ -153,8 +153,7 @@ export class StripeMeterReporter implements MeterReporter {
     const customerId = await this.#resolveStripeCustomerId(record.projectId);
     if (!customerId) {
       throw new Error(
-        `StripeMeterReporter: project ${record.projectId} has no stripe_customer_id; ` +
-          'set it (admin setProjectStripeCustomer) before its usage can be billed',
+        `StripeMeterReporter: project ${record.projectId} has no stripe_customer_id; set it (admin setProjectStripeCustomer) before its usage can be billed`,
       );
     }
 

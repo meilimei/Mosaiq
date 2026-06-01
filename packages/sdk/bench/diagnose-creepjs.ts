@@ -81,7 +81,7 @@ async function main() {
 
       try {
         // CreepJS timezone.ts line ~535: zone = (''+new Date()).replace(/.*\(|\).*/g, '')
-        const dateStr = '' + new Date();
+        const dateStr = `${new Date()}`;
         out.date_toString = dateStr;
         const tzNameMatch = dateStr.match(/\(([^)]+)\)/);
         out.date_toString_tzName = tzNameMatch ? tzNameMatch[1] : '(none)';
@@ -219,7 +219,7 @@ async function main() {
         return {
           [`function ${name}() { [native code] }`]: true,
           [`function get ${name}() { [native code] }`]: true,
-          [`function () { [native code] }`]: true,
+          'function () { [native code] }': true,
         };
       }
       function hasValidStack(err: unknown, reg: RegExp, i = 1) {
@@ -303,7 +303,7 @@ async function main() {
           name === 'toString' || !!lieProps['Function.toString'] || !!lieProps['Permissions.query'];
         if (detectProxies) {
           // 这里我们只关心**额外触发**的检测，跳过 instanceof / define properties 等噪声
-          (lies as Record<string, boolean>)['__proxyDetectionEscalated__'] = true;
+          (lies as Record<string, boolean>).__proxyDetectionEscalated__ = true;
         }
         return Object.keys(lies).filter((k) => !!lies[k] && !k.startsWith('__'));
       }

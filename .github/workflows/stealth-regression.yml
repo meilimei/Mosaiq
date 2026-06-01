@@ -1,0 +1,105 @@
+# Stealth Regression — injection-layer crown-jewel gate (real Chromium).
+#
+# Runs the deterministic `diagnose-*` harnesses that launch a REAL persona-
+# injected Chromium and assert, surface by surface, that the SDK injection
+# (`packages/sdk/src/injection/runner.ts`) actually took effect:
+#
+#   - diag:webgl        → main-scope WebGL vendor/renderer + 49-param caps
+#                         (the harness DEVELOPMENT.md §7 was written around —
+#                         catches the esbuild keepNames "silent death" class)
+#   - diag:worker-scope → §11 Worker/SharedWorker realm mirror: navigator.*,
+#                         webdriver=false, UA-CH (secure-context, no
+#                         HeadlessChrome), WebGL renderer + getParameter hook,
+#                         canvas getImageData hook. The §11 worker spoof is a
+#                         ~478-line hand-mirrored serialized string with NO
+#                         type-check / lint coverage; this is its only real
+#                         regression net (esp. before the planned dedup refactor).
+#
+# Why a SEPARATE workflow from ci.yml + detection-lab.yml?
+#   - ci.yml: pure-function / vitest / typecheck — never spawns Chromium.
+#   - detection-lab.yml: hits 12 LIVE detection sites (network-bound, ~15 min,
+#     flaky by nature, tolerance-gated). Good for "are we still passing real
+#     detectors", bad as a fast deterministic guard.
+#   - stealth-regression.yml: spawns Chromium but hits NO network sites — it
+#     reads spoofed values straight out of the page/worker realm. Deterministic,
+#     ~1-2 min, safe to BLOCK merges on. This is the unit-test-grade gate for
+#     the injection layer.
+#
+# Trigger policy:
+#   - pull_request / push:main on SDK + persona-schema changes (only those can
+#     move injection behavior).
+#   - schedule weekly: a Chromium version bump (playwright-core upgrade) can
+#     silently change worker realm behavior; catch it within a week.
+#   - workflow_dispatch: manual handle.
+
+name: Stealth Regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/sdk/**'
+      - 'packages/persona-schema/**'
+      - 'patches/**'
+      - '.github/workflows/stealth-regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/sdk/**'
+      - 'packages/persona-schema/**'
+      - 'patches/**'
+      - '.github/workflows/stealth-regression.yml'
+  schedule:
+    # Mondays 05:30 UTC — slightly before detection-lab's weekly so a Chromium
+    # drift shows up here (deterministic) before the noisier live-site run.
+    - cron: '30 5 * * 1'
+  workflow_dispatch:
+
+# Cancel superseded runs on the same PR/branch to save Chromium minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  injection-diagnostics:
+    name: injection diagnostics — ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # persona-schema dist is consumed by the bench harnesses via the
+      # '@runova/persona-schema/templates' package export. The SDK itself is
+      # run from source by tsx, but build it too so any d.ts drift surfaces.
+      - name: Build workspace packages
+        run: pnpm --filter "@runova/persona-schema" --filter "@runova/sdk" build
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter "@runova/sdk" exec playwright install --with-deps chromium
+
+      # Each harness exits non-zero on any failed check, so these steps gate
+      # the merge directly. Headless (no HEADED env).
+      - name: Diagnose — main-scope WebGL spoof
+        run: pnpm --filter "@runova/sdk" diag:webgl
+
+      - name: Diagnose — worker-scope spoof (runner.ts §11)
+        run: pnpm --filter "@runova/sdk" diag:worker-scope

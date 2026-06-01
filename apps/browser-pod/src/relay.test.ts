@@ -1,10 +1,14 @@
-import { createServer, createConnection, type Server, type Socket } from 'node:net';
-import { describe, expect, it, afterEach } from 'vitest';
+import { type Server, type Socket, createConnection, createServer } from 'node:net';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { startCdpRelay, type CdpRelay } from './relay.js';
+import { type CdpRelay, startCdpRelay } from './relay.js';
 
 // 起一个 echo server 充当 "chromium"。echo bytes 回去就行 —— relay 不关心协议。
-async function startEchoServer(): Promise<{ server: Server; port: number; close: () => Promise<void> }> {
+async function startEchoServer(): Promise<{
+  server: Server;
+  port: number;
+  close: () => Promise<void>;
+}> {
   return new Promise((resolve, reject) => {
     const server = createServer((sock) => {
       sock.on('data', (chunk) => {
@@ -36,7 +40,11 @@ function roundtrip(host: string, port: number, payload: Buffer, timeoutMs = 2000
     let received = 0;
     const tm = setTimeout(() => {
       sock.destroy();
-      reject(new Error(`roundtrip timeout after ${timeoutMs}ms (got ${received}/${payload.length} bytes)`));
+      reject(
+        new Error(
+          `roundtrip timeout after ${timeoutMs}ms (got ${received}/${payload.length} bytes)`,
+        ),
+      );
     }, timeoutMs);
     sock.on('data', (chunk) => {
       chunks.push(chunk);
@@ -56,7 +64,11 @@ function roundtrip(host: string, port: number, payload: Buffer, timeoutMs = 2000
 }
 
 // 等 a TCP connect 失败（用于 ECONNREFUSED 行为验证）
-function expectConnectFails(host: string, port: number, timeoutMs = 2000): Promise<NodeJS.ErrnoException> {
+function expectConnectFails(
+  host: string,
+  port: number,
+  timeoutMs = 2000,
+): Promise<NodeJS.ErrnoException> {
   return new Promise((resolve, reject) => {
     const sock: Socket = createConnection({ host, port });
     const tm = setTimeout(() => {
@@ -71,7 +83,9 @@ function expectConnectFails(host: string, port: number, timeoutMs = 2000): Promi
           resolve(new Error('socket closed with error') as NodeJS.ErrnoException);
         } else {
           // 没 error 标记也接受 —— upstream 拒绝时 relay 主动 destroy clientSock
-          resolve(new Error('socket closed by relay (upstream unreachable)') as NodeJS.ErrnoException);
+          resolve(
+            new Error('socket closed by relay (upstream unreachable)') as NodeJS.ErrnoException,
+          );
         }
       });
     });
@@ -127,12 +141,8 @@ describe('startCdpRelay', () => {
     const addr = relay.address();
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const port = addr!.port;
-    const payloads = Array.from({ length: 8 }, (_, i) =>
-      Buffer.from(`msg-${i}-${'x'.repeat(64)}`),
-    );
-    const results = await Promise.all(
-      payloads.map((p) => roundtrip('127.0.0.1', port, p)),
-    );
+    const payloads = Array.from({ length: 8 }, (_, i) => Buffer.from(`msg-${i}-${'x'.repeat(64)}`));
+    const results = await Promise.all(payloads.map((p) => roundtrip('127.0.0.1', port, p)));
     results.forEach((got, i) => {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       expect(got.equals(payloads[i]!)).toBe(true);

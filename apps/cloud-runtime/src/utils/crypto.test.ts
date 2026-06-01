@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
 
 import {
   decryptBlob,
@@ -138,12 +138,7 @@ describe('signInternalToken / verifyInternalToken', () => {
   });
 
   it('verify wrong version prefix → wrong_version', () => {
-    const result = verifyInternalToken(
-      'v99.1234567890.deadbeef',
-      secret,
-      'ctx_abc',
-      'download',
-    );
+    const result = verifyInternalToken('v99.1234567890.deadbeef', secret, 'ctx_abc', 'download');
     expect(result).toEqual({ ok: false, reason: 'wrong_version' });
   });
 });

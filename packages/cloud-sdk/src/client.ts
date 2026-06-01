@@ -68,12 +68,7 @@ export type SessionStatus = 'requested' | 'live' | 'closed' | 'errored';
 
 /** Status filter values accepted by listSessions. Includes both Mosaiq native
  *  lowercase and Browserbase uppercase aliases (server normalizes). */
-export type ListSessionsStatus =
-  | SessionStatus
-  | 'RUNNING'
-  | 'COMPLETED'
-  | 'ERROR'
-  | 'TIMED_OUT';
+export type ListSessionsStatus = SessionStatus | 'RUNNING' | 'COMPLETED' | 'ERROR' | 'TIMED_OUT';
 
 export interface ListSessionsInput {
   /** Filter by session status. Accepts native lowercase or BB uppercase aliases. */
@@ -168,9 +163,7 @@ export class MosaiqCloudClient {
 
     const body = {
       project_id: this.projectId,
-      persona: input.persona.inline
-        ? { inline: input.persona.inline }
-        : { id: input.persona.id },
+      persona: input.persona.inline ? { inline: input.persona.inline } : { id: input.persona.id },
       stealth,
       lifecycle: {
         ttl_seconds: input.ttlSeconds ?? 1800,
@@ -198,8 +191,8 @@ export class MosaiqCloudClient {
         throw err;
       }
       const detail = err.detail ?? {};
-      const sessionId = detail['existingSessionId'];
-      const cdpUrl = detail['connectUrl'];
+      const sessionId = detail.existingSessionId;
+      const cdpUrl = detail.connectUrl;
       if (typeof sessionId !== 'string' || typeof cdpUrl !== 'string') {
         throw err;
       }
@@ -245,7 +238,10 @@ export class MosaiqCloudClient {
   }
 
   async getSession(id: string): Promise<SessionInfo> {
-    const resp = await this.#req<GetSessionApiResponse>('GET', `/v1/sessions/${encodeURIComponent(id)}`);
+    const resp = await this.#req<GetSessionApiResponse>(
+      'GET',
+      `/v1/sessions/${encodeURIComponent(id)}`,
+    );
     return {
       id: resp.id,
       projectId: resp.project_id,
@@ -289,9 +285,23 @@ export class MosaiqCloudClient {
     await this.#req('DELETE', `/v1/sessions/${encodeURIComponent(id)}`);
   }
 
-  async listPersonas(): Promise<Array<{ id: string; source: string; projectId: string | null; createdAt: string; updatedAt: string }>> {
+  async listPersonas(): Promise<
+    Array<{
+      id: string;
+      source: string;
+      projectId: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>
+  > {
     const resp = await this.#req<{
-      items: Array<{ id: string; source: string; project_id: string | null; created_at: string; updated_at: string }>;
+      items: Array<{
+        id: string;
+        source: string;
+        project_id: string | null;
+        created_at: string;
+        updated_at: string;
+      }>;
     }>('GET', '/v1/personas');
     return resp.items.map((it) => ({
       id: it.id,
@@ -302,7 +312,14 @@ export class MosaiqCloudClient {
     }));
   }
 
-  async getPersona(id: string): Promise<{ id: string; source: string; projectId: string | null; persona: Persona; createdAt: string; updatedAt: string }> {
+  async getPersona(id: string): Promise<{
+    id: string;
+    source: string;
+    projectId: string | null;
+    persona: Persona;
+    createdAt: string;
+    updatedAt: string;
+  }> {
     const resp = await this.#req<{
       id: string;
       source: string;
@@ -321,7 +338,9 @@ export class MosaiqCloudClient {
     };
   }
 
-  async createPersona(persona: Persona): Promise<{ id: string; source: string; projectId: string }> {
+  async createPersona(
+    persona: Persona,
+  ): Promise<{ id: string; source: string; projectId: string }> {
     const resp = await this.#req<{ id: string; source: string; project_id: string }>(
       'POST',
       '/v1/personas',
@@ -363,7 +382,7 @@ export class MosaiqCloudClient {
     const timer = setTimeout(() => ctrl.abort(), this.#timeoutMs);
     try {
       const headers: Record<string, string> = { 'content-type': 'application/json' };
-      if (!skipAuth) headers['authorization'] = `Bearer ${this.apiKey}`;
+      if (!skipAuth) headers.authorization = `Bearer ${this.apiKey}`;
 
       let resp: Response;
       try {

@@ -115,11 +115,10 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
   const Icon = config.icon;
 
   return (
-    <div
+    <output
       className={`pointer-events-auto flex min-w-[280px] max-w-md items-start gap-3 rounded-lg border bg-background/95 p-3 text-sm shadow-lg backdrop-blur transition-all duration-200 ${
         visible ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'
       } ${config.classes}`}
-      role="status"
     >
       <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
       <div className="flex-1 break-words text-foreground">{item.message}</div>
@@ -132,7 +131,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       >
         <X className="h-3 w-3" />
       </Button>
-    </div>
+    </output>
   );
 }
 

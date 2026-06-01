@@ -131,8 +131,5 @@ export function handleApiError(err: Error, c: Context): Response {
   }
   // unexpected: 不泄漏 stack 给客户端，只在日志里留下
   console.error('[cloud-runtime] unexpected error:', err);
-  return c.json(
-    apiErrorBody(new ApiError('internal.unknown', 'Internal server error')),
-    500,
-  );
+  return c.json(apiErrorBody(new ApiError('internal.unknown', 'Internal server error')), 500);
 }

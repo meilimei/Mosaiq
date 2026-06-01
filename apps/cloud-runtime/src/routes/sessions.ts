@@ -12,10 +12,11 @@
  * 调用 cdp/proxy.ts 完成反向代理。
  */
 
-import { Hono } from 'hono';
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { z } from 'zod';
 
+import { type Persona, parsePersona } from '@runova/persona-schema';
 import {
   contextsEnabled,
   ensureContextsEnabled,
@@ -30,27 +31,22 @@ import {
 } from '../db/schema.js';
 import { loadEnv } from '../env.js';
 import { getMachineManager } from '../machine/factory.js';
-import { audit } from '../middleware/audit.js';
-import { getAuth } from '../middleware/auth.js';
-import { rateLimitTier } from '../middleware/rate-limit.js';
 import {
   mmAcquireDurationSeconds,
   quotaDeniedTotal,
   sessionsClosedTotal,
   sessionsCreatedTotal,
 } from '../metrics.js';
+import { audit } from '../middleware/audit.js';
+import { getAuth } from '../middleware/auth.js';
+import { rateLimitTier } from '../middleware/rate-limit.js';
 import { pickDefaultPersonaDbId } from '../seed/default-personas.js';
-import {
-  stickyRegistryDelete,
-  stickyRegistryGet,
-  stickyRegistrySet,
-} from '../sticky/registry.js';
-import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
+import { stickyRegistryDelete, stickyRegistryGet, stickyRegistrySet } from '../sticky/registry.js';
 import { aggregateUsage, currentMonthWindowUtc } from '../usage/aggregate.js';
+import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
-import { parsePersona, type Persona } from '@runova/persona-schema';
 
 export const sessionsRoute = new Hono();
 
@@ -389,8 +385,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
 
   // ── Phase 11.5: effective keepAlive + quota + sticky ──────────────────
   // 接受 native(lifecycle.keep_alive) 与 BB(keepAlive) 两种入口；任一 true 即生效。
-  const effectiveKeepAlive =
-    req.lifecycle.keep_alive === true || req.keepAlive === true;
+  const effectiveKeepAlive = req.lifecycle.keep_alive === true || req.keepAlive === true;
   // stickyKey 仅 keepAlive=true 时启用路由；keepAlive=false 即使传 stickyKey 也忽略，
   // 但 round-trip 进 userMetadata（GET 能取回），保留客户端语义。
   const stickyKey =
@@ -409,12 +404,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   const liveSessions = await handle.drizzle
     .select({ id: sessionsTable.id })
     .from(sessionsTable)
-    .where(
-      and(
-        eq(sessionsTable.projectId, auth.projectId),
-        eq(sessionsTable.status, 'live'),
-      ),
-    );
+    .where(and(eq(sessionsTable.projectId, auth.projectId), eq(sessionsTable.status, 'live')));
   const liveSessionCount = liveSessions.length;
   if (liveSessionCount >= env.SESSIONS_PER_PROJECT_MAX) {
     // c.header 必须在 throw 之前 set 才会被 Hono onError 路径保留（同 keepAlive cap）
@@ -541,10 +531,7 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   const ttlCeiling = effectiveKeepAlive
     ? env.SESSION_TTL_MAX_KEEPALIVE_SECONDS
     : env.SESSION_TTL_MAX_SECONDS;
-  const ttl = Math.min(
-    req.lifecycle.ttl_seconds ?? env.SESSION_TTL_DEFAULT_SECONDS,
-    ttlCeiling,
-  );
+  const ttl = Math.min(req.lifecycle.ttl_seconds ?? env.SESSION_TTL_DEFAULT_SECONDS, ttlCeiling);
 
   const sessionId = newId('ses');
   const signingKey = newId('sks');
@@ -707,19 +694,18 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     });
   }
 
-  log.info(
-    { sessionId, projectId: auth.projectId, machineId: machine.id, ttl },
-    'session created',
-  );
+  log.info({ sessionId, projectId: auth.projectId, machineId: machine.id, ttl }, 'session created');
   audit(c, 'session.create', `session:${sessionId}`, 'ok', {
     machineId: machine.id,
   });
 
-  const row = (await handle.drizzle
-    .select()
-    .from(sessionsTable)
-    .where(eq(sessionsTable.id, sessionId))
-    .limit(1))[0];
+  const row = (
+    await handle.drizzle
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.id, sessionId))
+      .limit(1)
+  )[0];
   if (!row) {
     throw new ApiError('internal.unknown', 'session row missing post-insert');
   }
@@ -866,8 +852,7 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
     // reaper/idle/crash 路径不 snapshot，因为 chromium 已 SIGKILL，user-data-dir
     // 状态不一致）。snapshotUrl 透传给 pod /control/stop，pod 内部"先 snapshot 再
     // kill"。snapshot 失败不阻止 lock 释放（见下方 finally 语义）。
-    const wantSnapshot =
-      Boolean(row.contextId) && row.contextPersist && contextsEnabled();
+    const wantSnapshot = Boolean(row.contextId) && row.contextPersist && contextsEnabled();
     const snapshotUrl = wantSnapshot ? signContextSnapshotUrl(row.contextId!) : undefined;
 
     // Phase 11.5: 显式 hold=false —— DELETE 是客户端"我要彻底关掉"的语义，
@@ -912,12 +897,7 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
       await handle.drizzle
         .update(contextsTable)
         .set({ activeSessionId: null, activeSessionAcquiredAt: null })
-        .where(
-          and(
-            eq(contextsTable.id, row.contextId),
-            eq(contextsTable.activeSessionId, id),
-          ),
-        )
+        .where(and(eq(contextsTable.id, row.contextId), eq(contextsTable.activeSessionId, id)))
         .catch((err: unknown) => {
           getLogger().warn(
             { err, sessionId: id, contextId: row.contextId },
@@ -931,8 +911,8 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
     // 也不会注入 registry，所以这里 evict 是空操作，不需要额外的 row.keepAlive 判定。
     try {
       const meta = JSON.parse(row.userMetadata ?? '{}') as Record<string, unknown>;
-      if (typeof meta['stickyKey'] === 'string') {
-        stickyRegistryDelete(row.projectId, meta['stickyKey'] as string);
+      if (typeof meta.stickyKey === 'string') {
+        stickyRegistryDelete(row.projectId, meta.stickyKey as string);
       }
     } catch {
       /* invalid JSON; ignore */

@@ -4,11 +4,11 @@
  * 跑法：内存 sqlite + mock MachineManager。Hono `app.request()` 直接打路由。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { eq, sql } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from './app.js';
 import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
@@ -18,10 +18,7 @@ import { resetEnvCache } from './env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from './machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './machine/types.js';
 import { resetRateLimitStore } from './middleware/rate-limit.js';
-import {
-  resetStickyRegistryForTesting,
-  stickyRegistrySizeForTesting,
-} from './sticky/registry.js';
+import { resetStickyRegistryForTesting, stickyRegistrySizeForTesting } from './sticky/registry.js';
 import { sha256Hex } from './utils/hash.js';
 import { newId } from './utils/ids.js';
 
@@ -83,12 +80,12 @@ beforeEach(async () => {
   process.env.PUBLIC_BASE_URL = 'http://localhost:8787';
   // 测试默认给宽松 rate-limit，避免无关 test 偶然 burst 越界。专门测限流的
   // 用例自己在 beforeEach 里 override。
-  delete process.env.RATE_LIMIT_STRICT_CAPACITY;
-  delete process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC;
-  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
-  delete process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC;
-  delete process.env.RATE_LIMIT_READ_CAPACITY;
-  delete process.env.RATE_LIMIT_READ_REFILL_PER_SEC;
+  process.env.RATE_LIMIT_STRICT_CAPACITY = undefined;
+  process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC = undefined;
+  process.env.RATE_LIMIT_WRITE_CAPACITY = undefined;
+  process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC = undefined;
+  process.env.RATE_LIMIT_READ_CAPACITY = undefined;
+  process.env.RATE_LIMIT_READ_REFILL_PER_SEC = undefined;
   resetEnvCache();
   resetRateLimitStore();
   resetStickyRegistryForTesting();
@@ -515,13 +512,13 @@ describe('GET /v1/sessions — list (Browserbase sessions.list() compat, phase 1
     const body = (await resp.json()) as Array<Record<string, unknown>>;
     expect(body).toHaveLength(1);
     const s = body[0]!;
-    expect(s['id']).toBe(id);
-    expect(s['status']).toBe('live');
-    expect(s['connectUrl']).toMatch(/\?token=sks_/);
-    expect(s['signingKey']).toMatch(/^sks_[A-Za-z0-9_-]{22}$/);
-    expect(s['keepAlive']).toBe(false);
-    expect(s['cdp_url']).toBe(s['connectUrl']);
-    expect(s['stealth']).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
+    expect(s.id).toBe(id);
+    expect(s.status).toBe('live');
+    expect(s.connectUrl).toMatch(/\?token=sks_/);
+    expect(s.signingKey).toMatch(/^sks_[A-Za-z0-9_-]{22}$/);
+    expect(s.keepAlive).toBe(false);
+    expect(s.cdp_url).toBe(s.connectUrl);
+    expect(s.stealth).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
   });
 
   it('status=RUNNING 只返回 live；status=COMPLETED 只返回已关闭', async () => {
@@ -782,67 +779,67 @@ describe('Browserbase compat — response shape (phase 11.4)', () => {
   it('POST response 同时含 native 和 BB 字段；connectUrl 与 cdp_url 同值', async () => {
     const body = await createOne();
     // native (snake_case) 字段保留
-    expect(body['id']).toMatch(/^ses_/);
+    expect(body.id).toMatch(/^ses_/);
     // Phase 11.4 commit 4c: cdp_url 内嵌 session signing key (?token=sks_...)
-    expect(body['cdp_url']).toMatch(/\/v1\/sessions\/ses_.+\/cdp\?token=sks_[A-Za-z0-9_-]{22}$/);
-    expect(body['project_id']).toBe(TEST_PROJECT_ID);
-    expect(body['created_at']).toBeTypeOf('string');
+    expect(body.cdp_url).toMatch(/\/v1\/sessions\/ses_.+\/cdp\?token=sks_[A-Za-z0-9_-]{22}$/);
+    expect(body.project_id).toBe(TEST_PROJECT_ID);
+    expect(body.created_at).toBeTypeOf('string');
     // BB (camelCase) 字段同时输出
-    expect(body['connectUrl']).toBe(body['cdp_url']);
-    expect(body['projectId']).toBe(body['project_id']);
-    expect(body['createdAt']).toBe(body['created_at']);
-    expect(body['expiresAt']).toBe(body['expires_at']);
+    expect(body.connectUrl).toBe(body.cdp_url);
+    expect(body.projectId).toBe(body.project_id);
+    expect(body.createdAt).toBe(body.created_at);
+    expect(body.expiresAt).toBe(body.expires_at);
   });
 
   it('POST response 时间字段为 ISO 8601 字符串', async () => {
     const body = await createOne();
     const isoLike = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-    expect(body['createdAt']).toMatch(isoLike);
-    expect(body['updatedAt']).toMatch(isoLike);
-    expect(body['startedAt']).toMatch(isoLike);
-    expect(body['expiresAt']).toMatch(isoLike);
-    expect(new Date(body['createdAt'] as string).toString()).not.toBe('Invalid Date');
+    expect(body.createdAt).toMatch(isoLike);
+    expect(body.updatedAt).toMatch(isoLike);
+    expect(body.startedAt).toMatch(isoLike);
+    expect(body.expiresAt).toMatch(isoLike);
+    expect(new Date(body.createdAt as string).toString()).not.toBe('Invalid Date');
   });
 
   it('POST response BB stub 字段值正确（11.4a 不实现的字段）', async () => {
     const body = await createOne();
-    expect(body['seleniumRemoteUrl']).toBeNull();
-    expect(body['contextId']).toBeNull();
-    expect(body['endedAt']).toBeNull();
-    expect(body['proxyBytes']).toBe(0);
-    expect(body['keepAlive']).toBe(false);
+    expect(body.seleniumRemoteUrl).toBeNull();
+    expect(body.contextId).toBeNull();
+    expect(body.endedAt).toBeNull();
+    expect(body.proxyBytes).toBe(0);
+    expect(body.keepAlive).toBe(false);
   });
 
   it('POST response signingKey 是 sks_... 且与 connectUrl 中的 ?token= 完全一致 (phase 11.4 commit 4c)', async () => {
     const body = await createOne();
-    const signingKey = body['signingKey'];
+    const signingKey = body.signingKey;
     expect(signingKey).toMatch(/^sks_[A-Za-z0-9_-]{22}$/);
-    const connectUrl = body['connectUrl'] as string;
+    const connectUrl = body.connectUrl as string;
     const url = new URL(connectUrl);
     expect(url.searchParams.get('token')).toBe(signingKey);
   });
 
   it('POST response userMetadata 默认为 {}（请求未传时）', async () => {
     const body = await createOne();
-    expect(body['userMetadata']).toEqual({});
+    expect(body.userMetadata).toEqual({});
   });
 
   it('GET /v1/sessions/:id 也返回 BB-compat 字段（refactor 通过 shapeSession 单一来源）', async () => {
     const created = await createOne();
-    const id = created['id'] as string;
+    const id = created.id as string;
     const app = createApp();
     const r = await app.request(`/v1/sessions/${id}`, { headers: authH() });
     expect(r.status).toBe(200);
     const body = (await r.json()) as Record<string, unknown>;
-    expect(body['connectUrl']).toBe(created['cdp_url']);
-    expect(body['createdAt']).toBe(created['createdAt']);
-    expect(body['projectId']).toBe(TEST_PROJECT_ID);
-    expect(body['proxyBytes']).toBe(0);
-    expect(body['keepAlive']).toBe(false);
+    expect(body.connectUrl).toBe(created.cdp_url);
+    expect(body.createdAt).toBe(created.createdAt);
+    expect(body.projectId).toBe(TEST_PROJECT_ID);
+    expect(body.proxyBytes).toBe(0);
+    expect(body.keepAlive).toBe(false);
     // signing key 在 GET 路径与 POST 一致 (commit 4c)
-    expect(body['signingKey']).toBe(created['signingKey']);
+    expect(body.signingKey).toBe(created.signingKey);
     // GET 路径下 persona 是 null（v0.11 phase 11.1 简化决定保留）
-    expect(body['persona']).toBeNull();
+    expect(body.persona).toBeNull();
   });
 });
 
@@ -863,8 +860,8 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
     });
     expect(resp.status).toBe(201);
     const body = (await resp.json()) as Record<string, unknown>;
-    expect(body['project_id']).toBe(TEST_PROJECT_ID);
-    expect(body['projectId']).toBe(TEST_PROJECT_ID);
+    expect(body.project_id).toBe(TEST_PROJECT_ID);
+    expect(body.projectId).toBe(TEST_PROJECT_ID);
   });
 
   it('完全省略 project id（BB SDK 默认）→ 用 auth.projectId', async () => {
@@ -878,7 +875,7 @@ describe('Browserbase compat — request body (phase 11.4)', () => {
     });
     expect(resp.status).toBe(201);
     const body = (await resp.json()) as Record<string, unknown>;
-    expect(body['project_id']).toBe(TEST_PROJECT_ID);
+    expect(body.project_id).toBe(TEST_PROJECT_ID);
   });
 
   it('project_id 与 projectId 同存且不一致 → 422 request.invalid', async () => {
@@ -1048,9 +1045,9 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     });
     expect(resp.status).toBe(201);
     const body = (await resp.json()) as Record<string, unknown>;
-    expect(body['keepAlive']).toBe(true);
+    expect(body.keepAlive).toBe(true);
     // expiresAt - now ≈ 10800s ± clock skew + insert latency；放宽到 10700~10900
-    const secondsAhead = (new Date(body['expiresAt'] as string).getTime() - Date.now()) / 1000;
+    const secondsAhead = (new Date(body.expiresAt as string).getTime() - Date.now()) / 1000;
     expect(secondsAhead).toBeGreaterThan(10700);
     expect(secondsAhead).toBeLessThan(10900);
   });
@@ -1068,7 +1065,7 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     });
     expect(resp.status).toBe(201);
     const body = (await resp.json()) as Record<string, unknown>;
-    expect(body['keepAlive']).toBe(true);
+    expect(body.keepAlive).toBe(true);
   });
 
   it('POST 同 (projectId, stickyKey) 两次 → 第二次 409 session.sticky_conflict 含 existingSessionId+expiresAt+connectUrl', async () => {
@@ -1085,7 +1082,7 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     });
     expect(first.status).toBe(201);
     const firstBody = (await first.json()) as Record<string, unknown>;
-    const firstId = firstBody['id'] as string;
+    const firstId = firstBody.id as string;
 
     const second = await app.request('/v1/sessions', {
       method: 'POST',
@@ -1099,15 +1096,18 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     });
     expect(second.status).toBe(409);
     const secondBody = (await second.json()) as {
-      error: { code: string; detail: { existingSessionId: string; expiresAt: string; connectUrl: string } };
+      error: {
+        code: string;
+        detail: { existingSessionId: string; expiresAt: string; connectUrl: string };
+      };
     };
     expect(secondBody.error.code).toBe('session.sticky_conflict');
     expect(secondBody.error.detail.existingSessionId).toBe(firstId);
-    expect(secondBody.error.detail.expiresAt).toBe(firstBody['expiresAt']);
+    expect(secondBody.error.detail.expiresAt).toBe(firstBody.expiresAt);
     // connectUrl 必须可被客户端直接用做 chromium.connectOverCDP(...) 的入参，
     // 含 ?token= 内嵌 signing key (phase 11.4 commit 4c 行为)。
     expect(secondBody.error.detail.connectUrl).toMatch(/\?token=sks_/);
-    expect(secondBody.error.detail.connectUrl).toBe(firstBody['connectUrl']);
+    expect(secondBody.error.detail.connectUrl).toBe(firstBody.connectUrl);
   });
 
   it('POST 同 stickyKey 但第一个已 DELETE → 第二次 201（stale evict 后新建）', async () => {
@@ -1184,7 +1184,7 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     expect(body.error.detail.activeCount).toBe(2);
     expect(body.error.detail.quota).toBe(2);
 
-    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
+    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('KEEPALIVE_SESSIONS_PER_PROJECT_MAX=0 → 所有 keepAlive 请求即时 429（kill switch）', async () => {
@@ -1216,7 +1216,7 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     });
     expect(normal.status).toBe(201);
 
-    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
+    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('POST keepAlive=true 不传 stickyKey → 201，sticky registry 仍为空', async () => {
@@ -1247,10 +1247,13 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
       }),
     });
     expect(resp.status).toBe(201);
-    const body = (await resp.json()) as { keepAlive: boolean; userMetadata: Record<string, unknown> };
+    const body = (await resp.json()) as {
+      keepAlive: boolean;
+      userMetadata: Record<string, unknown>;
+    };
     expect(body.keepAlive).toBe(false);
     // stickyKey 仍 round-trip 在 userMetadata 里（客户端 GET 能取回）
-    expect(body.userMetadata['stickyKey']).toBe('ignored_when_keepalive_false');
+    expect(body.userMetadata.stickyKey).toBe('ignored_when_keepalive_false');
     // 但 registry 完全不记账
     expect(stickyRegistrySizeForTesting()).toBe(0);
 
@@ -1395,7 +1398,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     expect(body.error.detail.activeCount).toBe(2);
     expect(body.error.detail.quota).toBe(2);
 
-    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('SESSIONS_PER_PROJECT_MAX=0 → kill switch, 所有新 session 立即 429', async () => {
@@ -1415,7 +1418,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     const body = (await resp.json()) as { error: { code: string } };
     expect(body.error.code).toBe('quota.sessions_exceeded');
 
-    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('关闭一个 session 后，名额释放 → 下一个 201 成功', async () => {
@@ -1463,7 +1466,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     });
     expect(retry.status).toBe(201);
 
-    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('并发配额是 per-project 隔离的', async () => {
@@ -1493,7 +1496,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     });
     expect(b.status).toBe(201);
 
-    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('keepAlive session 先走总 SESSIONS_PER_PROJECT_MAX，再走 keepAlive 子 cap', async () => {
@@ -1528,8 +1531,8 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     const body = (await keepAliveOverflow.json()) as { error: { code: string } };
     expect(body.error.code).toBe('quota.sessions_exceeded');
 
-    delete process.env.SESSIONS_PER_PROJECT_MAX;
-    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
+    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
+    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = undefined;
   });
 });
 
@@ -1572,7 +1575,9 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
     const db = handle.drizzle;
 
     // Insert 60 minutes of usage in current natural month UTC
-    const currentMonthMidIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0)).toISOString();
+    const currentMonthMidIso = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0),
+    ).toISOString();
     await db.insert(usageEvents).values({
       id: newId('use'),
       projectId: TEST_PROJECT_ID,
@@ -1607,7 +1612,7 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
-    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
   });
 
   it('自然月窗口外的用量不计入当月 quota 计算', async () => {
@@ -1618,7 +1623,9 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
     const db = handle.drizzle;
 
     // Insert 100 minutes of usage in PREVIOUS natural month (outside current month window)
-    const prevMonthMid = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 15, 12, 0, 0, 0));
+    const prevMonthMid = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() - 1, 15, 12, 0, 0, 0),
+    );
     await db.insert(usageEvents).values({
       id: newId('use'),
       projectId: TEST_PROJECT_ID,
@@ -1642,7 +1649,7 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
-    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
   });
 
   it('月度用量限制是 per-project 隔离的', async () => {
@@ -1653,7 +1660,9 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
     const db = handle.drizzle;
 
     // TEST project at quota limit
-    const currentMonthMidIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0)).toISOString();
+    const currentMonthMidIso = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0),
+    ).toISOString();
     await db.insert(usageEvents).values({
       id: newId('use'),
       projectId: TEST_PROJECT_ID,
@@ -1689,7 +1698,7 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
-    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
   });
 });
 
@@ -1718,9 +1727,7 @@ describe('Browserbase compat — default persona seed (phase 11.4 commit 4a)', (
     };
     expect(body.persona_id).toMatch(/^pers_default_/);
     expect(body.project_id).toBe(TEST_PROJECT_ID);
-    expect(body.persona.metadata.tags).toEqual(
-      expect.arrayContaining(['default', 'seed']),
-    );
+    expect(body.persona.metadata.tags).toEqual(expect.arrayContaining(['default', 'seed']));
   });
 
   it('BB-shape 仅带 projectId（无 persona） → 201，默认 seed persona', async () => {
@@ -1977,9 +1984,9 @@ describe('browserSettings.context — session lifecycle (phase 11.6)', () => {
 
   it('DELETE session w/ persist=false → release WITHOUT snapshotUrl but lock still cleared', async () => {
     const ctxId = await createContext();
-    const created = (await (
-      await createSessionWithContext(ctxId, { persist: false })
-    ).json()) as { id: string };
+    const created = (await (await createSessionWithContext(ctxId, { persist: false })).json()) as {
+      id: string;
+    };
 
     const app = createApp();
     const del = await app.request(`/v1/sessions/${created.id}`, {

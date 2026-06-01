@@ -32,8 +32,8 @@
  *   node packages/cloud-sdk/scripts/e2e-smoke-concurrent.mjs
  */
 
-import { MosaiqCloudClient } from '../dist/index.js';
 import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
+import { MosaiqCloudClient } from '../dist/index.js';
 
 const apiUrl = process.env.MOSAIQ_API_URL ?? 'http://127.0.0.1:8787';
 const apiKey = process.env.MOSAIQ_API_KEY;
@@ -87,7 +87,9 @@ const persona = createWin11ChromeUsPersona({
   masterSeed: 'concurrent-seed-001',
 });
 const N = cap + 1;
-log(`launching ${N} concurrent createSession (cap=${cap}); ${N - cap} should reject pool.exhausted`);
+log(
+  `launching ${N} concurrent createSession (cap=${cap}); ${N - cap} should reject pool.exhausted`,
+);
 
 const launchT0 = Date.now();
 const results = await Promise.all(
@@ -150,7 +152,7 @@ if (failures.length !== N - cap) {
 const sessionIds = successes.map((s) => s.session.id);
 const uniqueIds = new Set(sessionIds);
 if (uniqueIds.size !== sessionIds.length) {
-  fail(`session ids not unique`, { sessionIds });
+  fail('session ids not unique', { sessionIds });
 } else {
   ok(`all ${sessionIds.length} session ids unique`);
 }

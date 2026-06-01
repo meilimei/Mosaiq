@@ -25,6 +25,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { TEMPLATE_CATALOG } from '../packages/persona-schema/src/templates/index.js';
 // Import the leaderboard module + its types directly (not via the
 // detection-lab barrel). The barrel re-exports the runner, which pulls in
 // `injection/build-config.ts` → `@mosaiq/persona-schema/dist` — a built
@@ -32,12 +33,11 @@ import { fileURLToPath } from 'node:url';
 // module itself is dependency-free, so the direct import keeps `tsx`
 // resolving against sources only.
 import {
-  buildLeaderboard,
   type LeaderboardEntry,
+  buildLeaderboard,
   renderLeaderboardHtml,
 } from '../packages/sdk/src/detection-lab/leaderboard.js';
 import type { DetectionRun } from '../packages/sdk/src/detection-lab/types.js';
-import { TEMPLATE_CATALOG } from '../packages/persona-schema/src/templates/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');

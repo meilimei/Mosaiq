@@ -367,7 +367,7 @@ function hashMini(x: unknown): string {
   const hash = json.split('').reduce((h, _char, i) => {
     return (Math.imul(31, h) + json.charCodeAt(i)) | 0;
   }, 0x811c9dc5);
-  return ('0000000' + (hash >>> 0).toString(16)).substr(-8);
+  return `0000000${(hash >>> 0).toString(16)}`.substr(-8);
 }
 
 /** capabilitiesHash = webglParams.reduce((acc, v, i) => acc ^ (v + i), 0) */
@@ -546,7 +546,7 @@ interface Hit {
 function tryParams(newParams: readonly number[], description: string): Hit {
   const sorted = [...new Set(newParams)].sort((a, b) => a - b);
   const capHash = capabilitiesHash(sorted);
-  const brandHash = hashMini([GPU_BRAND, '' + sorted]);
+  const brandHash = hashMini([GPU_BRAND, `${sorted}`]);
   return {
     description,
     newParams: sorted,

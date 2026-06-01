@@ -104,5 +104,5 @@ export const DEFAULT_PERSONAS: ReadonlyArray<DefaultPersonaSeed> = [
 export function pickDefaultPersonaDbId(): string {
   const i = Math.floor(Math.random() * DEFAULT_PERSONAS.length);
   // Non-null assertion is safe: DEFAULT_PERSONAS is non-empty at compile time.
-  return DEFAULT_PERSONAS[i]!.dbId;
+  return DEFAULT_PERSONAS[i]?.dbId;
 }

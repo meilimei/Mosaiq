@@ -5,28 +5,21 @@
  * No bearer auth (these endpoints don't use it).
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../app.js';
+import { disposeContextStorage, getContextStorage } from '../contexts/storage.js';
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
 import { contexts as contextsTable, projects } from '../db/schema.js';
 import { resetEnvCache } from '../env.js';
 import { resetRateLimitStore } from '../middleware/rate-limit.js';
-import {
-  disposeContextStorage,
-  getContextStorage,
-} from '../contexts/storage.js';
-import {
-  deriveKey,
-  encryptBlob,
-  signInternalToken,
-} from '../utils/crypto.js';
+import { deriveKey, encryptBlob, signInternalToken } from '../utils/crypto.js';
 
 const TEST_PROJECT_ID = 'proj_test';
 
@@ -102,9 +95,7 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
 
     const token = signInternalToken(hmacSecret, id, 'download');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=${token}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=${token}`);
     expect(resp.status).toBe(200);
     expect(resp.headers.get('Content-Type')).toBe('application/octet-stream');
     expect(resp.headers.get('Content-Length')).toBe(String(blob.length));
@@ -117,9 +108,7 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
     const { id } = await insertContext({ bytes: null });
     const token = signInternalToken(hmacSecret, id, 'download');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=${token}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=${token}`);
     expect(resp.status).toBe(404);
   });
 
@@ -130,9 +119,7 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
     });
     const token = signInternalToken(hmacSecret, id, 'download');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=${token}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=${token}`);
     expect(resp.status).toBe(404);
   });
 
@@ -157,9 +144,7 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
   it('401 when token malformed', async () => {
     const { id } = await insertContext({ bytes: 100 });
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=not.a.valid.token`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=not.a.valid.token`);
     expect(resp.status).toBe(401);
   });
 
@@ -169,9 +154,7 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
     // Token for ctxA, but request ctxB
     const tokenForA = signInternalToken(hmacSecret, ctxA, 'download');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${ctxB}/download?token=${tokenForA}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${ctxB}/download?token=${tokenForA}`);
     expect(resp.status).toBe(401);
   });
 
@@ -179,25 +162,16 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
     const { id } = await insertContext({ bytes: 100 });
     const wrongOp = signInternalToken(hmacSecret, id, 'snapshot');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=${wrongOp}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=${wrongOp}`);
     expect(resp.status).toBe(401);
   });
 
   it('401 when token expired', async () => {
     const { id } = await insertContext({ bytes: 100 });
     // Sign with a "now" 10 minutes in the past → token already expired
-    const token = signInternalToken(
-      hmacSecret,
-      id,
-      'download',
-      Date.now() - 10 * 60 * 1000,
-    );
+    const token = signInternalToken(hmacSecret, id, 'download', Date.now() - 10 * 60 * 1000);
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=${token}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=${token}`);
     expect(resp.status).toBe(401);
   });
 
@@ -208,9 +182,7 @@ describe('GET /v1/_internal/contexts/:id/download', () => {
     process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
     resetEnvCache();
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/download?token=${token}`,
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/download?token=${token}`);
     expect(resp.status).toBe(401);
   });
 });
@@ -225,14 +197,11 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
 
     const token = signInternalToken(hmacSecret, id, 'snapshot');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${token}`,
-      {
-        method: 'PUT',
-        headers: { 'content-type': 'application/octet-stream' },
-        body: blob,
-      },
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${token}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: blob,
+    });
     expect(resp.status).toBe(204);
 
     // Storage now has the blob bytes-for-bytes
@@ -260,17 +229,14 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
 
     const token = signInternalToken(hmacSecret, id, 'snapshot');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${token}`,
-      {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/octet-stream',
-          'content-length': String(oversize.length),
-        },
-        body: oversize,
+    const resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${token}`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/octet-stream',
+        'content-length': String(oversize.length),
       },
-    );
+      body: oversize,
+    });
     expect(resp.status).toBe(413);
 
     // Pre-flight rejection means storage was NOT written
@@ -299,13 +265,10 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
     const { id } = await insertContext({ deletedAt: new Date().toISOString() });
     const token = signInternalToken(hmacSecret, id, 'snapshot');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${token}`,
-      {
-        method: 'PUT',
-        body: Buffer.from('data'),
-      },
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${token}`, {
+      method: 'PUT',
+      body: Buffer.from('data'),
+    });
     expect(resp.status).toBe(404);
   });
 
@@ -313,13 +276,10 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
     const { id } = await insertContext();
     const wrongOp = signInternalToken(hmacSecret, id, 'download');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${wrongOp}`,
-      {
-        method: 'PUT',
-        body: Buffer.from('data'),
-      },
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${wrongOp}`, {
+      method: 'PUT',
+      body: Buffer.from('data'),
+    });
     expect(resp.status).toBe(401);
   });
 
@@ -328,13 +288,10 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
     const wrongSecret = randomBytes(48).toString('base64');
     const forged = signInternalToken(wrongSecret, id, 'snapshot');
     const app = createApp();
-    const resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${forged}`,
-      {
-        method: 'PUT',
-        body: Buffer.from('data'),
-      },
-    );
+    const resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${forged}`, {
+      method: 'PUT',
+      body: Buffer.from('data'),
+    });
     expect(resp.status).toBe(401);
   });
 
@@ -346,18 +303,18 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
 
     const token = signInternalToken(hmacSecret, id, 'snapshot');
     const app = createApp();
-    let resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${token}`,
-      { method: 'PUT', body: v1 },
-    );
+    let resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${token}`, {
+      method: 'PUT',
+      body: v1,
+    });
     expect(resp.status).toBe(204);
 
     // Second snapshot with a fresh token (same id, op)
     const token2 = signInternalToken(hmacSecret, id, 'snapshot');
-    resp = await app.request(
-      `/v1/_internal/contexts/${id}/snapshot?token=${token2}`,
-      { method: 'PUT', body: v2 },
-    );
+    resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${token2}`, {
+      method: 'PUT',
+      body: v2,
+    });
     expect(resp.status).toBe(204);
 
     const handle = await getDb();

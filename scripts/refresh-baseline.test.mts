@@ -24,17 +24,13 @@ import assert from 'node:assert/strict';
 import {
   type DetectionRun,
   type DetectionRunRaw,
-  type SurfaceHit,
   SDK_VERSION,
   SEVERITY_WEIGHT,
+  type SurfaceHit,
   emptyHitsBySurface,
 } from '../packages/sdk/src/index.js';
 
-import {
-  compareHitForSort,
-  computeConsensus,
-  pickWorstSeverity,
-} from './refresh-baseline.mts';
+import { compareHitForSort, computeConsensus, pickWorstSeverity } from './refresh-baseline.mts';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimal tiny runner — no deps, just a list of [name, fn] and an exit.
@@ -119,7 +115,13 @@ function makeRun(o: RunOverrides = {}): DetectionRun {
   };
 }
 
-function mkHit(surface: SurfaceHit['surface'], site: string, detector: string, severity: SurfaceHit['severity'] = 'medium', evidence = ''): SurfaceHit {
+function mkHit(
+  surface: SurfaceHit['surface'],
+  site: string,
+  detector: string,
+  severity: SurfaceHit['severity'] = 'medium',
+  evidence = '',
+): SurfaceHit {
   return { surface, site, detector, severity, evidence };
 }
 

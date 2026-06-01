@@ -17,7 +17,13 @@
 
 import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
-import { callPodStart, callPodStop, rewriteCdpHost, POD_START_DEFAULT_TIMEOUT_MS } from './pod-control.js';
+import {
+  POD_START_DEFAULT_TIMEOUT_MS,
+  type PodStartResponse,
+  callPodStart,
+  callPodStop,
+  rewriteCdpHost,
+} from './pod-control.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager, ReleaseOptions } from './types.js';
 
 // 维持 phase 11.1 已发布的公共 API 形状（既有单测 import 这几个 type）。
@@ -71,7 +77,7 @@ export class StaticPoolMachineManager implements MachineManager {
     const provisionalMachineId = `mch_static_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     candidate.busyMachineId = provisionalMachineId;
 
-    let podJson;
+    let podJson: PodStartResponse;
     try {
       podJson = await callPodStart({
         podOrigin: candidate.origin,

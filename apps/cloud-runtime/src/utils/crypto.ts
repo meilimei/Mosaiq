@@ -24,7 +24,13 @@
  * HKDF 是 fast key derivation function 的正确选择。
  */
 
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 
 const ALGO = 'aes-256-gcm';
 const KEY_LEN = 32; // AES-256

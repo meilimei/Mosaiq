@@ -42,18 +42,12 @@
 import { and, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import type { Logger } from 'pino';
 
-import { loadEnv } from '../env.js';
-import {
-  auditEvents,
-  contexts as contextsTable,
-  sessions as sessionsTable,
-} from '../db/schema.js';
 import type { DbHandle } from '../db/client.js';
+import { auditEvents, contexts as contextsTable, sessions as sessionsTable } from '../db/schema.js';
+import { loadEnv } from '../env.js';
 import type { MachineManager } from '../machine/types.js';
 import { sessionsClosedTotal } from '../metrics.js';
-import {
-  stickyRegistryDelete,
-} from '../sticky/registry.js';
+import { stickyRegistryDelete } from '../sticky/registry.js';
 import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
 import { newId } from '../utils/ids.js';
 
@@ -118,11 +112,8 @@ export async function reapExpiredSessions(deps: {
   // 路径 (B) 能走该索引 covering scan。
   const idleCondition =
     idleThresholdIso !== null
-      ? and(
-          eq(sessionsTable.keepAlive, true),
-          lt(sessionsTable.lastSeenAt, idleThresholdIso),
-        )
-      : sql`0`;  // 设为 always-false，等价只走 TTL 路径
+      ? and(eq(sessionsTable.keepAlive, true), lt(sessionsTable.lastSeenAt, idleThresholdIso))
+      : sql`0`; // 设为 always-false，等价只走 TTL 路径
 
   const expired = await db.drizzle
     .select({
@@ -159,7 +150,9 @@ export async function reapExpiredSessions(deps: {
     // Phase 11.5: 区分 "硬 TTL 过期" 与 "keepAlive idle 超时"。
     // 有 both 同时命中：优先 'expired-ttl'（它是更硬的上限信号，idle 超时是软选项）。
     const isTtlExpired = row.expiresAt < nowIso;
-    const reaperReason: 'expired-ttl' | 'expired-idle' = isTtlExpired ? 'expired-ttl' : 'expired-idle';
+    const reaperReason: 'expired-ttl' | 'expired-idle' = isTtlExpired
+      ? 'expired-ttl'
+      : 'expired-idle';
 
     try {
       // 显式 hold: false：走完整销毁路径。这是 reaper 唯一逻辑——即使 row 是
@@ -194,10 +187,7 @@ export async function reapExpiredSessions(deps: {
         errorMessage: reaperReason,
       })
       .where(
-        and(
-          eq(sessionsTable.id, row.id),
-          inArray(sessionsTable.status, ['live', 'requested']),
-        ),
+        and(eq(sessionsTable.id, row.id), inArray(sessionsTable.status, ['live', 'requested'])),
       )
       .returning({ id: sessionsTable.id });
 
@@ -237,8 +227,8 @@ export async function reapExpiredSessions(deps: {
       // 中即使含 stickyKey 也不会注入 registry，所以 evict 是 no-op（需宽容决定）。
       try {
         const meta = JSON.parse(row.userMetadata ?? '{}') as Record<string, unknown>;
-        if (typeof meta['stickyKey'] === 'string') {
-          stickyRegistryDelete(row.projectId, meta['stickyKey'] as string);
+        if (typeof meta.stickyKey === 'string') {
+          stickyRegistryDelete(row.projectId, meta.stickyKey as string);
         }
       } catch {
         /* invalid JSON; ignore */
@@ -253,10 +243,7 @@ export async function reapExpiredSessions(deps: {
           .update(contextsTable)
           .set({ activeSessionId: null, activeSessionAcquiredAt: null })
           .where(
-            and(
-              eq(contextsTable.id, row.contextId),
-              eq(contextsTable.activeSessionId, row.id),
-            ),
+            and(eq(contextsTable.id, row.contextId), eq(contextsTable.activeSessionId, row.id)),
           );
       }
 
@@ -272,7 +259,11 @@ export async function reapExpiredSessions(deps: {
         });
       } catch (err) {
         logger.warn(
-          { sessionId: row.id, projectId: row.projectId, cause: err instanceof Error ? err.message : String(err) },
+          {
+            sessionId: row.id,
+            projectId: row.projectId,
+            cause: err instanceof Error ? err.message : String(err),
+          },
           'session-expiry: usage emit failed (billing event lost for this session)',
         );
       }
@@ -316,9 +307,7 @@ export function startSessionExpiryJob(opts: {
   const { intervalMs, getDb, getMachineManager, logger } = opts;
 
   if (!Number.isFinite(intervalMs) || intervalMs < 1000) {
-    throw new Error(
-      `startSessionExpiryJob: intervalMs must be >= 1000 (got ${intervalMs})`,
-    );
+    throw new Error(`startSessionExpiryJob: intervalMs must be >= 1000 (got ${intervalMs})`);
   }
 
   let stopped = false;
@@ -360,10 +349,7 @@ export function startSessionExpiryJob(opts: {
   // SIGTERM 之前不会因为没 work 而退出 —— 这是我们想要的（控制平面长跑）。
   // 但如果未来要让 cli 命令短跑后自然退出，需要改 unref()。
 
-  logger.info(
-    { intervalMs },
-    'session-expiry job started',
-  );
+  logger.info({ intervalMs }, 'session-expiry job started');
 
   return {
     stop: async () => {

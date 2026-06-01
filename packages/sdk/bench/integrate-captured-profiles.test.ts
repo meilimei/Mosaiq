@@ -160,7 +160,7 @@ describe('renderGeneratedSource', () => {
     expect(out).toContain('AUTO-GENERATED');
     expect(out).toContain(`import type { WebglProfile } from './webgl-profiles.js';`);
     // Must NOT import GL / GlParamValue (avoid unused-import noise)
-    expect(out).not.toContain(`import { GL }`);
+    expect(out).not.toContain('import { GL }');
     expect(out).toContain('export const KNOWN_PROFILES_CAPTURED: readonly WebglProfile[] = [];');
   });
 

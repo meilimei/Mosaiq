@@ -88,8 +88,7 @@ try {
 } catch (err) {
   // eslint-disable-next-line no-console
   console.error(
-    `❌ Failed to import @runova/sdk: ${err?.message ?? err}\n` +
-      'Hint: run `pnpm --filter @runova/sdk build` first, then re-invoke.',
+    `❌ Failed to import @runova/sdk: ${err?.message ?? err}\nHint: run \`pnpm --filter @runova/sdk build\` first, then re-invoke.`,
   );
   process.exit(2);
 }
@@ -221,7 +220,7 @@ function parseCompareArgs(rest) {
     else if (a === '--require-baseline') requireBaseline = true;
     else if (a === '--markdown-out') {
       markdownOut = rest[++i];
-      if (!markdownOut) bail("--markdown-out requires a file path");
+      if (!markdownOut) bail('--markdown-out requires a file path');
     } else if (a === '--network-failure-tolerance') {
       const v = rest[++i];
       if (v === undefined) bail('--network-failure-tolerance requires a number');
@@ -378,10 +377,7 @@ function renderMarkdown(diff, ctx) {
     lines.push('---');
     lines.push('');
     lines.push(
-      `> ℹ️ ${diff.sitesFlipped.okToFail.length} site(s) flipped \`ok → fail\` but ` +
-        `\`weightedHits\` did not increase and no hits were added. Within ` +
-        `\`--network-failure-tolerance=${ctx.networkTolerance}\`, so this is treated as ` +
-        'transient network noise rather than a regression.',
+      `> ℹ️ ${diff.sitesFlipped.okToFail.length} site(s) flipped \`ok → fail\` but \`weightedHits\` did not increase and no hits were added. Within \`--network-failure-tolerance=${ctx.networkTolerance}\`, so this is treated as transient network noise rather than a regression.`,
     );
     lines.push('');
   }
@@ -390,7 +386,9 @@ function renderMarkdown(diff, ctx) {
   lines.push('---');
   lines.push('');
   lines.push(`- baseline: \`${relRoot(ctx.baselineFile)}\``);
-  lines.push(`- candidate: \`${relRoot(ctx.candidateFile)}\` (stripped via \`stripRunForBaseline\`)`);
+  lines.push(
+    `- candidate: \`${relRoot(ctx.candidateFile)}\` (stripped via \`stripRunForBaseline\`)`,
+  );
 
   return lines.join('\n');
 }

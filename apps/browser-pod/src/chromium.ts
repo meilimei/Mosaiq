@@ -23,7 +23,7 @@
  * 这个 ws path 是控制平面反向代理的目标。
  */
 
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -31,10 +31,10 @@ import { chromium } from 'playwright-core';
 
 import type { Persona } from '@runova/persona-schema';
 
-import { applyCaptchaWatcher, type CaptchaWatcherHandle } from './captcha.js';
+import { type CaptchaWatcherHandle, applyCaptchaWatcher } from './captcha.js';
 import { loadContext, snapshotContext } from './context-io.js';
 import { loadEnv } from './env.js';
-import { applyServerStealth, type ServerStealthHandle } from './inject.js';
+import { type ServerStealthHandle, applyServerStealth } from './inject.js';
 import { getLogger } from './logger.js';
 import { buildChromiumFlags } from './persona-flags.js';
 
@@ -98,20 +98,18 @@ const STD_TAIL_BYTES = 16 * 1024;
  *     在 snapshot 之后才 rm）；unmanaged 退出（crash / TTL / self-death）保持 false，
  *     exit handler 照常立即 rm（不 snapshot）。
  */
-let current:
-  | {
-      proc: ChildProcess;
-      info: RunningChromium;
-      cleanupTimer: NodeJS.Timeout | null;
-      sessionUserDir: string;
-      contextProjectId: string | null;
-      managedKill: boolean;
-      /** Option A: pod 侧服务端注入连接句柄；kill 时先 close 再 SIGTERM。null = 未注入。 */
-      injectHandle: ServerStealthHandle | null;
-      /** captcha watcher 句柄；kill 时与 injectHandle 一并 close。null = 未挂。 */
-      captchaHandle: CaptchaWatcherHandle | null;
-    }
-  | null = null;
+let current: {
+  proc: ChildProcess;
+  info: RunningChromium;
+  cleanupTimer: NodeJS.Timeout | null;
+  sessionUserDir: string;
+  contextProjectId: string | null;
+  managedKill: boolean;
+  /** Option A: pod 侧服务端注入连接句柄；kill 时先 close 再 SIGTERM。null = 未注入。 */
+  injectHandle: ServerStealthHandle | null;
+  /** captcha watcher 句柄；kill 时与 injectHandle 一并 close。null = 未挂。 */
+  captchaHandle: CaptchaWatcherHandle | null;
+} | null = null;
 
 /**
  * Ring buffer式捕获 child process 输出。只保留最后的 STD_TAIL_BYTES，
@@ -136,9 +134,7 @@ class TailBuffer {
   toString(): string {
     this.trim();
     const joined = this.chunks.join('');
-    return joined.length > STD_TAIL_BYTES
-      ? joined.slice(joined.length - STD_TAIL_BYTES)
-      : joined;
+    return joined.length > STD_TAIL_BYTES ? joined.slice(joined.length - STD_TAIL_BYTES) : joined;
   }
 }
 
@@ -291,10 +287,7 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
   let internalCdpUrl: string;
   try {
     // 探活走 internal port —— chromium 真正 listen 在 127.0.0.1:POD_CDP_INTERNAL_PORT
-    internalCdpUrl = await waitForCdp(
-      env.POD_CDP_INTERNAL_PORT,
-      env.POD_CHROMIUM_BOOT_TIMEOUT_MS,
-    );
+    internalCdpUrl = await waitForCdp(env.POD_CDP_INTERNAL_PORT, env.POD_CHROMIUM_BOOT_TIMEOUT_MS);
   } catch (err) {
     // 抢救诊断：把 chromium stderr / stdout 以 error 级输出，并拼进抛出的
     // error 的 detail 里（在 cloud-runtime/api 响应里可见）。Prod 现场看到

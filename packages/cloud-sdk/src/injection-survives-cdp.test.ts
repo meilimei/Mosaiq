@@ -17,14 +17,14 @@
  * （见 docs/LAUNCHAI-INTEGRATION.md）。
  */
 
-import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 import type { Persona } from '@runova/persona-schema';
 
-import { ManagedCloudSession } from './session.js';
 import { MosaiqCloudClient } from './client.js';
+import { ManagedCloudSession } from './session.js';
 
 const FIXTURE_PATH = path.resolve(
   __dirname,
@@ -36,7 +36,7 @@ const baseOpts = {
   apiUrl: 'http://api.test',
   apiKey: 'k',
   projectId: 'proj_test',
-  fetchImpl: ((async () => new Response(null, { status: 204 })) as unknown) as typeof fetch,
+  fetchImpl: (async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
 };
 
 function makeSession(): ManagedCloudSession {

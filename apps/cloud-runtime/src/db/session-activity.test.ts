@@ -5,13 +5,13 @@
  * 验证 SQL UPDATE 命中 last_seen_at 列、where 条件按 id 过滤。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { resetEnvCache } from '../env.js';
 import { ensureSchema } from './bootstrap.js';
 import { disposeDb, getDb } from './client.js';
 import { projects, sessions as sessionsTable } from './schema.js';
-import { resetEnvCache } from '../env.js';
 import { bumpLastSeenAt } from './session-activity.js';
 
 const PROJECT_ID = 'proj_test_lastseen';

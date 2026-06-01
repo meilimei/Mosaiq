@@ -13,11 +13,11 @@
  * extract —— test setup 复用通常带来比缓解更多的坑）。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../app.js';
 import { ensureSchema } from '../db/bootstrap.js';
@@ -75,10 +75,10 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   process.env.METRICS_TOKEN = METRICS_TOKEN;
-  delete process.env.RATE_LIMIT_STRICT_CAPACITY;
-  delete process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC;
-  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
-  delete process.env.RATE_LIMIT_READ_CAPACITY;
+  process.env.RATE_LIMIT_STRICT_CAPACITY = undefined;
+  process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC = undefined;
+  process.env.RATE_LIMIT_WRITE_CAPACITY = undefined;
+  process.env.RATE_LIMIT_READ_CAPACITY = undefined;
   resetEnvCache();
   resetRateLimitStore();
   resetMetricsForTesting();
@@ -335,9 +335,7 @@ describe('counter wiring', () => {
     const m = await app.request('/v1/metrics', { headers: metricsH() });
     const text = await m.text();
     expect(text).toMatch(/contexts_total\{op="create",outcome="success"\}\s+1/);
-    expect(text).toMatch(
-      new RegExp(`contexts_active\\{project_id="${PROJECT_ID}"\\}\\s+1`),
-    );
+    expect(text).toMatch(new RegExp(`contexts_active\\{project_id="${PROJECT_ID}"\\}\\s+1`));
 
     process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
     process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
@@ -353,20 +351,20 @@ describe('counter wiring', () => {
       headers: authH(),
       body: JSON.stringify(PERSONA_FIXTURE),
     });
-    const id = ((await (
-      await app.request('/v1/sessions', {
-        method: 'POST',
-        headers: authH(),
-        body: JSON.stringify({ project_id: PROJECT_ID, persona: { id: 'win11-chrome-us' } }),
-      })
-    ).json()) as { id: string }).id;
+    const id = (
+      (await (
+        await app.request('/v1/sessions', {
+          method: 'POST',
+          headers: authH(),
+          body: JSON.stringify({ project_id: PROJECT_ID, persona: { id: 'win11-chrome-us' } }),
+        })
+      ).json()) as { id: string }
+    ).id;
     await app.request(`/v1/sessions/${id}`, { method: 'DELETE', headers: authH() });
 
     const m = await app.request('/v1/metrics', { headers: metricsH() });
     const text = await m.text();
-    expect(text).toMatch(
-      new RegExp(`usage_minutes_total\\{project_id="${PROJECT_ID}"\\}\\s+1`),
-    );
+    expect(text).toMatch(new RegExp(`usage_minutes_total\\{project_id="${PROJECT_ID}"\\}\\s+1`));
   });
 
   it('Phase 11.7: usage_events_unreported gauge 反映未上报积压（scrape 时刷新）', async () => {
@@ -392,9 +390,11 @@ describe('counter wiring', () => {
     process.env.MOSAIQ_INTERNAL_HMAC_SECRET = randomBytes(48).toString('base64');
     resetEnvCache();
     const app = createApp();
-    const ctxId = ((await (
-      await app.request('/v1/contexts', { method: 'POST', headers: authH(), body: '{}' })
-    ).json()) as { id: string }).id;
+    const ctxId = (
+      (await (
+        await app.request('/v1/contexts', { method: 'POST', headers: authH(), body: '{}' })
+      ).json()) as { id: string }
+    ).id;
 
     const del = await app.request(`/v1/contexts/${ctxId}`, {
       method: 'DELETE',
@@ -406,9 +406,7 @@ describe('counter wiring', () => {
     const text = await m.text();
     expect(text).toMatch(/contexts_total\{op="delete",outcome="success"\}\s+1/);
     // soft-deleted → not counted as active → gauge drops the project label (reset+GROUP BY)
-    expect(text).not.toMatch(
-      new RegExp(`contexts_active\\{project_id="${PROJECT_ID}"\\}`),
-    );
+    expect(text).not.toMatch(new RegExp(`contexts_active\\{project_id="${PROJECT_ID}"\\}`));
 
     process.env.MOSAIQ_CONTEXT_MASTER_KEY = '';
     process.env.MOSAIQ_INTERNAL_HMAC_SECRET = '';
@@ -436,7 +434,7 @@ describe('counter wiring', () => {
     const text = await m.text();
     expect(text).toMatch(/quota_denied_total\{reason="sessions"\}\s+1/);
 
-    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
   });
 
   it('Phase 11.8: monthly minute cap denied → quota_denied_total{reason="minutes"} increments', async () => {
@@ -445,7 +443,9 @@ describe('counter wiring', () => {
 
     const handle = await getDb();
     const db = handle.drizzle;
-    const currentMonthMidIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0)).toISOString();
+    const currentMonthMidIso = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 15, 12, 0, 0, 0),
+    ).toISOString();
     await db.insert(usageEvents).values({
       id: newId('use'),
       projectId: PROJECT_ID,
@@ -472,6 +472,6 @@ describe('counter wiring', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, PROJECT_ID));
-    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
+    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
   });
 });

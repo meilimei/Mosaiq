@@ -432,7 +432,7 @@ async function extractDbiBot(page: Page): Promise<Record<string, unknown>> {
         // tolerate "key": true 或 key: true 或 key = true
         const re = new RegExp(`["']?${k}["']?\\s*[:=]\\s*(true|false)\\b`, 'i');
         const m = body.match(re);
-        if (m && m[1]) flags[k] = m[1].toLowerCase() === 'true';
+        if (m?.[1]) flags[k] = m[1].toLowerCase() === 'true';
       }
     }
 
@@ -499,7 +499,7 @@ async function extractAmIUnique(page: Page): Promise<Record<string, unknown>> {
       if (!name || /attribute/i.test(name)) return;
       // 解析百分比
       const m = simRaw.match(/([\d.]+)\s*%/);
-      const pct = m && m[1] ? Number.parseFloat(m[1]) : null;
+      const pct = m?.[1] ? Number.parseFloat(m[1]) : null;
       const value = (valCell.textContent ?? '').trim().slice(0, 300);
       attrs.push({ name, similarityPct: pct, similarityRaw: simRaw, value });
     });
@@ -838,7 +838,7 @@ async function extractIncolumitas(page: Page): Promise<Record<string, unknown>> 
     );
 
     // ── 4. behavioral score / category（页面顶部 "Behavioral Classification"） ──
-    const behavioralMatch = allText.match(/behavioral\s+classification[^]{0,400}/i);
+    const behavioralMatch = allText.match(/behavioral\s+classification[\s\S]{0,400}/i);
     result.behavioralSnippet = behavioralMatch
       ? behavioralMatch[0].slice(0, 400).replace(/\s+/g, ' ').trim()
       : null;
@@ -890,7 +890,7 @@ async function extractFingerprintScan(page: Page): Promise<Record<string, unknow
     if (botRiskScore === null) {
       const bodyText = document.body?.textContent ?? '';
       const m = bodyText.match(/(?:bot\s+risk\s+score|risk\s+score|score)[:\s]+(\d{1,3})\b/i);
-      if (m && m[1]) {
+      if (m?.[1]) {
         const n = Number(m[1]);
         if (n >= 0 && n <= 100) {
           botRiskScore = n;

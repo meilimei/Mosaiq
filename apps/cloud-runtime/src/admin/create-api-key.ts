@@ -78,9 +78,7 @@ export async function createApiKey(input: CreateApiKeyInput): Promise<CreateApiK
   let prefix: string;
   if (input.plaintext !== undefined) {
     if (input.plaintext.length < 24) {
-      throw new Error(
-        `api key plaintext too short (${input.plaintext.length}); need >= 24 chars`,
-      );
+      throw new Error(`api key plaintext too short (${input.plaintext.length}); need >= 24 chars`);
     }
     plaintext = input.plaintext;
     prefix = plaintext.slice(0, 20);
@@ -170,8 +168,7 @@ if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
         prefix: result.prefix,
       };
       if (quiet) {
-        payload.note =
-          '--quiet: plaintext omitted from stdout (caller-supplied; not echoed)';
+        payload.note = '--quiet: plaintext omitted from stdout (caller-supplied; not echoed)';
       } else {
         payload.plaintext = result.plaintext;
         payload.warning = 'STORE THE PLAINTEXT NOW — IT IS NOT RECOVERABLE';

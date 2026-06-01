@@ -29,8 +29,8 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -111,20 +111,27 @@ function dumpDockerDiagnostics() {
     '--format',
     'table {{.ID}}\t{{.Status}}\t{{.Names}}',
   ]);
-  console.error('\n--- dynamic pod logs (label=com.mosaiq.runtime=cloud-runtime, last 120 lines each) ---');
+  console.error(
+    '\n--- dynamic pod logs (label=com.mosaiq.runtime=cloud-runtime, last 120 lines each) ---',
+  );
   try {
-    const ids = spawnSync('docker', [
-      'ps',
-      '-aq',
-      '--filter',
-      'label=com.mosaiq.runtime=cloud-runtime',
-    ], { encoding: 'utf8', cwd: REPO });
+    const ids = spawnSync(
+      'docker',
+      ['ps', '-aq', '--filter', 'label=com.mosaiq.runtime=cloud-runtime'],
+      { encoding: 'utf8', cwd: REPO },
+    );
     if (ids.error) {
       console.error(`(skipped: ${ids.error.message})`);
     } else {
-      for (const id of ids.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)) {
+      for (const id of ids.stdout
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean)) {
         console.error(`\n--- docker logs ${id} ---`);
-        const logs = spawnSync('docker', ['logs', '--tail=120', id], { encoding: 'utf8', cwd: REPO });
+        const logs = spawnSync('docker', ['logs', '--tail=120', id], {
+          encoding: 'utf8',
+          cwd: REPO,
+        });
         if (logs.stdout) console.error(logs.stdout.trimEnd());
         if (logs.stderr) console.error(logs.stderr.trimEnd());
       }
@@ -170,7 +177,9 @@ async function waitForHealth() {
     await new Promise((r) => setTimeout(r, 1_000));
   }
   console.error(`FATAL: cloud-runtime /v1/health not ready in 60s. last error: ${lastError}`);
-  console.error('Hint: did you run `docker compose -f docker-compose.local-docker.yml up -d` first?');
+  console.error(
+    'Hint: did you run `docker compose -f docker-compose.local-docker.yml up -d` first?',
+  );
   dumpDockerDiagnostics();
   process.exit(1);
 }
@@ -283,11 +292,16 @@ function runNode(scriptRelPath, label) {
 
 // ─── main ────────────────────────────────────────────────────────────────
 log(`MOSAIQ_API_URL=${apiUrl}  PROJECT=${projectId}  REQUEST_TIMEOUT_MS=${requestTimeoutMs}`);
-log(`MOSAIQ_METRICS_TOKEN ${metricsToken ? 'set (will verify /v1/metrics auth+body)' : 'unset (will only verify /v1/metrics returns 404)'}`);
+log(
+  `MOSAIQ_METRICS_TOKEN ${metricsToken ? 'set (will verify /v1/metrics auth+body)' : 'unset (will only verify /v1/metrics returns 404)'}`,
+);
 await waitForHealth();
 await verifyMetricsEndpoint();
 
-const registerOk = await runNode('packages/cloud-sdk/scripts/register-persona.mjs', 'register-persona');
+const registerOk = await runNode(
+  'packages/cloud-sdk/scripts/register-persona.mjs',
+  'register-persona',
+);
 if (!registerOk) process.exit(1);
 
 const smokeOk = await runNode('packages/cloud-sdk/scripts/e2e-smoke.mjs', 'e2e-smoke');

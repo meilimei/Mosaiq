@@ -7,8 +7,8 @@
  */
 
 import { loadEnv } from '../env.js';
-import { ApiError } from '../utils/errors.js';
 import { signInternalToken } from '../utils/crypto.js';
+import { ApiError } from '../utils/errors.js';
 
 /**
  * Feature is enabled iff BOTH secrets are configured. env.ts superRefine already

@@ -6,8 +6,8 @@
  * 测试覆盖（同 master key 派生同 key）。
  */
 
-import { describe, expect, it } from 'vitest';
 import { randomBytes } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
 
 import { decryptBlob, deriveKey, encryptBlob } from './crypto.js';
 

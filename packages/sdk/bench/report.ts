@@ -61,12 +61,12 @@ function analyzeSannysoft(extracted: Record<string, unknown>): string {
 
   let md = `**结果**：${passes}/${total} 通过，${fails} 失败，${unknown} 未识别\n\n`;
   if (failedRows.length > 0) {
-    md += `**失败检测项**：\n\n`;
+    md += '**失败检测项**：\n\n';
     for (const row of failedRows) {
       md += `- ❌ \`${row.name}\` → ${row.result}\n`;
     }
   } else {
-    md += `_全部通过_\n`;
+    md += '_全部通过_\n';
   }
   return md;
 }
@@ -88,16 +88,16 @@ function analyzeCreepjs(extracted: Record<string, unknown>): string {
 
   // 每个 lies surface 入 hits — 这才是真正的 hook detection 度量
   if (liesSurfaces.length > 0) {
-    md += `**Lies/bold-fail surfaces**（核心反检测指标）：\n\n`;
+    md += '**Lies/bold-fail surfaces**（核心反检测指标）：\n\n';
     for (const ls of liesSurfaces) {
       const icon = ls.severity === 'bold-fail' ? '🔴' : '🟠';
       md += `- ${icon} **${ls.surface}** (${ls.severity}) → \`${ls.hash}\`\n`;
     }
-    md += `\n`;
+    md += '\n';
   }
 
   if (sections.length > 0) {
-    md += `**Sections detected**：\n\n`;
+    md += '**Sections detected**：\n\n';
     for (const s of sections.slice(0, 20)) {
       md += `- **${s.title}**: ${s.subtitle.slice(0, 100)}\n`;
     }
@@ -116,14 +116,14 @@ function analyzeIphey(extracted: Record<string, unknown>): string {
 
   let md = `**结果**：${passes}/${total} 通过，${fails} 失败\n\n`;
   if (failedItems.length > 0) {
-    md += `**失败项**：\n\n`;
+    md += '**失败项**：\n\n';
     for (const item of failedItems.slice(0, 30)) {
       md += `- ❌ ${item.name}\n`;
     }
   } else if (passes > 0) {
-    md += `_全部通过_\n`;
+    md += '_全部通过_\n';
   } else {
-    md += `_⚠️ 解析未识别到检测项 — 可能站点结构变化，需手动看截图_\n`;
+    md += '_⚠️ 解析未识别到检测项 — 可能站点结构变化，需手动看截图_\n';
   }
   return md;
 }
@@ -132,11 +132,11 @@ function analyzeBrowserleaksGeneric(extracted: Record<string, unknown>): string 
   const pairs = (extracted.pairs as Array<{ name: string; value: string }>) ?? [];
   let md = `**抓到 ${pairs.length} 项 property/value**\n\n`;
   if (pairs.length > 0) {
-    md += `<details><summary>展开</summary>\n\n`;
+    md += '<details><summary>展开</summary>\n\n';
     for (const p of pairs.slice(0, 50)) {
       md += `- **${p.name}**: \`${p.value.slice(0, 100)}\`\n`;
     }
-    md += `\n</details>\n`;
+    md += '\n</details>\n';
   }
   return md;
 }
@@ -169,9 +169,10 @@ function analyzeDbiBot(extracted: Record<string, unknown>): string {
   if (trueCount === 0 && total > 0) {
     md += `_全部 ${total} 个 bot 信号均未触发 — spoof 通过_ ✅\n`;
   } else if (total === 0) {
-    md += `_⚠️ 未解析到任何 \`hasXxx/isXxx\` 布尔字段；可能页面 DOM 已变化 / Turnstile 拦截 — 看截图_\n`;
+    md +=
+      '_⚠️ 未解析到任何 `hasXxx/isXxx` 布尔字段；可能页面 DOM 已变化 / Turnstile 拦截 — 看截图_\n';
   } else {
-    md += `**触发的信号**：\n\n`;
+    md += '**触发的信号**：\n\n';
     for (const key of triggered) {
       const route = DBI_KEY_TO_SURFACE[key] ?? {
         surface: 'other' as SurfaceName,
@@ -210,17 +211,17 @@ function analyzeAmIUnique(extracted: Record<string, unknown>): string {
   md += `**Outlier 属性（< 0.5% similarity）**：${outliers.length} 项\n\n`;
 
   if (outliers.length === 0 && total > 0) {
-    md += `_所有属性都在合理常见区间 — 无 outlier 提示_\n`;
+    md += '_所有属性都在合理常见区间 — 无 outlier 提示_\n';
   } else if (outliers.length > 0) {
-    md += `<details><summary>展开 Outlier 详情</summary>\n\n`;
+    md += '<details><summary>展开 Outlier 详情</summary>\n\n';
     for (const o of outliers.slice(0, 30)) {
       md += `- 🟡 **${o.name}** \`${o.similarityRaw}\` → \`${o.value.slice(0, 80)}\`\n`;
     }
-    md += `\n</details>\n`;
+    md += '\n</details>\n';
   }
 
   if (total === 0) {
-    md += `_⚠️ 未解析到属性表；amiunique DOM 结构可能已变化 — 看截图_\n`;
+    md += '_⚠️ 未解析到属性表；amiunique DOM 结构可能已变化 — 看截图_\n';
   }
   return md;
 }
@@ -247,7 +248,8 @@ function analyzeAntoinevastel(extracted: Record<string, unknown>): string {
   let md = `**Fp-Scanner 三态结果**：✅ ${consistent} consistent / 🟡 ${unsure} unsure / 🔴 ${inconsistent} inconsistent (total ${total})\n\n`;
 
   if (total === 0) {
-    md += `_⚠️ 未解析到任何 Consistent/Unsure/Inconsistent 行 — 页面 DOM 已变化或加载未完成（看截图）_\n`;
+    md +=
+      '_⚠️ 未解析到任何 Consistent/Unsure/Inconsistent 行 — 页面 DOM 已变化或加载未完成（看截图）_\n';
     return md;
   }
   if (inconsistent === 0 && unsure === 0) {
@@ -276,23 +278,23 @@ function analyzeAntoinevastel(extracted: Record<string, unknown>): string {
     }
 
     if (reportable.length > 0) {
-      md += `**🔴 Inconsistent（强 bot 信号）**：\n\n`;
+      md += '**🔴 Inconsistent（强 bot 信号）**：\n\n';
       for (const name of reportable) {
         const route = resolveRoute(name);
         md += `- 🔴 **\`${name}\`** → surface: \`${route.surface}\`\n`;
       }
-      md += `\n`;
+      md += '\n';
     }
     if (outdated.length > 0) {
-      md += `**ℹ️ 已知过时规则（不入 hits）**：\n\n`;
+      md += '**ℹ️ 已知过时规则（不入 hits）**：\n\n';
       for (const name of outdated) {
         md += `- ℹ️ **\`${name}\`** — detector 早于 W3C spec 更新，对所有现代 Chrome 用户都报 Inconsistent\n`;
       }
-      md += `\n`;
+      md += '\n';
     }
   }
   if (unsure > 0) {
-    md += `**🟡 Unsure（模糊信号）**：\n\n`;
+    md += '**🟡 Unsure（模糊信号）**：\n\n';
     for (const name of unsureTests) {
       const route = resolveRoute(name);
       md += `- 🟡 **\`${name}\`** → surface: \`${route.surface}\`\n`;
@@ -329,7 +331,7 @@ function analyzeIncolumitas(extracted: Record<string, unknown>): string {
   }
 
   if (preSections.length === 0) {
-    md += `_⚠️ 未抓到任何 \`<pre>\` JSON 块 — 页面可能未完成异步上报（看截图）_\n`;
+    md += '_⚠️ 未抓到任何 `<pre>` JSON 块 — 页面可能未完成异步上报（看截图）_\n';
     return md;
   }
   if (total === 0 && !botDetectedText) {
@@ -351,7 +353,7 @@ function analyzeIncolumitas(extracted: Record<string, unknown>): string {
   };
 
   if (triggered.length > 0) {
-    md += `**触发的红色信号**：\n\n`;
+    md += '**触发的红色信号**：\n\n';
     for (const flag of triggered) {
       const surface = sectionToSurface(flag.section);
       md += `- 🔴 **\`${flag.section ?? '?'}.${flag.key}\`** = \`${String(flag.value)}\` → surface: \`${surface}\`\n`;
@@ -363,7 +365,7 @@ function analyzeIncolumitas(extracted: Record<string, unknown>): string {
   for (const sec of preSections.slice(0, 12)) {
     md += `**${sec.heading ?? '(no heading)'}**:\n\`\`\`\n${sec.rawSnippet.slice(0, 240)}\n\`\`\`\n`;
   }
-  md += `\n</details>\n`;
+  md += '\n</details>\n';
   return md;
 }
 
@@ -399,21 +401,21 @@ function analyzeFingerprintScan(extracted: Record<string, unknown>): string {
   md += `**关键字命中**：high-risk=${highRisk ? '✅' : '✗'} / bot-detected=${botDetected ? '✅' : '✗'}\n\n`;
 
   if (score === null || score === undefined) {
-    md += `_⚠️ 未解析到 0-100 风险分 — 页面 DOM 已变化或异步未完成（看截图）_\n`;
+    md += '_⚠️ 未解析到 0-100 风险分 — 页面 DOM 已变化或异步未完成（看截图）_\n';
     return md;
   }
 
   // Phase 3.3: Castle.io 商业 detector — 不入 hits，仅显示。
   if (verdict === 'bot' || score >= 50) {
     md += `_ℹ️ score=${score} ≥ 50 (verdict=${verdict}) — 由 **Castle.io** 商业 detector 算分。\n`;
-    md += `Castle 是 enterprise 反欺诈服务，黑盒算分 + 持续更新；reverse 工作量极重且不稳定，\n`;
-    md += `归为已知商业 detector 限制，与 CreepJS WebGL bold-fail / browserleaks-canvas\n`;
-    md += `uniqueness 一档（Phase 2.2 + Phase 2.4 known limits）。不入 hits。需要绕过\n`;
-    md += `Castle.io 的场景应等 v0.4+ chromium-fork 层面方案。_\n`;
+    md += 'Castle 是 enterprise 反欺诈服务，黑盒算分 + 持续更新；reverse 工作量极重且不稳定，\n';
+    md += '归为已知商业 detector 限制，与 CreepJS WebGL bold-fail / browserleaks-canvas\n';
+    md += 'uniqueness 一档（Phase 2.2 + Phase 2.4 known limits）。不入 hits。需要绕过\n';
+    md += 'Castle.io 的场景应等 v0.4+ chromium-fork 层面方案。_\n';
     return md;
   }
   if (highRisk || botDetected) {
-    md += `_🔴 关键字命中（high-risk 或 bot-detected）→ 判定 bot_\n`;
+    md += '_🔴 关键字命中（high-risk 或 bot-detected）→ 判定 bot_\n';
   } else if (verdict === 'suspicious' || score >= 25) {
     md += `_🟡 score=${score} 在 25-49 区间 → 可疑_\n`;
   } else {
@@ -447,7 +449,8 @@ function analyzePixelscan(extracted: Record<string, unknown>): string {
   md += `**核心卡片**：✅ ${success} / 🟡 ${warning} / 🔴 ${danger} / ⚪ ${unknown}\n\n`;
 
   if (challengeDetected) {
-    md += `_⚠️ 检测到 Cloudflare / Turnstile 挑战 — pixelscan 未完成扫描，结果不可信。请用 \`HEADED=1\` 或换干净 IP 重跑。_\n`;
+    md +=
+      '_⚠️ 检测到 Cloudflare / Turnstile 挑战 — pixelscan 未完成扫描，结果不可信。请用 `HEADED=1` 或换干净 IP 重跑。_\n';
     return md;
   }
   if (stillLoading) {
@@ -466,13 +469,13 @@ function analyzePixelscan(extracted: Record<string, unknown>): string {
                 : '⚪';
         md += `- ${icon} **${c.title}** _(status: ${c.status})_\n`;
       }
-      md += `\n</details>\n`;
+      md += '\n</details>\n';
     }
     return md;
   }
 
   if (cards.length === 0) {
-    md += `_⚠️ 未解析到任何核心检测卡片 — SPA 还未渲染完毕或选择器需要更新_\n`;
+    md += '_⚠️ 未解析到任何核心检测卡片 — SPA 还未渲染完毕或选择器需要更新_\n';
     return md;
   }
 
@@ -488,7 +491,7 @@ function analyzePixelscan(extracted: Record<string, unknown>): string {
             : '⚪';
     md += `- ${icon} **${c.title}** _(status: ${c.status})_\n`;
   }
-  md += `\n</details>\n`;
+  md += '\n</details>\n';
   return md;
 }
 
@@ -523,7 +526,7 @@ function analyzeBrowserleaksWebgl(
     const vendorOk = actualV !== '' && wantV !== '' && actualV.includes(wantV);
     const rendererOk = actualR !== '' && wantR !== '' && actualR.includes(wantR);
     if (vendorOk && rendererOk) {
-      md += `\n> ✅ **WebGL spoof 验证通过** — unmasked vendor / renderer 与 persona 声称一致\n\n`;
+      md += '\n> ✅ **WebGL spoof 验证通过** — unmasked vendor / renderer 与 persona 声称一致\n\n';
     }
   }
   md += analyzeBrowserleaksGeneric(extracted);
@@ -540,7 +543,7 @@ function findLatestResultsDir(): string {
   try {
     entries = readdirSync(root);
   } catch {
-    throw new Error(`bench/results/ 目录不存在；先跑 baseline-detection.ts`);
+    throw new Error('bench/results/ 目录不存在；先跑 baseline-detection.ts');
   }
   const dirs = entries
     .map((name) => ({ name, path: join(root, name) }))
@@ -552,9 +555,9 @@ function findLatestResultsDir(): string {
       }
     })
     .sort((a, b) => b.name.localeCompare(a.name));
-  if (dirs.length === 0) throw new Error(`bench/results/ 没有子目录；先跑 baseline-detection.ts`);
+  if (dirs.length === 0) throw new Error('bench/results/ 没有子目录；先跑 baseline-detection.ts');
   const first = dirs[0];
-  if (!first) throw new Error(`bench/results/ 没有子目录；先跑 baseline-detection.ts`);
+  if (!first) throw new Error('bench/results/ 没有子目录；先跑 baseline-detection.ts');
   return first.path;
 }
 
@@ -572,15 +575,15 @@ function summarizeSurfacePriority(hits: readonly SurfaceHit[]): string {
     e.high * weightHit('high') + e.medium * weightHit('medium') + e.low * weightHit('low');
   const ranked = [...byCount.entries()].sort((a, b) => surfaceScore(b[1]) - surfaceScore(a[1]));
 
-  let md = `| 排名 | Surface | High | Medium | Low | 加权分 | 推荐动作 |\n`;
-  md += `|---|---|---|---|---|---|---|\n`;
+  let md = '| 排名 | Surface | High | Medium | Low | 加权分 | 推荐动作 |\n';
+  md += '|---|---|---|---|---|---|---|\n';
   ranked.forEach(([surface, c], i) => {
     const score = surfaceScore(c);
     const action = recommendAction(surface, c);
     md += `| ${i + 1} | **${surface}** | ${c.high} | ${c.medium} | ${c.low} | ${score.toFixed(1)} | ${action} |\n`;
   });
   if (ranked.length === 0)
-    md += `| — | — | — | — | — | — | _所有站点未检测到失败项 — 现状已较好_ |\n`;
+    md += '| — | — | — | — | — | — | _所有站点未检测到失败项 — 现状已较好_ |\n';
   return md;
 }
 
@@ -627,8 +630,8 @@ function generate(rawPath: string, outDir: string): void {
   const score: DetectionScore = computeScore(summary);
   const hits = score.hits;
 
-  let md = `# Mosaiq SDK Baseline Detection Report\n\n`;
-  md += `> Phase 1 起点基线 — 用于决策第一个补强 surface\n\n`;
+  let md = '# Mosaiq SDK Baseline Detection Report\n\n';
+  md += '> Phase 1 起点基线 — 用于决策第一个补强 surface\n\n';
   md += `**生成时间**：${summary.timestamp}\n\n`;
   md += `**总耗时**：${(summary.overallMs / 1000).toFixed(1)}s\n\n`;
   md += `**Persona 模板**：\`${summary.persona.template}\`\n\n`;
@@ -637,7 +640,7 @@ function generate(rawPath: string, outDir: string): void {
   if ((summary.totalRetries ?? 0) > 0) {
     md += `**重试情况**：${summary.sitesWithRetry ?? 0} 站需要重试，共 ${summary.totalRetries ?? 0} 次重试（Phase 3.2 retry mechanism）\n\n`;
   }
-  md += `---\n\n## 各站详情\n\n`;
+  md += '---\n\n## 各站详情\n\n';
 
   for (const r of summary.results) {
     md += `### ${r.name} (\`${r.id}\`)\n\n`;
@@ -651,7 +654,7 @@ function generate(rawPath: string, outDir: string): void {
     if (r.title) md += `- 标题：${r.title}\n`;
     if (r.screenshot) md += `- 截图：[\`${r.screenshot}\`](./${r.screenshot})\n`;
     if (r.html) md += `- HTML：[\`${r.html}\`](./${r.html})\n`;
-    md += `\n`;
+    md += '\n';
 
     if (r.ok && r.extracted) {
       switch (r.id) {
@@ -688,23 +691,22 @@ function generate(rawPath: string, outDir: string): void {
         case 'fingerprint-scan':
           md += analyzeFingerprintScan(r.extracted);
           break;
-        case 'browserleaks-js':
         default:
           md += analyzeBrowserleaksGeneric(r.extracted);
           break;
       }
     }
-    md += `\n---\n\n`;
+    md += '\n---\n\n';
   }
 
   // ── Phase 1 surface 优先级 ────────────────────────────
-  md += `## Phase 1 Surface 优先级（基于检测结果归因）\n\n`;
+  md += '## Phase 1 Surface 优先级（基于检测结果归因）\n\n';
   md += summarizeSurfacePriority(hits);
-  md += `\n\n`;
+  md += '\n\n';
 
   // ── 完整 hits 列表 ──────────────────────────────────
   if (hits.length > 0) {
-    md += `## 完整失败检测项（按 surface 分组）\n\n`;
+    md += '## 完整失败检测项（按 surface 分组）\n\n';
     const bySurface = new Map<Surface, SurfaceHit[]>();
     for (const h of hits) {
       const arr = bySurface.get(h.surface) ?? [];
@@ -719,19 +721,20 @@ function generate(rawPath: string, outDir: string): void {
         const sevIcon = h.severity === 'high' ? '🔴' : h.severity === 'medium' ? '🟡' : '⚪';
         md += `- ${sevIcon} **\`${h.detector}\`** _(at ${h.site})_ — ${h.evidence}\n`;
       }
-      md += `\n`;
+      md += '\n';
     }
   }
 
   // ── 下一步 ──────────────────────────────────────────────────────
-  md += `## 下一步\n\n`;
+  md += '## 下一步\n\n';
   md += `1. 看上面 "Phase 1 Surface 优先级" 表，从加权分最高的 surface 起手\n`;
-  md += `2. 写对应模块的 spec.md（参考 \`chromium-fork/patches/\` 已有草案）\n`;
-  md += `3. 在 \`packages/sdk/src/injection/\` 加新模块（或扩展 runner.ts）\n`;
-  md += `4. 加单测（vitest，目标 ≥ 10 测试）\n`;
-  md += `5. 重跑 \`bench/baseline-detection.ts\` 验证通过率提升\n\n`;
-  md += `如需重新跑：\n\n`;
-  md += `\`\`\`bash\npnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts\npnpm --filter @runova/sdk exec tsx bench/report.ts\n\`\`\`\n`;
+  md += '2. 写对应模块的 spec.md（参考 `chromium-fork/patches/` 已有草案）\n';
+  md += '3. 在 `packages/sdk/src/injection/` 加新模块（或扩展 runner.ts）\n';
+  md += '4. 加单测（vitest，目标 ≥ 10 测试）\n';
+  md += '5. 重跑 `bench/baseline-detection.ts` 验证通过率提升\n\n';
+  md += '如需重新跑：\n\n';
+  md +=
+    '```bash\npnpm --filter @runova/sdk exec tsx bench/baseline-detection.ts\npnpm --filter @runova/sdk exec tsx bench/report.ts\n```\n';
 
   const outPath = join(outDir, 'report.md');
   writeFileSync(outPath, md, 'utf8');

@@ -3,11 +3,7 @@
   "metadata": {
     "id": "ubuntu-2204-chrome-us",
     "displayName": "CI Fixture — Ubuntu 22.04 Chrome US",
-    "tags": [
-      "template:ubuntu-2204-chrome-us",
-      "fixture",
-      "ci"
-    ],
+    "tags": ["template:ubuntu-2204-chrome-us", "fixture", "ci"],
     "notes": "Deterministic fixture for the v0.10 Detection Lab CI gate. Do not hand-edit — regenerate via `pnpm build-fixture-personas`.",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "updatedAt": "1970-01-01T00:00:00.000Z",
@@ -22,10 +18,7 @@
       "platformLabel": "Linux x86_64"
     },
     "locale": "en-US",
-    "languages": [
-      "en-US",
-      "en"
-    ],
+    "languages": ["en-US", "en"],
     "timezone": "America/New_York",
     "screen": {
       "width": 1920,

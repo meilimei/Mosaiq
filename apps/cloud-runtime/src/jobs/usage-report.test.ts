@@ -6,9 +6,10 @@
  * batchSize 限制、startUsageReportJob 参数校验。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq, isNull } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import type { Logger } from 'pino';
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
 import { projects, usageEvents } from '../db/schema.js';
@@ -16,7 +17,6 @@ import { resetEnvCache } from '../env.js';
 import { resetMetricsForTesting, usageReportTotal } from '../metrics.js';
 import type { MeterReporter, UsageRecord } from '../usage/reporter.js';
 import { reportUsage, startUsageReportJob } from './usage-report.js';
-import type { Logger } from 'pino';
 
 const PROJECT_A = 'proj_report_a';
 const PROJECT_B = 'proj_report_b';
@@ -102,14 +102,39 @@ describe('reportUsage', () => {
   });
 
   it('按 (project, kind) 聚合并回填 reported_at', async () => {
-    await insertUsage({ id: 'use_a1', projectId: PROJECT_A, value: 1, ts: '2026-05-01T00:00:00.000Z' });
-    await insertUsage({ id: 'use_a2', projectId: PROJECT_A, value: 2, ts: '2026-05-01T00:01:00.000Z' });
-    await insertUsage({ id: 'use_a3', projectId: PROJECT_A, value: 3, ts: '2026-05-01T00:02:00.000Z' });
-    await insertUsage({ id: 'use_b1', projectId: PROJECT_B, value: 10, ts: '2026-05-01T00:03:00.000Z' });
+    await insertUsage({
+      id: 'use_a1',
+      projectId: PROJECT_A,
+      value: 1,
+      ts: '2026-05-01T00:00:00.000Z',
+    });
+    await insertUsage({
+      id: 'use_a2',
+      projectId: PROJECT_A,
+      value: 2,
+      ts: '2026-05-01T00:01:00.000Z',
+    });
+    await insertUsage({
+      id: 'use_a3',
+      projectId: PROJECT_A,
+      value: 3,
+      ts: '2026-05-01T00:02:00.000Z',
+    });
+    await insertUsage({
+      id: 'use_b1',
+      projectId: PROJECT_B,
+      value: 10,
+      ts: '2026-05-01T00:03:00.000Z',
+    });
 
     const db = await getDb();
     const reporter = makeFakeReporter();
-    const result = await reportUsage({ db, reporter, logger: makeFakeLogger(), nowIso: '2026-05-02T00:00:00.000Z' });
+    const result = await reportUsage({
+      db,
+      reporter,
+      logger: makeFakeLogger(),
+      nowIso: '2026-05-02T00:00:00.000Z',
+    });
 
     expect(result.scanned).toBe(4);
     expect(result.reported).toBe(4);
@@ -125,12 +150,20 @@ describe('reportUsage', () => {
     expect(reporter.calls[0]!.every((r) => r.windowEnd === '2026-05-02T00:00:00.000Z')).toBe(true);
 
     // 所有行 reported_at 已回填
-    const stillNull = await db.drizzle.select().from(usageEvents).where(isNull(usageEvents.reportedAt));
+    const stillNull = await db.drizzle
+      .select()
+      .from(usageEvents)
+      .where(isNull(usageEvents.reportedAt));
     expect(stillNull).toHaveLength(0);
   });
 
   it('reporter 抛错 → 行保持 NULL，failed=true，下 tick 重试成功', async () => {
-    await insertUsage({ id: 'use_x', projectId: PROJECT_A, value: 5, ts: '2026-05-01T00:00:00.000Z' });
+    await insertUsage({
+      id: 'use_x',
+      projectId: PROJECT_A,
+      value: 5,
+      ts: '2026-05-01T00:00:00.000Z',
+    });
 
     const db = await getDb();
     const reporter = makeFakeReporter({ failOnce: true });
@@ -139,32 +172,58 @@ describe('reportUsage', () => {
     const r1 = await reportUsage({ db, reporter, logger: makeFakeLogger() });
     expect(r1.failed).toBe(true);
     expect(r1.reported).toBe(0);
-    const afterFail = await db.drizzle.select().from(usageEvents).where(eq(usageEvents.id, 'use_x'));
+    const afterFail = await db.drizzle
+      .select()
+      .from(usageEvents)
+      .where(eq(usageEvents.id, 'use_x'));
     expect(afterFail[0]?.reportedAt).toBeNull();
 
     // tick 2：reporter 恢复，重抓同一行并上报
-    const r2 = await reportUsage({ db, reporter, logger: makeFakeLogger(), nowIso: '2026-05-02T00:00:00.000Z' });
+    const r2 = await reportUsage({
+      db,
+      reporter,
+      logger: makeFakeLogger(),
+      nowIso: '2026-05-02T00:00:00.000Z',
+    });
     expect(r2.failed).toBe(false);
     expect(r2.reported).toBe(1);
-    const afterRetry = await db.drizzle.select().from(usageEvents).where(eq(usageEvents.id, 'use_x'));
+    const afterRetry = await db.drizzle
+      .select()
+      .from(usageEvents)
+      .where(eq(usageEvents.id, 'use_x'));
     expect(afterRetry[0]?.reportedAt).toBe('2026-05-02T00:00:00.000Z');
     // reporter 被调了两次（fail + success）
     expect(reporter.calls).toHaveLength(2);
   });
 
   it('不变量：只回填本次捞到的 id —— report() 期间并发插入的新行不被误标', async () => {
-    await insertUsage({ id: 'use_old', projectId: PROJECT_A, value: 1, ts: '2026-05-01T00:00:00.000Z' });
+    await insertUsage({
+      id: 'use_old',
+      projectId: PROJECT_A,
+      value: 1,
+      ts: '2026-05-01T00:00:00.000Z',
+    });
 
     const db = await getDb();
     // reporter 在 report() 执行中插入一条新的 unreported event（模拟并发 session close）。
     const sneakyReporter: MeterReporter = {
       kind: 'noop',
       async report() {
-        await insertUsage({ id: 'use_new', projectId: PROJECT_A, value: 99, ts: '2026-05-01T00:05:00.000Z' });
+        await insertUsage({
+          id: 'use_new',
+          projectId: PROJECT_A,
+          value: 99,
+          ts: '2026-05-01T00:05:00.000Z',
+        });
       },
     };
 
-    const result = await reportUsage({ db, reporter: sneakyReporter, logger: makeFakeLogger(), nowIso: '2026-05-02T00:00:00.000Z' });
+    const result = await reportUsage({
+      db,
+      reporter: sneakyReporter,
+      logger: makeFakeLogger(),
+      nowIso: '2026-05-02T00:00:00.000Z',
+    });
     expect(result.scanned).toBe(1);
     expect(result.reported).toBe(1);
 
@@ -192,23 +251,38 @@ describe('reportUsage', () => {
     expect(r1.scanned).toBe(2);
     expect(r1.reported).toBe(2);
 
-    const stillNull = await db.drizzle.select().from(usageEvents).where(isNull(usageEvents.reportedAt));
+    const stillNull = await db.drizzle
+      .select()
+      .from(usageEvents)
+      .where(isNull(usageEvents.reportedAt));
     expect(stillNull).toHaveLength(3);
   });
 
   it('usage_report_total{outcome} 计数 success / failed tick', async () => {
     const db = await getDb();
     // 成功 tick
-    await insertUsage({ id: 'use_m1', projectId: PROJECT_A, value: 1, ts: '2026-05-01T00:00:00.000Z' });
+    await insertUsage({
+      id: 'use_m1',
+      projectId: PROJECT_A,
+      value: 1,
+      ts: '2026-05-01T00:00:00.000Z',
+    });
     await reportUsage({ db, reporter: makeFakeReporter(), logger: makeFakeLogger() });
     // 失败 tick（新行 + 一次性失败 reporter）
-    await insertUsage({ id: 'use_m2', projectId: PROJECT_A, value: 1, ts: '2026-05-01T00:01:00.000Z' });
-    await reportUsage({ db, reporter: makeFakeReporter({ failOnce: true }), logger: makeFakeLogger() });
+    await insertUsage({
+      id: 'use_m2',
+      projectId: PROJECT_A,
+      value: 1,
+      ts: '2026-05-01T00:01:00.000Z',
+    });
+    await reportUsage({
+      db,
+      reporter: makeFakeReporter({ failOnce: true }),
+      logger: makeFakeLogger(),
+    });
 
     const snapshot = await usageReportTotal.get();
-    const byOutcome = Object.fromEntries(
-      snapshot.values.map((v) => [v.labels.outcome, v.value]),
-    );
+    const byOutcome = Object.fromEntries(snapshot.values.map((v) => [v.labels.outcome, v.value]));
     expect(byOutcome.success).toBe(1);
     expect(byOutcome.failed).toBe(1);
   });

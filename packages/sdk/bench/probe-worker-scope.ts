@@ -81,7 +81,7 @@ async function main() {
         worker.onerror = (ev) => {
           clearTimeout(t);
           worker.terminate();
-          reject(new Error('worker error: ' + (ev as ErrorEvent).message));
+          reject(new Error(`worker error: ${(ev as ErrorEvent).message}`));
         };
         worker.postMessage('go');
       });

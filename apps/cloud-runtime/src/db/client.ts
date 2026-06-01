@@ -11,10 +11,10 @@
  *   3) 真正的 schema migration（加字段、改类型）在 phase 11.5 上 Stripe + admin console 时再引入
  */
 
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
 
-import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { type BetterSQLite3Database, drizzle } from 'drizzle-orm/better-sqlite3';
 
 import { loadEnv } from '../env.js';
 import { getLogger } from '../utils/logger.js';
@@ -57,7 +57,11 @@ export async function getDb(): Promise<DbHandle> {
   // ":memory:" 是 better-sqlite3 的特殊文件名，单元测试路径用这个；
   // path.resolve 会把它误解析成 ./[memory] —— 单独短路。
   const isMemory = raw === ':memory:';
-  const filePath = isMemory ? ':memory:' : path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+  const filePath = isMemory
+    ? ':memory:'
+    : path.isAbsolute(raw)
+      ? raw
+      : path.resolve(process.cwd(), raw);
   if (!isMemory) fs.mkdirSync(path.dirname(filePath), { recursive: true });
   log.info({ filePath }, 'opening sqlite');
 

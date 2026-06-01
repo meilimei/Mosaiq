@@ -14,7 +14,7 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 const env = { ...process.env };
-delete env.ELECTRON_RUN_AS_NODE;
+env.ELECTRON_RUN_AS_NODE = undefined;
 
 const isWindows = process.platform === 'win32';
 const viteBin = path.resolve(

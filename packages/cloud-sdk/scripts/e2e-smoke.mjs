@@ -20,9 +20,9 @@
  *   node packages/cloud-sdk/scripts/e2e-smoke.mjs
  */
 
-import { MosaiqCloudClient } from '../dist/index.js';
 import { createWin11ChromeUsPersona } from '@runova/persona-schema/templates';
 import { chromium } from 'playwright-core';
+import { MosaiqCloudClient } from '../dist/index.js';
 
 const apiUrl = process.env.MOSAIQ_API_URL ?? 'http://127.0.0.1:8787';
 const apiKey = process.env.MOSAIQ_API_KEY;
@@ -72,14 +72,17 @@ log('client configured', { apiUrl, projectId, requestTimeoutMs });
 log('GET /v1/health');
 const health = await client.health();
 log('health', health);
-if (!health.ok) fail('health.ok'); else ok('health.ok');
-if (health.pool.cap < 1) fail('pool.cap >= 1'); else ok(`pool.cap=${health.pool.cap}`);
+if (!health.ok) fail('health.ok');
+else ok('health.ok');
+if (health.pool.cap < 1) fail('pool.cap >= 1');
+else ok(`pool.cap=${health.pool.cap}`);
 // Fly prod 开 machine pool 时，capacity().busy 含预热 stopped 机，session 关掉后 busy 也常 > 0。
 const poolBusyBaseline = health.pool.busy;
-const relaxPoolBusyAfterRelease =
-  health.machineManager === 'fly' && health.pool.cap > 1;
+const relaxPoolBusyAfterRelease = health.machineManager === 'fly' && health.pool.cap > 1;
 if (relaxPoolBusyAfterRelease) {
-  ok(`pool post-release: relaxed busy check (fly cap=${health.pool.cap}, baseline busy=${poolBusyBaseline})`);
+  ok(
+    `pool post-release: relaxed busy check (fly cap=${health.pool.cap}, baseline busy=${poolBusyBaseline})`,
+  );
 }
 
 // ─── POST /v1/sessions ──────────────────────────────────────────────────────
@@ -268,7 +271,9 @@ if (relaxPoolBusyAfterRelease) {
   if (health3.pool.busy > maxBusy) {
     fail(`pool.busy <= ${maxBusy} after release (fly pool)`, health3.pool);
   } else {
-    ok(`pool.busy=${health3.pool.busy} after release (fly pool relaxed, baseline=${poolBusyBaseline})`);
+    ok(
+      `pool.busy=${health3.pool.busy} after release (fly pool relaxed, baseline=${poolBusyBaseline})`,
+    );
   }
 } else if (health3.pool.busy !== 0) {
   fail('pool.busy == 0 after release', health3.pool);

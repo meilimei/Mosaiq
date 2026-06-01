@@ -145,7 +145,7 @@ async function main() {
         worker.onerror = (ev) => {
           clearTimeout(t);
           worker.terminate();
-          reject(new Error('worker error: ' + (ev as ErrorEvent).message));
+          reject(new Error(`worker error: ${(ev as ErrorEvent).message}`));
         };
         worker.postMessage('go');
       });
@@ -163,12 +163,12 @@ async function main() {
         const stack = (src[k] as string | undefined) ?? '';
         const hits = scan(stack);
         if (hits.length) totalHits += hits.length;
-        console.log(`\n[${k}] hits=${hits.length === 0 ? '✅ none' : '❌ ' + hits.join(',')}`);
+        console.log(`\n[${k}] hits=${hits.length === 0 ? '✅ none' : `❌ ${hits.join(',')}`}`);
         // 截 800 字够看
         console.log((stack ?? '').slice(0, 800));
       }
     }
-    console.log('\n' + '='.repeat(60));
+    console.log(`\n${'='.repeat(60)}`);
     console.log(
       totalHits === 0
         ? '✅ NO suspicious frames found in any stack — Error.stack clean'

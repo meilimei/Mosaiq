@@ -366,7 +366,7 @@ export function hashMini(x: unknown): string {
   const hash = json.split('').reduce((h, _char, i) => {
     return (Math.imul(31, h) + json.charCodeAt(i)) | 0;
   }, 0x811c9dc5);
-  return ('0000000' + (hash >>> 0).toString(16)).substr(-8);
+  return `0000000${(hash >>> 0).toString(16)}`.substr(-8);
 }
 
 /** capabilitiesHash = sortedUniqueParams.reduce((acc, v, i) => acc ^ ((v + i) | 0), 0) */
@@ -380,7 +380,7 @@ export function capabilitiesHash(sortedUniqueParams: readonly number[]): number 
  * 'Google' / 其他。我们的 spoof 是 ANGLE wrap，brand 字符串通常被 CreepJS 抓到 vendor 部分。
  */
 export function brandHash(gpuBrand: string, sortedUniqueParams: readonly number[]): string {
-  return hashMini([gpuBrand, '' + sortedUniqueParams]);
+  return hashMini([gpuBrand, `${sortedUniqueParams}`]);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

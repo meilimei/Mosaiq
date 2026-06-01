@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import type { Logger } from 'pino';
 
-import { deriveKey, decryptBlob, encryptBlob } from './crypto.js';
+import { decryptBlob, deriveKey, encryptBlob } from './crypto.js';
 import { loadEnv } from './env.js';
 import { getLogger } from './logger.js';
 
@@ -75,13 +75,7 @@ export interface ContextIoDeps {
 export interface SnapshotResult {
   ok: boolean;
   /** 失败 / skip 原因。 */
-  reason?:
-    | 'no_master_key'
-    | 'too_large'
-    | 'rejected_413'
-    | 'tar_failed'
-    | 'http_error'
-    | 'error';
+  reason?: 'no_master_key' | 'too_large' | 'rejected_413' | 'tar_failed' | 'http_error' | 'error';
   /** 加密 blob 字节数（若已算出）。 */
   bytes?: number;
 }

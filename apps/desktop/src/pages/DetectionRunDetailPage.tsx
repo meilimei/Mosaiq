@@ -87,7 +87,9 @@ export function DetectionRunDetailPage({
     const out: Record<string, SurfaceHit[]> = {};
     const all = run?.score?.hits ?? [];
     for (const h of all) {
-      (out[h.site] ||= []).push(h);
+      const bucket = out[h.site];
+      if (bucket) bucket.push(h);
+      else out[h.site] = [h];
     }
     return out;
   }, [run]);
@@ -388,7 +390,7 @@ export function DetectionRunDetailPage({
       )}
 
       {/* 12 站 grid */}
-      {run.raw && run.raw.results && run.raw.results.length > 0 && (
+      {run.raw?.results && run.raw.results.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">站点结果</h2>

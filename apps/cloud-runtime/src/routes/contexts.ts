@@ -12,8 +12,8 @@
  * 见 docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §5。
  */
 
-import { Hono } from 'hono';
 import { and, eq, isNull, sql } from 'drizzle-orm';
+import { Hono } from 'hono';
 
 import { ensureContextsEnabled } from '../contexts/feature.js';
 import { getDb } from '../db/client.js';
@@ -50,9 +50,7 @@ contextsRoute.post('/', rateLimitTier('write'), async (c) => {
   const activeRows = await handle.drizzle
     .select({ count: sql<number>`count(*)` })
     .from(contextsTable)
-    .where(
-      and(eq(contextsTable.projectId, auth.projectId), isNull(contextsTable.deletedAt)),
-    );
+    .where(and(eq(contextsTable.projectId, auth.projectId), isNull(contextsTable.deletedAt)));
   const activeCount = Number(activeRows[0]?.count ?? 0);
   if (activeCount >= env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX) {
     audit(c, 'context.create', `project:${auth.projectId}`, 'denied', {
@@ -85,11 +83,7 @@ contextsRoute.post('/', rateLimitTier('write'), async (c) => {
   });
 
   const row = (
-    await handle.drizzle
-      .select()
-      .from(contextsTable)
-      .where(eq(contextsTable.id, id))
-      .limit(1)
+    await handle.drizzle.select().from(contextsTable).where(eq(contextsTable.id, id)).limit(1)
   )[0];
 
   if (!row) {

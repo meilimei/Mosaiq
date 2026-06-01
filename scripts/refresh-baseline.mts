@@ -73,6 +73,7 @@ import {
   type HitsBySurface,
   type Persona,
   SDK_VERSION,
+  SEVERITY_WEIGHT,
   type SiteResult,
   type SurfaceHit,
   diffRuns,
@@ -80,7 +81,6 @@ import {
   importPersonaJson,
   loadPersona,
   runDetection,
-  SEVERITY_WEIGHT,
   stripRunForBaseline,
 } from '../packages/sdk/src/index.js';
 
@@ -195,7 +195,7 @@ function listFixturePersonas(filter: readonly string[]): FixtureRef[] {
   for (const id of requested) {
     const jsonPath = resolve(FIXTURES_DIR, `${id}.json`);
     if (!existsSync(jsonPath)) {
-      bail(`Fixture persona not found: ${jsonPath}\n` + 'Hint: did you mistype --persona ?');
+      bail(`Fixture persona not found: ${jsonPath}\nHint: did you mistype --persona ?`);
     }
     refs.push({
       id,
@@ -360,10 +360,7 @@ export function computeConsensus(runs: readonly DetectionRun[]): DetectionRun {
   for (const h of consensusHits) {
     consensusHitsBySurface[h.surface] = (consensusHitsBySurface[h.surface] ?? 0) + 1;
   }
-  const consensusWeighted = consensusHits.reduce(
-    (acc, h) => acc + SEVERITY_WEIGHT[h.severity],
-    0,
-  );
+  const consensusWeighted = consensusHits.reduce((acc, h) => acc + SEVERITY_WEIGHT[h.severity], 0);
 
   // For metric fields like sannysoftPass / creepjsLies that the score
   // tracks: take the median across runs (or mean for fractional). Simpler
@@ -537,7 +534,7 @@ async function main(): Promise<number> {
         Math.abs(diff.delta.weightedHits) > 0;
 
       if (!drift) {
-        log(`✓ no drift — committed baseline still valid`);
+        log('✓ no drift — committed baseline still valid');
         continue;
       }
 
@@ -549,12 +546,12 @@ async function main(): Promise<number> {
       );
       driftCount += 1;
     } else {
-      log(`! no committed baseline — will write new`);
+      log('! no committed baseline — will write new');
       driftCount += 1;
     }
 
     if (opts.check) {
-      log(`(--check: not writing)`);
+      log('(--check: not writing)');
       continue;
     }
 
@@ -579,8 +576,7 @@ async function main(): Promise<number> {
 // Only auto-run main() when invoked directly (e.g. `tsx scripts/refresh-baseline.mts`).
 // When imported by `refresh-baseline.test.mts` for unit coverage of the pure
 // `computeConsensus` helper, the test file should not also spawn Chromium.
-const isDirectInvocation =
-  import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+const isDirectInvocation = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 if (isDirectInvocation) {
   main().then(
     (code) => process.exit(code),

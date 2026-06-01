@@ -178,10 +178,12 @@ await context.addInitScript({ content: script });
 
 | 项 | 现状 | 触发 / 解冻条件 |
 |---|---|---|
-| **Biome 全仓清理** | `pnpm lint` 仍约 500 条 legacy findings（pre-v0.8 bench 脚本 + 部分 renderer 页面 + 2k 行 `runner.ts`）。CI 的 `lint` job 因此设为 **non-blocking**（`biome ci --changed` 会整文件 lint，碰到 legacy 文件会 false-fail）。 | 全仓清理（注意 `--unsafe` 自动修复别碰 `runner.ts`，手工逐条）后，去掉 `.github/workflows/ci.yml` `lint` job 的 `continue-on-error`，翻成 blocking。 |
-| **`runner.ts` worker-scope 注入串重复** | worker spoof 是约 270 行内嵌字符串（`src/injection/runner.ts` §11），与 main scope 逻辑手工保持同步，易漂移。 | 提取共享生成器。**高风险**（crown-jewel 文件，esbuild 序列化 + 真 Chromium 行为只能 E2E 验证，见 §7），动手前先补 `bench/diagnose-*.ts` 的真 Chromium 回归覆盖。 |
-| **Cloud 服务端注入** | ✅ **已实现（v0.11，默认开启）**：pod `applyServerStealth` + 裸 connectOverCDP 深层 stealth。**已验证**：本地 Docker e2e + **Fly prod**（`scripts/prod-smoke-cloud.mjs` → `server_inject_ok`，2026-05-31）+ LaunchAI `dev:mosaiq-smoke` 14/14。 | 剩余：CI `cloud-runtime-e2e.yml` 定期绿。`stealth.inject` / `POD_SERVER_INJECT` 可即时回退。 |
-| **Cloud 单点拓扑** | `cloud-runtime` 单 SQLite 卷 + 单 region + 内存态（rate-limit / sticky registry / machine pool）= 单实例、单点。alpha 可接受。 | 接真实付费客户 / 需要 SLA 前，定多实例 + Postgres / 共享存储 + 分布式锁方案。 |
+| **Biome 全仓清理** | ✅ **已完成（2026-06）**：`biome check` error 级为 0；`runner.ts` 有 overrides、未 `--unsafe` 自动修。CI `lint` job **blocking**（已去掉 `continue-on-error`）。 | 新文件遵守默认 rules；`runner.ts` 改动仍手工 review。 |
+| **`runner.ts` worker-scope 注入串重复** | ✅ **部分夯实**：`pnpm diag:worker-scope`（18/18）+ `stealth-regression.yml` 周/PR 回归；§11 WebGL pname 集与 main scope 共享（`I32S/F32S/STRS` 由 `INT32_PNAMES` 等生成）。**未**提取完整 `inject-helper.ts`（~270 行 worker IIFE 仍内嵌）。 | 全量去重仍属 crown-jewel 变更；需 harness 绿 + 真 Chromium 后再动。 |
+| **Cloud 服务端注入** | ✅ **已实现（v0.11，默认开启）**：pod `applyServerStealth` + 裸 connectOverCDP 深层 stealth。**已验证**：本地 Docker e2e + **Fly prod** + LaunchAI `dev:mosaiq-smoke` 14/14。 | ✅ `cloud-runtime-e2e.yml` 每周 cron + `server_inject_ok` 断言。`stealth.inject` / `POD_SERVER_INJECT` 可即时回退。 |
+| **Cloud 单点拓扑** | `cloud-runtime` 单 SQLite + 内存态（rate-limit / sticky / fly-pool）。启动时 `logSingleInstanceAssumption` 告警；ADR：[`docs/CLOUD-SINGLE-INSTANCE-ADR.md`](./docs/CLOUD-SINGLE-INSTANCE-ADR.md)。 | 首个付费/SLA 或 `>1` 实例前：Postgres + Redis/DB sticky + pool leader（ADR § Phase B1–B3）。 |
+| **Captcha 自动求解** | ✅ **observe-only 默认**：`POD_CAPTCHA_SOLVER=false`、`POD_CAPTCHA_PROVIDER=none`；`captcha.ts` + `captcha.test.ts` 覆盖检测/集成层；**不**开 solver 直至付费解冻。 | anti-scope：见 [`ROADMAP-90D.md`](./docs/ROADMAP-90D.md) §4。 |
+| **GTM / 人工清单** | 工程无法代劳项集中在 [`docs/GTM-HUMAN-CHECKLIST.md`](./docs/GTM-HUMAN-CHECKLIST.md)（npm 首发、Pages leaderboard、真账号周测、LaunchAI prod、外部用户）。 | 阶段二出关标准见 ROADMAP §2。 |
 
 ---
 

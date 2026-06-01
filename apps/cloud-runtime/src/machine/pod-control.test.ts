@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../utils/errors.js';
 import {
+  type FetchLike,
+  type PodStartResponse,
   callPodStart,
   callPodStop,
   rewriteCdpHost,
   waitForPodReady,
-  type FetchLike,
-  type PodStartResponse,
 } from './pod-control.js';
 import type { AcquireSpec } from './types.js';
 
@@ -38,9 +38,9 @@ function fakeFetch(handler: (url: string, init?: RequestInit) => Promise<Respons
 
 describe('rewriteCdpHost', () => {
   it('replaces host, keeps chromium-reported port and path', () => {
-    expect(rewriteCdpHost('ws://localhost:9223/devtools/browser/abc', 'http://browser-pod-1:9222')).toBe(
-      'ws://browser-pod-1:9223/devtools/browser/abc',
-    );
+    expect(
+      rewriteCdpHost('ws://localhost:9223/devtools/browser/abc', 'http://browser-pod-1:9222'),
+    ).toBe('ws://browser-pod-1:9223/devtools/browser/abc');
   });
 
   it('falls back to origin port when chromium did not report one', () => {
@@ -90,10 +90,10 @@ describe('callPodStart', () => {
     let captured: unknown;
     const fetchImpl = fakeFetch(async (_url, init) => {
       captured = JSON.parse(String(init?.body));
-      return new Response(
-        JSON.stringify({ cdpUrl: 'ws://x:9223/d', machineId: 'm1' }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
+      return new Response(JSON.stringify({ cdpUrl: 'ws://x:9223/d', machineId: 'm1' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
     });
     await callPodStart({
       podOrigin: 'http://pod-1:9222',
@@ -104,8 +104,8 @@ describe('callPodStart', () => {
   });
 
   it('5xx body → ApiError(machine.spawn_failed) with truncated body', async () => {
-    const fetchImpl = fakeFetch(async () =>
-      new Response('boom-' + 'x'.repeat(500), { status: 500 }),
+    const fetchImpl = fakeFetch(
+      async () => new Response(`boom-${'x'.repeat(500)}`, { status: 500 }),
     );
     await expect(
       callPodStart({ podOrigin: 'http://p:9222', spec: acquireSpec, fetchImpl }),
@@ -126,11 +126,12 @@ describe('callPodStart', () => {
   });
 
   it('200 but invalid payload → ApiError(machine.spawn_failed)', async () => {
-    const fetchImpl = fakeFetch(async () =>
-      new Response(JSON.stringify({ unexpected: 'shape' }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetchImpl = fakeFetch(
+      async () =>
+        new Response(JSON.stringify({ unexpected: 'shape' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     );
     await expect(
       callPodStart({ podOrigin: 'http://p:9222', spec: acquireSpec, fetchImpl }),

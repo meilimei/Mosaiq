@@ -79,10 +79,7 @@
           "platformLabel": "MacIntel"
         },
         "locale": "en-US",
-        "languages": [
-          "en-US",
-          "en"
-        ],
+        "languages": ["en-US", "en"],
         "timezone": "America/Los_Angeles",
         "screen": {
           "width": 1470,
@@ -2116,9 +2113,7 @@
           "consistent": 20,
           "unsure": 0,
           "inconsistent": 1,
-          "inconsistentTests": [
-            "WEBDRIVER"
-          ],
+          "inconsistentTests": ["WEBDRIVER"],
           "unsureTests": [],
           "fpCollect": null
         }
@@ -2273,10 +2268,7 @@
                 "hardwareConcurrency": 8,
                 "vendor": "Google Inc.",
                 "language": "en-US",
-                "languages": [
-                  "en-US",
-                  "en"
-                ]
+                "languages": ["en-US", "en"]
               },
               "rawSnippet": "{\n  \"userAgent\": \"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"appVersion\": \"5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"platform\": \"MacIntel\",\n  \"webdriver\": false,\n  \"deviceMemory\": 8,\n  \"hardwareConcurrency\": 8,\n  \"vendor\": \"Google Inc.\",\n "
             },
@@ -2326,10 +2318,7 @@
                 "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
                 "platform": "MacIntel",
                 "language": "en-US",
-                "languages": [
-                  "en-US",
-                  "en"
-                ],
+                "languages": ["en-US", "en"],
                 "screen": {
                   "wInnerHeight": 956,
                   "wOuterHeight": 956,
@@ -2348,11 +2337,7 @@
                   "sPixelDepth": 30,
                   "wDevicePixelRatio": 2
                 },
-                "touchScreen": [
-                  0,
-                  false,
-                  false
-                ],
+                "touchScreen": [0, false, false],
                 "videoCard": [
                   "Google Inc. (Apple)",
                   "ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)"
@@ -2555,11 +2540,7 @@
                 ],
                 "etsl": 33,
                 "screenDesc": "function get width() { [native code] }",
-                "phantomJS": [
-                  false,
-                  false,
-                  false
-                ],
+                "phantomJS": [false, false, false],
                 "nightmareJS": false,
                 "selenium": [
                   false,
@@ -2582,15 +2563,7 @@
                 ],
                 "webDriver": true,
                 "webDriverValue": false,
-                "errorsGenerated": [
-                  "azeaze is not defined",
-                  null,
-                  null,
-                  null,
-                  null,
-                  null,
-                  null
-                ],
+                "errorsGenerated": ["azeaze is not defined", null, null, null, null, null, null],
                 "resOverflow": {
                   "depth": 9559,
                   "errorMessage": "Maximum call stack size exceeded",

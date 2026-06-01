@@ -34,9 +34,9 @@ import { WebSocket, WebSocketServer } from 'ws';
 
 import { getDb } from '../db/client.js';
 import { sessions as sessionsTable } from '../db/schema.js';
+import { apiKeys } from '../db/schema.js';
 import { bumpLastSeenAt } from '../db/session-activity.js';
 import { sha256Hex } from '../utils/hash.js';
-import { apiKeys } from '../db/schema.js';
 import { getLogger } from '../utils/logger.js';
 
 interface ProxyAuth {
@@ -76,7 +76,7 @@ export function createCdpProxy() {
     sessionRow: { id: string; projectId: string; signingKey: string | null },
   ): Promise<ProxyAuth | null> {
     const headerToken = (() => {
-      const v = req.headers['authorization'];
+      const v = req.headers.authorization;
       if (typeof v === 'string' && v.toLowerCase().startsWith('bearer ')) {
         return v.slice(7).trim();
       }
@@ -208,7 +208,10 @@ export function createCdpProxy() {
       });
 
       const closeBoth = (code = 1000, reason = '') => {
-        if (clientWs.readyState === WebSocket.OPEN || clientWs.readyState === WebSocket.CONNECTING) {
+        if (
+          clientWs.readyState === WebSocket.OPEN ||
+          clientWs.readyState === WebSocket.CONNECTING
+        ) {
           try {
             clientWs.close(code, reason);
           } catch {

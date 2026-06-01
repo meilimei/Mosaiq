@@ -45,7 +45,7 @@ async function main() {
     });
 
     mkdirSync('bench/results', { recursive: true });
-    const dumpPath = `bench/results/_fpCollect.min.js`;
+    const dumpPath = 'bench/results/_fpCollect.min.js';
     writeFileSync(dumpPath, src, 'utf-8');
     console.log(`[probe] fpCollect.min.js (${src.length} bytes) → ${dumpPath}`);
 

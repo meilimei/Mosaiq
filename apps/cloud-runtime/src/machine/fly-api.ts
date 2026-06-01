@@ -86,11 +86,7 @@ export interface FlyApiClientOptions {
  * 那语境下 stopped 是成功；而 phase 11.2 cold path 期望 `target='started'`，
  * stopped 算异常——靠 caller 显式传 `abortOn` 包含 'stopped' 来表达。
  */
-const DEFAULT_ABORT_STATES: ReadonlyArray<FlyMachineState> = [
-  'destroying',
-  'destroyed',
-  'failed',
-];
+const DEFAULT_ABORT_STATES: ReadonlyArray<FlyMachineState> = ['destroying', 'destroyed', 'failed'];
 
 /**
  * Fly Machines API 客户端。无状态 —— 多个 caller 可以共用一个实例（构造廉价，

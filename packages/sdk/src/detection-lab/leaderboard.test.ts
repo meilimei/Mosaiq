@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLeaderboard, type LeaderboardEntry, renderLeaderboardHtml } from './leaderboard.js';
+import { type LeaderboardEntry, buildLeaderboard, renderLeaderboardHtml } from './leaderboard.js';
 import type { DetectionRun, DetectionScore, HitsBySurface } from './types.js';
 import { emptyHitsBySurface } from './types.js';
 

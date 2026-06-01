@@ -6,8 +6,8 @@
  *   2) recordUsage —— 真 in-memory sqlite，验证行落库 + reported_at 留 NULL。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';

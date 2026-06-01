@@ -17,17 +17,17 @@ import {
 
 beforeEach(() => {
   setMeterReporterForTesting(null);
-  delete process.env.STRIPE_API_KEY;
-  delete process.env.STRIPE_API_BASE_URL;
-  delete process.env.STRIPE_METER_EVENT_NAME;
+  process.env.STRIPE_API_KEY = undefined;
+  process.env.STRIPE_API_BASE_URL = undefined;
+  process.env.STRIPE_METER_EVENT_NAME = undefined;
   resetEnvCache();
 });
 
 afterEach(() => {
   setMeterReporterForTesting(null);
-  delete process.env.STRIPE_API_KEY;
-  delete process.env.STRIPE_API_BASE_URL;
-  delete process.env.STRIPE_METER_EVENT_NAME;
+  process.env.STRIPE_API_KEY = undefined;
+  process.env.STRIPE_API_BASE_URL = undefined;
+  process.env.STRIPE_METER_EVENT_NAME = undefined;
   resetEnvCache();
 });
 

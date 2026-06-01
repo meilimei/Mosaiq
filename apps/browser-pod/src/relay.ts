@@ -20,7 +20,7 @@
  * 单 pod 同时只跑一个 chromium，关心连接数没意义。简单 pipe 已经足够。
  */
 
-import { createConnection, createServer, type Server, type Socket } from 'node:net';
+import { type Server, type Socket, createConnection, createServer } from 'node:net';
 
 import { getLogger } from './logger.js';
 
@@ -92,10 +92,7 @@ export function startCdpRelay(opts: CdpRelayOptions): Promise<CdpRelay> {
 
       clientSock.on('error', (err) => {
         const e = err as Error & { code?: string };
-        log.warn(
-          { err: e.message, errCode: e.code },
-          'cdp relay: client socket error',
-        );
+        log.warn({ err: e.message, errCode: e.code }, 'cdp relay: client socket error');
         upstream.destroy();
       });
 
@@ -114,8 +111,7 @@ export function startCdpRelay(opts: CdpRelayOptions): Promise<CdpRelay> {
 
     server.listen(opts.listenPort, opts.listenHost, () => {
       const addr = server.address();
-      const port =
-        typeof addr === 'object' && addr ? addr.port : opts.listenPort;
+      const port = typeof addr === 'object' && addr ? addr.port : opts.listenPort;
       log.info(
         {
           listenHost: opts.listenHost,

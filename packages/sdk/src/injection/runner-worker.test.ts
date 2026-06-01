@@ -159,15 +159,17 @@ describe('Phase 2.6 worker IIFE: WebGL 49-param full mirror', () => {
   });
 
   it('IIFE declares INT32 / FLOAT32 / STRING pname sets (typed array reconstruction)', () => {
-    // I32S contains 0x0d3a (MAX_VIEWPORT_DIMS)
-    expect(capturedIIFE).toMatch(/0x0d3a/i);
-    // F32S contains 0x846e + 0x846d (ALIASED_*_RANGE)
-    expect(capturedIIFE).toMatch(/0x846e/i);
-    expect(capturedIIFE).toMatch(/0x846d/i);
-    // STRS contains VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION (0x1f00/01/02 + 0x8b8c)
-    expect(capturedIIFE).toMatch(/0x1f00/i);
-    expect(capturedIIFE).toMatch(/0x1f01/i);
-    expect(capturedIIFE).toMatch(/0x8b8c/i);
+    // Phase 3 夯实去重：I32S/F32S/STRS 不再硬编码 hex，改由 injectAll 顶部共享的
+    // INT32_PNAMES/FLOAT32_PNAMES/STRING_PNAMES（与 main scope §4 同源）动态生成
+    // 为十进制 key（对象 key 强制成字符串，"3386" === String(0x0d3a)，行为等价）。
+    // 断言生成出的具体 key 既验证「sets 存在」又锁住「与 §4 同源」这一去重不变量。
+    expect(capturedIIFE).toMatch(/I32S\[3386\]=1/); // 0x0d3a MAX_VIEWPORT_DIMS
+    expect(capturedIIFE).toMatch(/F32S\[33902\]=1/); // 0x846e ALIASED_LINE_WIDTH_RANGE
+    expect(capturedIIFE).toMatch(/F32S\[33901\]=1/); // 0x846d ALIASED_POINT_SIZE_RANGE
+    expect(capturedIIFE).toMatch(/STRS\[7936\]=1/); // 0x1f00 VENDOR
+    expect(capturedIIFE).toMatch(/STRS\[7937\]=1/); // 0x1f01 RENDERER
+    expect(capturedIIFE).toMatch(/STRS\[7938\]=1/); // 0x1f02 VERSION
+    expect(capturedIIFE).toMatch(/STRS\[35724\]=1/); // 0x8b8c SHADING_LANGUAGE_VERSION
   });
 
   it('IIFE replaces WebGLRenderingContext.prototype.getParameter (not just UNMASKED_VENDOR/RENDERER)', () => {

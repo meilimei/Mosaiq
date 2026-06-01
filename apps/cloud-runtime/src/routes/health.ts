@@ -17,8 +17,8 @@
  *   `SELECT 1`，比 ORM 路径更轻 + 比 mock-friendly。
  */
 
-import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
 
 import { getDb } from '../db/client.js';
 import { getMachineManager } from '../machine/factory.js';

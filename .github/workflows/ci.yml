@@ -10,15 +10,12 @@
 #      (Phase 7.0 contributor pipeline). Re-run
 #      `pnpm --filter @runova/sdk run bench:integrate-profiles` locally and
 #      commit the regenerated TS to fix a drift failure.
-#   4. biome lint on CHANGED files (separate `lint` job, PR-only, NON-BLOCKING) —
+#   4. biome lint on CHANGED files (separate `lint` job, PR-only, BLOCKING) —
 #      see below.
 #
 # Biome lint: the `lint` job runs `biome ci --changed` against the PR base and
-# emits inline annotations so new / AI-generated lint debt is visible on every
-# PR. It is currently NON-BLOCKING (continue-on-error) because `--changed` lints
-# whole changed files and the repo still has ~500 legacy findings — touching a
-# legacy file would otherwise false-fail on pre-existing issues. Flip to blocking
-# after the full-repo cleanup (tracked in DEVELOPMENT.md "Known follow-ups").
+# emits inline annotations. BLOCKING since Phase 3 hardening (2026-06): full-repo
+# cleanup + runner.ts overrides + bench/scripts relaxations (see biome.json).
 #
 # We run on ubuntu-latest. Mosaiq desktop runs on Windows, but the test
 # surface (pure functions, vitest) is platform-agnostic. Windows-specific
@@ -88,24 +85,17 @@ jobs:
               sys.exit(f'\n{len(failed)} workflow file(s) failed YAML parse: {failed}')
           PY
 
-  # Biome lint VISIBILITY gate on CHANGED files (PR-only, NON-BLOCKING for now).
+  # Biome lint gate on CHANGED files (PR-only, BLOCKING).
   #
-  # `biome ci --changed` lints whole changed files (not just diff hunks). The
-  # repo still carries ~500 legacy findings, many in large files like the 2k-line
-  # injection runner — so the moment a PR legitimately edits one of those files a
-  # HARD gate would false-fail on pre-existing issues nobody touched. To avoid
-  # that footgun we run this as `continue-on-error` and emit GitHub annotations:
-  # reviewers see new lint issues inline on changed files, but the check never
-  # blocks merge. Flip to blocking (drop continue-on-error) after the full-repo
-  # legacy cleanup tracked in DEVELOPMENT.md "Known follow-ups". PR-only because
+  # `biome ci --changed` lints whole changed files (not just diff hunks). Legacy
+  # debt was cleared in Phase 3 hardening; runner.ts has targeted overrides in
+  # biome.json so the crown-jewel file is not auto-rewritten. PR-only because
   # `--changed` needs a base ref to diff against.
   lint:
-    name: biome lint (changed files, non-blocking)
+    name: biome lint (changed files)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: github.event_name == 'pull_request'
-    # Non-blocking: surfaces lint debt without false-failing on legacy files.
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4

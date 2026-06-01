@@ -100,13 +100,7 @@ const PACKAGES = [
   {
     name: '@runova/cloud-sdk',
     dir: 'packages/cloud-sdk',
-    required: [
-      'package.json',
-      'README.md',
-      'LICENSE',
-      'dist/index.js',
-      'dist/index.d.ts',
-    ],
+    required: ['package.json', 'README.md', 'LICENSE', 'dist/index.js', 'dist/index.d.ts'],
     forbidden: [
       'src/',
       // e2e-smoke / register-persona 等运维脚本不应进 tarball（files 只列 dist/README/LICENSE）。

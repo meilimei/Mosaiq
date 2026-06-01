@@ -536,7 +536,7 @@ describe('Phase 6.1: per-(buffer, channel) idempotent noise memoization', () => 
     expect(result.length).toBe(1);
     expect(result[0]).toBe(RAND);
 
-    const noiseFactor = +(result.length !== 1 && result.reduce((acc, n) => (acc += +n!), 0));
+    const noiseFactor = result.length !== 1 ? +result.reduce((acc, n) => acc + +n!, 0) : 0;
     expect(noiseFactor).toBe(0);
   });
 

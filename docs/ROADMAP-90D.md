@@ -13,9 +13,9 @@
 这次「证据 → 用户 → 夯实」的第一刀已经动了：
 
 - **云端差异化矛盾（已修复，Option A 落地）**：服务端注入**已实现并默认开启**（pod `apps/browser-pod/src/inject.ts`）——裸 `connectOverCDP` / BB-SDK baseURL swap 现在就带深层 stealth（canvas/WebGL/audio/UA-CH/字体/worker）。本地（真 pod + 真 chromium，**不调** `injectInto` 即 spoof：`hardwareConcurrency`/WebGL renderer 命中 persona）+ Docker build 均已验证；`injectAll` 的 realm 级幂等守卫保证与客户端 `injectInto` 不双注入。详见 [`CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5。
-- **质量护栏**：CI 加了 browser-pod 单测 + 一个 **non-blocking** 的 biome changed-files 可见性 gate；CLI 版本号改为从 package.json 读（消除 0.9.0-dev vs 0.10.0 漂移）；`audit-tarballs` 纳入 `@runova/cloud-sdk`；cloud-runtime README / ci.yml 注释的大面积 doc 漂移已修。
-- **证据通路**：新增 [`EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md) runbook + GitHub detection-report issue 模板。
-- **技术债登记**：[`DEVELOPMENT.md`](../DEVELOPMENT.md) §8 集中记录了所有暂缓项与触发条件。
+- **质量护栏**：CI biome **blocking**（2026-06）；`stealth-regression.yml`（`diag:webgl` + `diag:worker-scope`）；`cloud-runtime-e2e.yml` 每周 cron；CLI 版本从 package.json 读；`audit-tarballs` 含 `@runova/cloud-sdk`。
+- **证据通路**：[`EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md) runbook + detection-report 模板。
+- **夯实登记**：[`DEVELOPMENT.md`](../DEVELOPMENT.md) §8；[`CLOUD-SINGLE-INSTANCE-ADR.md`](./CLOUD-SINGLE-INSTANCE-ADR.md)；[`GTM-HUMAN-CHECKLIST.md`](./GTM-HUMAN-CHECKLIST.md)。
 
 ---
 
@@ -26,7 +26,7 @@
 1. **Bootstrap 第一份 committed baseline**（`win11-chrome-us` 起，再扩 4 模板）——按 [`EVIDENCE-AND-VALIDATION.md`](./EVIDENCE-AND-VALIDATION.md) §2。让 detection-lab CI gate 真正生效。
 2. **公开 leaderboard**——`pnpm build-leaderboard` + 启用 GitHub Pages（[EVIDENCE §3]）。诚实标注过不了的项 + 竞品分可复现。
 3. **硬目标 + 真账号实测一周**（人工）——4 模板 persona 跑 Cloudflare/DataDome 站 + Reddit/X/Google 登录，按 [EVIDENCE §4] 协议记录，被识破点用 detection-report 模板回流成 issue。
-4. **服务端注入（Option A）已落地**——本地 Docker e2e + **Fly prod 实测通过**（`scripts/prod-smoke-cloud.mjs` → `server_inject_ok`，2026-05-31）；剩余：GitHub `cloud-runtime-e2e.yml` 定期跑绿作回归门。
+4. **服务端注入（Option A）已落地**——本地 Docker e2e + **Fly prod** + `cloud-runtime-e2e.yml` cron 回归门（`server_inject_ok`）。
 
 **出阶段标准**：`tests/fixtures/baseline-runs/` 有至少 1 个真实 baseline；leaderboard 可访问；≥1 周真账号实测记录 + 对应 issue。
 
@@ -44,19 +44,27 @@
 
 ---
 
-## 3. 阶段三（约第 6–12 周，与阶段二重叠）：夯实
+## 3. 阶段三（约第 6–12 周，与阶段二重叠）：夯实 — **已启动（2026-06）**
 
 **目标**：把单人 + AI 大量产出的代码做扎实，降低 bus-factor 与生产风险。
 
-1. **Biome 全仓清理 → lint gate 翻 blocking**（[`DEVELOPMENT.md`](../DEVELOPMENT.md) §8）——清掉 ~500 legacy findings（`runner.ts` 手工逐条，别 `--unsafe`），然后去掉 ci.yml lint job 的 `continue-on-error`。
-2. **`runner.ts` worker-scope 注入串去重**——高风险（crown jewel），先补 `bench/diagnose-*.ts` 真 Chromium 回归覆盖，再提取共享生成器。
-3. **Cloud 单点拓扑评估**——接真实付费/SLA 前，定多实例 + Postgres / 共享存储方案；在此之前明确对外「alpha、单点」边界。
+| 项 | 状态 |
+|---|---|
+| Biome → lint **blocking** | ✅ 完成 |
+| `diag:worker-scope` + `stealth-regression.yml` | ✅ 完成 |
+| `runner.ts` §11 WebGL pname 与 main 共享 | ✅ 部分；完整 `inject-helper` 仍 defer |
+| `cloud-runtime-e2e` cron | ✅ 完成 |
+| Cloud 单点 ADR + 启动告警 | ✅ [`CLOUD-SINGLE-INSTANCE-ADR.md`](./CLOUD-SINGLE-INSTANCE-ADR.md) |
+| Captcha observe-only + 单测 | ✅ `POD_CAPTCHA_SOLVER=false` 默认 |
+| GTM 人工清单 | 📋 [`GTM-HUMAN-CHECKLIST.md`](./GTM-HUMAN-CHECKLIST.md)（待人勾选） |
+
+**剩余**：阶段二人工项（npm、Pages、真账号周测、外部用户）；runner 全量去重；付费触发后 Postgres/Redis 多实例。
 
 ---
 
 ## 4. 明确不做（anti-scope，直到拿到 1 个付费用户或资金）
 
-- 不再开新的 cloud 功能 phase（多 region、captcha solver、MCP server、recording/replay）。
+- 不再开新的 cloud 功能 phase（多 region、**captcha solver 生产默认**、MCP server、recording/replay）。Captcha **检测/集成层**已落地；`POD_CAPTCHA_SOLVER` 保持 **false** 直至付费解冻。
 - 不解冻 Chromium fork（触发器见 [`chromium-fork/STATUS.md`](../chromium-fork/STATUS.md)）。
 - 不投 Desktop UX 打磨、Android 模拟、Marketplace、warming scheduler 等远期项。
 
@@ -76,4 +84,6 @@
 - 云端注入模型 + 服务端注入 deferred 设计：[`CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5
 - 发布 / npm go-live：[`RELEASING.md`](./RELEASING.md) §8
 - 技术债 / 已知 follow-up：[`DEVELOPMENT.md`](../DEVELOPMENT.md) §8
+- Cloud 单点 / 多实例解冻：[`CLOUD-SINGLE-INSTANCE-ADR.md`](./CLOUD-SINGLE-INSTANCE-ADR.md)
+- GTM 人工清单：[`GTM-HUMAN-CHECKLIST.md`](./GTM-HUMAN-CHECKLIST.md)
 - 长期愿景：[`PRD.md`](./PRD.md) / [`WHITEPAPER.md`](./WHITEPAPER.md)

@@ -39,9 +39,7 @@ const NOOP_HANDLE: ServerStealthHandle = { close: async () => undefined };
  * 拿到 Chromium 默认 browser context（不是 Playwright 新建的隔离 context）。
  * 冷启动时 contexts() 可能为空：用临时 page 触发默认 context 物化，再关掉 page。
  */
-async function ensureDefaultBrowserContext(
-  browser: Browser,
-): Promise<BrowserContext> {
+async function ensureDefaultBrowserContext(browser: Browser): Promise<BrowserContext> {
   const existing = browser.contexts()[0];
   if (existing) return existing;
   const page = await browser.newPage();

@@ -8,9 +8,9 @@
  * to verify the 503 disabled path.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../app.js';
 import { ensureSchema } from '../db/bootstrap.js';
@@ -35,9 +35,9 @@ beforeEach(async () => {
   process.env.MOSAIQ_CONTEXT_MASTER_KEY = randomBytes(32).toString('base64');
   process.env.MOSAIQ_INTERNAL_HMAC_SECRET = randomBytes(48).toString('base64');
   // Disable rate-limit interference
-  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
-  delete process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC;
-  delete process.env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX;
+  process.env.RATE_LIMIT_WRITE_CAPACITY = undefined;
+  process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC = undefined;
+  process.env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX = undefined;
   resetEnvCache();
   resetRateLimitStore();
   await ensureSchema();
@@ -303,7 +303,7 @@ describe('DELETE /v1/contexts/:id', () => {
       machineId: 'mch_fake',
       status: 'live',
       cdpInternalUrl: 'ws://fake/cdp',
-      cdpPublicUrl: 'ws://localhost/v1/sessions/' + sessionId + '/cdp',
+      cdpPublicUrl: `ws://localhost/v1/sessions/${sessionId}/cdp`,
       expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
     });
     await handle.drizzle

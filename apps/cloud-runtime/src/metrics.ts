@@ -35,13 +35,7 @@
  *   `resetMetricsForTesting()` 清所有 series 让 test 之间不污染。
  */
 
-import {
-  Counter,
-  Gauge,
-  Histogram,
-  Registry,
-  collectDefaultMetrics,
-} from 'prom-client';
+import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom-client';
 
 // 单例 Registry —— 每个 process 一份。
 export const metricsRegistry = new Registry();
@@ -59,8 +53,7 @@ export const sessionsCreatedTotal = new Counter({
 
 export const sessionsClosedTotal = new Counter({
   name: 'sessions_closed_total',
-  help:
-    'session 关闭次数。reason=client(DELETE) | expired-ttl(reaper hit hard TTL) | expired-idle(reaper hit keepAlive idle timeout, phase 11.5) | error(创建后失败)',
+  help: 'session 关闭次数。reason=client(DELETE) | expired-ttl(reaper hit hard TTL) | expired-idle(reaper hit keepAlive idle timeout, phase 11.5) | error(创建后失败)',
   labelNames: ['reason'] as const,
   registers: [metricsRegistry],
 });
@@ -103,8 +96,7 @@ export const httpRequestDurationSeconds = new Histogram({
 
 export const mmAcquireDurationSeconds = new Histogram({
   name: 'mm_acquire_duration_seconds',
-  help:
-    'MachineManager.acquire 耗时（拨 fly machine + 等 chromium 起来）。Phase 11.5: keepalive label 让 dashboard 分别画 keepAlive=true（一般 reconnect 不走 acquire）vs false（短会话）的延迟分布',
+  help: 'MachineManager.acquire 耗时（拨 fly machine + 等 chromium 起来）。Phase 11.5: keepalive label 让 dashboard 分别画 keepAlive=true（一般 reconnect 不走 acquire）vs false（短会话）的延迟分布',
   // bucket 选择反映 phase 11.3a 灰度实测：
   //   - cold path (POOL_TARGET_SIZE=0): mean ~60s（首次部署 + image pull 后），上界
   //     必须放到 90s 才能让 P95 不挂在 +Inf。
@@ -122,9 +114,9 @@ export const mmAcquireDurationSeconds = new Histogram({
 export const keepaliveSessionsActiveGauge = new Gauge({
   name: 'keepalive_sessions_active',
   help:
-    'phase 11.5: 当前 status=live 且 keep_alive=true 的 session 数（按 project_id）。'
-    + ' /v1/metrics scrape 时刷新。运维报警：长期接近 KEEPALIVE_SESSIONS_PER_PROJECT_MAX 说明该 customer 即将触限，'
-    + '或 reaper / DELETE 路径有 leak。',
+    'phase 11.5: 当前 status=live 且 keep_alive=true 的 session 数（按 project_id）。' +
+    ' /v1/metrics scrape 时刷新。运维报警：长期接近 KEEPALIVE_SESSIONS_PER_PROJECT_MAX 说明该 customer 即将触限，' +
+    '或 reaper / DELETE 路径有 leak。',
   labelNames: ['project_id'] as const,
   registers: [metricsRegistry],
 });
@@ -140,8 +132,8 @@ export const keepaliveSessionsActiveGauge = new Gauge({
 export const contextsActiveGauge = new Gauge({
   name: 'contexts_active',
   help:
-    'phase 11.6: 当前未 soft-delete 的 context 数（按 project_id）。/v1/metrics scrape 时刷新。'
-    + ' 长期逼近 MOSAIQ_CONTEXTS_PER_PROJECT_MAX 说明该 customer 即将触限。',
+    'phase 11.6: 当前未 soft-delete 的 context 数（按 project_id）。/v1/metrics scrape 时刷新。' +
+    ' 长期逼近 MOSAIQ_CONTEXTS_PER_PROJECT_MAX 说明该 customer 即将触限。',
   labelNames: ['project_id'] as const,
   registers: [metricsRegistry],
 });
@@ -149,8 +141,8 @@ export const contextsActiveGauge = new Gauge({
 export const contextsTotal = new Counter({
   name: 'contexts_total',
   help:
-    'phase 11.6: context 操作计数。op=create|delete|download|snapshot，outcome=success|failed。'
-    + ' download/snapshot 由 pod 经 internal endpoint 触发；create/delete 是客户 API。',
+    'phase 11.6: context 操作计数。op=create|delete|download|snapshot，outcome=success|failed。' +
+    ' download/snapshot 由 pod 经 internal endpoint 触发；create/delete 是客户 API。',
   labelNames: ['op', 'outcome'] as const,
   registers: [metricsRegistry],
 });
@@ -158,8 +150,8 @@ export const contextsTotal = new Counter({
 export const contextSnapshotBytes = new Histogram({
   name: 'context_snapshot_bytes',
   help:
-    'phase 11.6: snapshot 上传 blob 大小（compressed + encrypted bytes）。'
-    + ' 典型 chromium profile 5–20MB；上界对齐 MOSAIQ_CONTEXT_SIZE_MAX_MB(200MB default)。',
+    'phase 11.6: snapshot 上传 blob 大小（compressed + encrypted bytes）。' +
+    ' 典型 chromium profile 5–20MB；上界对齐 MOSAIQ_CONTEXT_SIZE_MAX_MB(200MB default)。',
   // 64KB → 200MB 跨 4 个数量级，覆盖空 profile 到重 IndexedDB 站点。
   buckets: [
     64 * 1024,
@@ -188,8 +180,8 @@ export const contextSnapshotBytes = new Histogram({
 export const usageMinutesTotal = new Counter({
   name: 'usage_minutes_total',
   help:
-    'phase 11.7: 累计 billable browser-minutes（按 project_id），session 关闭时 emit 累加。'
-    + ' dashboard 看实时计费速率；× UNIT_PRICE_USD_PER_MINUTE ≈ 营收估算（真账单以 Stripe 为准）。',
+    'phase 11.7: 累计 billable browser-minutes（按 project_id），session 关闭时 emit 累加。' +
+    ' dashboard 看实时计费速率；× UNIT_PRICE_USD_PER_MINUTE ≈ 营收估算（真账单以 Stripe 为准）。',
   labelNames: ['project_id'] as const,
   registers: [metricsRegistry],
 });
@@ -197,15 +189,14 @@ export const usageMinutesTotal = new Counter({
 export const usageEventsUnreported = new Gauge({
   name: 'usage_events_unreported',
   help:
-    'phase 11.7: 当前 reported_at IS NULL 的 usage_events 行数（待推送 Stripe 的积压）。'
-    + ' /v1/metrics scrape 时刷新。长期 > 0 且持续增长 = report job 或 Stripe push 卡住，需报警。',
+    'phase 11.7: 当前 reported_at IS NULL 的 usage_events 行数（待推送 Stripe 的积压）。' +
+    ' /v1/metrics scrape 时刷新。长期 > 0 且持续增长 = report job 或 Stripe push 卡住，需报警。',
   registers: [metricsRegistry],
 });
 
 export const usageReportTotal = new Counter({
   name: 'usage_report_total',
-  help:
-    'phase 11.7: usage-report job push tick 计数。outcome=success(本 tick 成功推送+回填) | failed(reporter 抛错，行保持未上报待重试)。',
+  help: 'phase 11.7: usage-report job push tick 计数。outcome=success(本 tick 成功推送+回填) | failed(reporter 抛错，行保持未上报待重试)。',
   labelNames: ['outcome'] as const,
   registers: [metricsRegistry],
 });
@@ -219,8 +210,7 @@ export const usageReportTotal = new Counter({
 
 export const quotaDeniedTotal = new Counter({
   name: 'quota_denied_total',
-  help:
-    'phase 11.8: createSession 被 per-project 配额拒绝的次数。reason=sessions(并发上限) | minutes(月度用量上限)。',
+  help: 'phase 11.8: createSession 被 per-project 配额拒绝的次数。reason=sessions(并发上限) | minutes(月度用量上限)。',
   labelNames: ['reason'] as const,
   registers: [metricsRegistry],
 });

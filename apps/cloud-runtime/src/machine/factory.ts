@@ -10,11 +10,11 @@
  */
 
 import { loadEnv } from '../env.js';
-import { FlyMachineManager } from './fly.js';
+import { getLogger } from '../utils/logger.js';
 import { FlyPooledMachineManager } from './fly-pool.js';
+import { FlyMachineManager } from './fly.js';
 import { LocalDockerMachineManager } from './local-docker.js';
 import { StaticPoolMachineManager } from './static.js';
-import { getLogger } from '../utils/logger.js';
 import type { MachineManager } from './types.js';
 
 let cached: MachineManager | null = null;

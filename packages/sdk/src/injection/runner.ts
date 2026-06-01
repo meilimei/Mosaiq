@@ -56,6 +56,30 @@ export function injectAll(config: InjectionConfig): void {
     };
   }
 
+  // ── WebGL pname 类型分类表（main scope §4 与 worker scope §11 的单一来源）──
+  //
+  // 哪些 GL pname 的 getParameter 返回 Int32Array / Float32Array / string —— 与
+  // webgl-profiles.ts 内 INT32_ARRAY_PARAMS / FLOAT32_ARRAY_PARAMS / STRING_PARAMS
+  // 对应（runner 序列化进 page 后无外部 import，这里复刻一份）。
+  //
+  // ⚠️ 历史教训：这三组曾在 §4（真 JS Set）与 §11 worker 字符串（硬编码
+  // `I32S/F32S/STRS`）各写一份，靠人手同步、极易漂移（见 DEVELOPMENT.md §8）。
+  // 现在**只在这里定义一次**：§4 直接用这些 Set；§11 在拼 worker blob 字符串时
+  // 由同一组 Set 动态生成 `I32S/F32S/STRS` 片段（见下方 §11）。增删 pname 只改这里。
+  const INT32_PNAMES = new Set<number>([
+    0x0d3a, // MAX_VIEWPORT_DIMS
+  ]);
+  const FLOAT32_PNAMES = new Set<number>([
+    0x846e, // ALIASED_LINE_WIDTH_RANGE
+    0x846d, // ALIASED_POINT_SIZE_RANGE
+  ]);
+  const STRING_PNAMES = new Set<number>([
+    0x1f00, // VENDOR
+    0x1f01, // RENDERER
+    0x1f02, // VERSION
+    0x8b8c, // SHADING_LANGUAGE_VERSION
+  ]);
+
   // ── Stealth Function.toString registry (Day 3.6) ──
   //
   // CreepJS lies/index.ts §getPrototypeLies 用
@@ -693,26 +717,9 @@ export function injectAll(config: InjectionConfig): void {
       // pname → 值 的查找表，typed-array 值在重建时按 IDL 规定的 Int32Array /
       // Float32Array 包回。这样 getParameter Proxy 能直接 O(1) 找替换值。
       //
-      // 哪些 pname 需要 Int32Array vs Float32Array —— 与 webgl-profiles.ts 内
-      // INT32_ARRAY_PARAMS / FLOAT32_ARRAY_PARAMS 同步（这里复刻一份避免跨文件
-      // 依赖；runner 序列化进 page 后没有外部 import）。
-      const INT32_PNAMES = new Set<number>([
-        0x0d3a, // MAX_VIEWPORT_DIMS
-      ]);
-      const FLOAT32_PNAMES = new Set<number>([
-        0x846e, // ALIASED_LINE_WIDTH_RANGE
-        0x846d, // ALIASED_POINT_SIZE_RANGE
-      ]);
-
-      // string return type 的 GL pname（VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION）
-      // 对应 webgl-profiles.ts 内 STRING_PARAMS。runner 序列化进 page 后没有外部 import，
-      // 这里复刻一份。
-      const STRING_PNAMES = new Set<number>([
-        0x1f00, // VENDOR
-        0x1f01, // RENDERER
-        0x1f02, // VERSION
-        0x8b8c, // SHADING_LANGUAGE_VERSION
-      ]);
+      // INT32_PNAMES / FLOAT32_PNAMES / STRING_PNAMES 现定义在 injectAll 顶部，
+      // 作为 §4（main scope）与 §11（worker scope 字符串）的单一来源（见文件上方
+      // 注释）。增删 pname 只改顶部那一处，§11 worker blob 自动跟随。
 
       type SpoofVal = number | string | Int32Array | Float32Array;
 
@@ -1577,13 +1584,15 @@ export function injectAll(config: InjectionConfig): void {
         // ── Phase 2.6: WebGL 49-param 完整镜像（main scope §4 对称） ──
         //
         // 复刻 main scope buildSpoofMap + makeGetParameterProxy 逻辑。
-        // INT32_PNAMES / FLOAT32_PNAMES / STRING_PNAMES 三个 set 必须与
-        // main scope (runner.ts:685-701) 保持同步 —— 若 main 增删 pname，
-        // 这里也要同步更新（无 import 共享，纯字符串复刻）。
+        // I32S/F32S/STRS 不再硬编码 —— 由 injectAll 顶部的单一来源
+        // INT32_PNAMES / FLOAT32_PNAMES / STRING_PNAMES 动态生成（与 main scope §4
+        // 是同一组 Set），从根上消除跨 scope pname 漂移。增删 pname 只改顶部那处。
+        // 注：key 用十进制（Set 元素是 number），与 worker 内 parseInt(k,16) 查表
+        // 等价（对象 key 都强制成字符串，"3386" === String(0x0d3a)）。
         'try{' +
-        'var I32S={};I32S[0x0d3a]=1;' + // MAX_VIEWPORT_DIMS
-        'var F32S={};F32S[0x846e]=1;F32S[0x846d]=1;' + // ALIASED_LINE_WIDTH_RANGE, ALIASED_POINT_SIZE_RANGE
-        'var STRS={};STRS[0x1f00]=1;STRS[0x1f01]=1;STRS[0x1f02]=1;STRS[0x8b8c]=1;' + // VENDOR/RENDERER/VERSION/SHADING_LANGUAGE_VERSION
+        `var I32S={};${[...INT32_PNAMES].map((p) => `I32S[${p}]=1;`).join('')}` +
+        `var F32S={};${[...FLOAT32_PNAMES].map((p) => `F32S[${p}]=1;`).join('')}` +
+        `var STRS={};${[...STRING_PNAMES].map((p) => `STRS[${p}]=1;`).join('')}` +
         'function _buildSpoofMap(obj){var m=new Map();if(!obj)return m;' +
         'var keys=Object.keys(obj);for(var i=0;i<keys.length;i++){' +
         'var k=keys[i];var pname=parseInt(k,16);var val=obj[k];' +

@@ -38,13 +38,49 @@
       },
       "style": {
         "useImportType": "warn",
-        "useNodejsImportProtocol": "error"
+        "useNodejsImportProtocol": "error",
+        "noNonNullAssertion": "warn"
       },
       "complexity": {
         "noBannedTypes": "warn"
       }
     }
   },
+  "overrides": [
+    {
+      "include": ["packages/sdk/src/injection/runner.ts"],
+      "linter": {
+        "rules": {
+          "style": { "useTemplate": "off" },
+          "complexity": { "noForEach": "off", "useOptionalChain": "off" },
+          "suspicious": { "noAssignInExpressions": "off" }
+        }
+      }
+    },
+    {
+      "include": [
+        "packages/*/bench/**",
+        "scripts/**",
+        "**/*.test.ts",
+        "**/*.test.mts",
+        "**/scripts/*.mjs"
+      ],
+      "linter": {
+        "rules": {
+          "style": { "noNonNullAssertion": "off" },
+          "suspicious": { "noAssignInExpressions": "off", "noPrototypeBuiltins": "off" }
+        }
+      }
+    },
+    {
+      "include": ["packages/sdk/src/detection-lab/sites.ts"],
+      "linter": {
+        "rules": {
+          "complexity": { "noForEach": "off" }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "single",

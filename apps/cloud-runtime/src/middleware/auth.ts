@@ -18,8 +18,8 @@
  * Hono 的 jwt / bearer middleware 都没法直接配 sha256+DB 流程，自己实现。
  */
 
-import type { Context, MiddlewareHandler } from 'hono';
 import { eq } from 'drizzle-orm';
+import type { Context, MiddlewareHandler } from 'hono';
 
 import { getDb } from '../db/client.js';
 import { apiKeys } from '../db/schema.js';

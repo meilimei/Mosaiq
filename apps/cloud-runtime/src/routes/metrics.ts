@@ -25,6 +25,7 @@ import { Hono } from 'hono';
 
 import { getDb } from '../db/client.js';
 import { loadEnv } from '../env.js';
+import { getMachineManager } from '../machine/factory.js';
 import {
   contextsActiveGauge,
   keepaliveSessionsActiveGauge,
@@ -33,7 +34,6 @@ import {
   poolStateGauge,
   usageEventsUnreported,
 } from '../metrics.js';
-import { getMachineManager } from '../machine/factory.js';
 
 export const metricsRoute = new Hono();
 

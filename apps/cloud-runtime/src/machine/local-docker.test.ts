@@ -170,7 +170,9 @@ describe('LocalDockerMachineManager — happy path', () => {
     expect(m.cdpInternalUrl).toBe(`ws://${POD_IP}:9223/devtools/browser/u`);
 
     // create body 必须含 NetworkMode + ShmSize + image + ExposedPorts + Env
-    const createCall = calls.find((c) => c.method === 'POST' && c.url.includes('/containers/create'));
+    const createCall = calls.find(
+      (c) => c.method === 'POST' && c.url.includes('/containers/create'),
+    );
     expect(createCall?.body).toMatchObject({
       Image: 'mosaiq/browser-pod:test',
       ExposedPorts: { '9222/tcp': {}, '9223/tcp': {} },
@@ -186,7 +188,7 @@ describe('LocalDockerMachineManager — happy path', () => {
     });
     // Env 包含 sessionId
     expect(createCall?.body).toMatchObject({
-      Env: expect.arrayContaining([`MOSAIQ_SESSION_ID=ses_abc`, `PORT=9222`, `POD_HEADLESS=true`]),
+      Env: expect.arrayContaining(['MOSAIQ_SESSION_ID=ses_abc', 'PORT=9222', 'POD_HEADLESS=true']),
     });
     // 关键：必须没有 PortBindings（已经从 host-port-publish 模式切走）
     const body = createCall?.body as { HostConfig?: { PortBindings?: unknown } };
@@ -247,9 +249,7 @@ describe('LocalDockerMachineManager — happy path', () => {
     expect(calls.filter((c) => c.url === `${POD_ORIGIN}/control/stop`).length).toBe(1);
     // DELETE 应该被调
     expect(
-      calls.some(
-        (c) => c.method === 'DELETE' && c.url.includes('/containers/docker_def'),
-      ),
+      calls.some((c) => c.method === 'DELETE' && c.url.includes('/containers/docker_def')),
     ).toBe(true);
 
     // 二次 release 同 id 必须幂等不抛
@@ -269,8 +269,7 @@ describe('LocalDockerMachineManager — happy path', () => {
         handler: () => new Response(null, { status: 204 }),
       },
       {
-        match: (u, init) =>
-          init?.method === 'GET' && u.includes('/containers/cnt_keep_me/json'),
+        match: (u, init) => init?.method === 'GET' && u.includes('/containers/cnt_keep_me/json'),
         handler: () =>
           new Response(
             JSON.stringify({
@@ -390,8 +389,7 @@ describe('LocalDockerMachineManager — failure paths', () => {
         handler: () => new Response('start denied', { status: 409 }),
       },
       {
-        match: (u, init) =>
-          init?.method === 'DELETE' && u.includes('/containers/docker_bad'),
+        match: (u, init) => init?.method === 'DELETE' && u.includes('/containers/docker_bad'),
         handler: () => new Response(null, { status: 204 }),
       },
     ]);
@@ -400,9 +398,7 @@ describe('LocalDockerMachineManager — failure paths', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).code).toBe('machine.spawn_failed');
     expect(
-      calls.some(
-        (c) => c.method === 'DELETE' && c.url.includes('/containers/docker_bad'),
-      ),
+      calls.some((c) => c.method === 'DELETE' && c.url.includes('/containers/docker_bad')),
     ).toBe(true);
   });
 
@@ -514,9 +510,7 @@ describe('LocalDockerMachineManager — failure paths', () => {
     // 同步启动 5 个 acquire（cap=2）。立即把每个 promise 转成 settled-status
     // 对象 + 显式 .then，让 v8 不报 unhandled rejection（cleanup 阶段 hung promise
     // 走 reject 路径时会触发第二次 settle，如果没人监听就会 warn）。
-    type AcquireStatus =
-      | { kind: 'resolved' }
-      | { kind: 'rejected'; reason: unknown };
+    type AcquireStatus = { kind: 'resolved' } | { kind: 'rejected'; reason: unknown };
     const statusPromises: Promise<AcquireStatus>[] = [1, 2, 3, 4, 5].map((i) =>
       mm.acquire({ ...acquireSpec, sessionId: `ses_race_${i}` }).then(
         (): AcquireStatus => ({ kind: 'resolved' }),
@@ -588,9 +582,7 @@ describe('LocalDockerMachineManager — failure paths', () => {
     const mm = manager(fetchImpl, { maxContainers: 1 });
     await mm.acquire(acquireSpec); // 占满
     const callsBefore = calls.length;
-    const err = await mm
-      .acquire({ ...acquireSpec, sessionId: 'ses_2' })
-      .catch((e: unknown) => e);
+    const err = await mm.acquire({ ...acquireSpec, sessionId: 'ses_2' }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).code).toBe('pool.exhausted');
     // pool exhausted 之后不应调任何 Docker API
@@ -645,7 +637,7 @@ describe('LocalDockerMachineManager — constructor + shutdown', () => {
       // 仍照常返回 docker daemon 的 404 JSON（这就是真实环境里 pod URL 错走 docker
       // socket 时拿到的响应）。
       if (!url.startsWith(DOCKER_BASE)) {
-        return new Response(JSON.stringify({ message: 'page not found' }) + '\n', {
+        return new Response(`${JSON.stringify({ message: 'page not found' })}\n`, {
           status: 404,
           headers: { 'content-type': 'application/json' },
         });

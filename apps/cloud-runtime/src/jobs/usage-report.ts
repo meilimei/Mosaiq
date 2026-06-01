@@ -118,11 +118,21 @@ export async function reportUsage(deps: {
 
   usageReportTotal.inc({ outcome: 'success' });
   logger.info(
-    { scanned: unreported.length, reported: ids.length, records: records.length, reporter: reporter.kind },
+    {
+      scanned: unreported.length,
+      reported: ids.length,
+      records: records.length,
+      reporter: reporter.kind,
+    },
     'usage-report: pushed + marked reported',
   );
 
-  return { scanned: unreported.length, reported: ids.length, records: records.length, failed: false };
+  return {
+    scanned: unreported.length,
+    reported: ids.length,
+    records: records.length,
+    failed: false,
+  };
 }
 
 /**

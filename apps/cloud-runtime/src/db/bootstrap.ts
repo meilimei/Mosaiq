@@ -32,8 +32,8 @@ const STATEMENTS: string[] = [
     revoked_at TEXT,
     last_used_at TEXT
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS api_keys_key_hash_uq ON api_keys (key_hash)`,
-  `CREATE INDEX IF NOT EXISTS api_keys_project_idx ON api_keys (project_id)`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS api_keys_key_hash_uq ON api_keys (key_hash)',
+  'CREATE INDEX IF NOT EXISTS api_keys_project_idx ON api_keys (project_id)',
 
   // sessions
   `CREATE TABLE IF NOT EXISTS sessions (
@@ -56,9 +56,9 @@ const STATEMENTS: string[] = [
     signing_key TEXT,
     keep_alive INTEGER NOT NULL DEFAULT 0
   )`,
-  `CREATE INDEX IF NOT EXISTS sessions_project_idx ON sessions (project_id, opened_at)`,
-  `CREATE INDEX IF NOT EXISTS sessions_status_idx ON sessions (status)`,
-  `CREATE INDEX IF NOT EXISTS sessions_machine_idx ON sessions (machine_id)`,
+  'CREATE INDEX IF NOT EXISTS sessions_project_idx ON sessions (project_id, opened_at)',
+  'CREATE INDEX IF NOT EXISTS sessions_status_idx ON sessions (status)',
+  'CREATE INDEX IF NOT EXISTS sessions_machine_idx ON sessions (machine_id)',
   // NOTE phase 11.5: sessions_keepalive_idle_idx is intentionally **not here**.
   // It references the keep_alive column which was added via COLUMN_ADDITIONS in
   // phase 11.5. STATEMENTS runs BEFORE COLUMN_ADDITIONS, so on an upgrade path
@@ -77,8 +77,8 @@ const STATEMENTS: string[] = [
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
-  `CREATE INDEX IF NOT EXISTS personas_project_idx ON personas (project_id)`,
-  `CREATE INDEX IF NOT EXISTS personas_source_idx ON personas (source)`,
+  'CREATE INDEX IF NOT EXISTS personas_project_idx ON personas (project_id)',
+  'CREATE INDEX IF NOT EXISTS personas_source_idx ON personas (source)',
 
   // usage_events
   `CREATE TABLE IF NOT EXISTS usage_events (
@@ -90,8 +90,8 @@ const STATEMENTS: string[] = [
     ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     reported_at TEXT
   )`,
-  `CREATE INDEX IF NOT EXISTS usage_events_project_ts_idx ON usage_events (project_id, ts)`,
-  `CREATE INDEX IF NOT EXISTS usage_events_session_idx ON usage_events (session_id)`,
+  'CREATE INDEX IF NOT EXISTS usage_events_project_ts_idx ON usage_events (project_id, ts)',
+  'CREATE INDEX IF NOT EXISTS usage_events_session_idx ON usage_events (session_id)',
 
   // audit_events
   `CREATE TABLE IF NOT EXISTS audit_events (
@@ -105,8 +105,8 @@ const STATEMENTS: string[] = [
     ts TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     detail_json TEXT
   )`,
-  `CREATE INDEX IF NOT EXISTS audit_events_project_ts_idx ON audit_events (project_id, ts)`,
-  `CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action)`,
+  'CREATE INDEX IF NOT EXISTS audit_events_project_ts_idx ON audit_events (project_id, ts)',
+  'CREATE INDEX IF NOT EXISTS audit_events_action_idx ON audit_events (action)',
 
   // contexts (Phase 11.6) — see docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §4.1.
   // Indexes for this table go in INDEX_ADDITIONS below — same pattern phase 11.5
@@ -152,7 +152,7 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     // prod won't have one and can keep using Bearer-header auth.
     table: 'sessions',
     column: 'signing_key',
-    alterSql: `ALTER TABLE sessions ADD COLUMN signing_key TEXT`,
+    alterSql: 'ALTER TABLE sessions ADD COLUMN signing_key TEXT',
   },
   {
     // Phase 11.5: keepAlive flag. NOT NULL DEFAULT 0 preserves the phase 11.3a
@@ -162,7 +162,7 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     // See docs/PHASE-11.5-KEEPALIVE-LONG-SESSION.md §5 for the carve-out matrix.
     table: 'sessions',
     column: 'keep_alive',
-    alterSql: `ALTER TABLE sessions ADD COLUMN keep_alive INTEGER NOT NULL DEFAULT 0`,
+    alterSql: 'ALTER TABLE sessions ADD COLUMN keep_alive INTEGER NOT NULL DEFAULT 0',
   },
   {
     // Phase 11.6: link session to its bound context. Nullable FK — pre-existing
@@ -173,7 +173,7 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     // See docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §4.2.
     table: 'sessions',
     column: 'context_id',
-    alterSql: `ALTER TABLE sessions ADD COLUMN context_id TEXT`,
+    alterSql: 'ALTER TABLE sessions ADD COLUMN context_id TEXT',
   },
   {
     // Phase 11.6: persist flag for context (BB compat browserSettings.context.persist).
@@ -182,7 +182,7 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     // validator defaults persist=true on new requests with context.id present.
     table: 'sessions',
     column: 'context_persist',
-    alterSql: `ALTER TABLE sessions ADD COLUMN context_persist INTEGER NOT NULL DEFAULT 0`,
+    alterSql: 'ALTER TABLE sessions ADD COLUMN context_persist INTEGER NOT NULL DEFAULT 0',
   },
   {
     // Phase 11.7: usage-report watermark. NULL = not yet pushed to Stripe Metered.
@@ -191,7 +191,7 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     // reported). See docs/PHASE-11.7-USAGE-METERING.md §2.
     table: 'usage_events',
     column: 'reported_at',
-    alterSql: `ALTER TABLE usage_events ADD COLUMN reported_at TEXT`,
+    alterSql: 'ALTER TABLE usage_events ADD COLUMN reported_at TEXT',
   },
   {
     // Phase 11.7b: per-project Stripe customer mapping. Nullable — pre-existing
@@ -199,7 +199,7 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     // refuses to push usage for an unmapped project. See docs/PHASE-11.7-USAGE-METERING.md §11.7b.
     table: 'projects',
     column: 'stripe_customer_id',
-    alterSql: `ALTER TABLE projects ADD COLUMN stripe_customer_id TEXT`,
+    alterSql: 'ALTER TABLE projects ADD COLUMN stripe_customer_id TEXT',
   },
 ];
 
@@ -217,22 +217,22 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
  */
 const INDEX_ADDITIONS: ReadonlyArray<string> = [
   // Phase 11.5: reaper's keepAlive-idle scan
-  `CREATE INDEX IF NOT EXISTS sessions_keepalive_idle_idx ON sessions (status, keep_alive, last_seen_at)`,
+  'CREATE INDEX IF NOT EXISTS sessions_keepalive_idle_idx ON sessions (status, keep_alive, last_seen_at)',
   // Phase 11.6: locate sessions by their bound context (release lock on close,
   // find in-flight sessions on context delete attempt). Matches the
   // sessions_context_idx defined in schema.ts.
-  `CREATE INDEX IF NOT EXISTS sessions_context_idx ON sessions (context_id)`,
+  'CREATE INDEX IF NOT EXISTS sessions_context_idx ON sessions (context_id)',
   // Phase 11.6: contexts table indexes. The table itself is in STATEMENTS
   // above, so on a fresh DB the table exists by the time we reach here. On an
   // upgrade DB (existing prod), STATEMENTS' CREATE TABLE IF NOT EXISTS creates
   // the table fresh (it didn't exist pre-11.6), so it's also there. Either
   // way these indexes are safe to run after STATEMENTS.
-  `CREATE INDEX IF NOT EXISTS contexts_project_idx ON contexts (project_id)`,
-  `CREATE INDEX IF NOT EXISTS contexts_active_session_idx ON contexts (active_session_id)`,
+  'CREATE INDEX IF NOT EXISTS contexts_project_idx ON contexts (project_id)',
+  'CREATE INDEX IF NOT EXISTS contexts_active_session_idx ON contexts (active_session_id)',
   // Phase 11.7: partial index for the usage-report job's "unreported" scan. Runs
   // AFTER COLUMN_ADDITIONS so reported_at exists on upgrade DBs by now. Partial
   // (WHERE reported_at IS NULL) keeps the index tiny — most rows end up reported.
-  `CREATE INDEX IF NOT EXISTS usage_events_unreported_idx ON usage_events (reported_at) WHERE reported_at IS NULL`,
+  'CREATE INDEX IF NOT EXISTS usage_events_unreported_idx ON usage_events (reported_at) WHERE reported_at IS NULL',
 ];
 
 export async function ensureSchema(): Promise<void> {

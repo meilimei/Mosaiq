@@ -7,8 +7,8 @@
  *      时间窗过滤、跨 project 隔离、成本估算、参数校验。
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../app.js';
 import { ensureSchema } from '../db/bootstrap.js';
@@ -52,9 +52,9 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   process.env.PUBLIC_BASE_URL = 'http://localhost:8787';
-  delete process.env.UNIT_PRICE_USD_PER_MINUTE;
-  delete process.env.RATE_LIMIT_READ_CAPACITY;
-  delete process.env.RATE_LIMIT_READ_REFILL_PER_SEC;
+  process.env.UNIT_PRICE_USD_PER_MINUTE = undefined;
+  process.env.RATE_LIMIT_READ_CAPACITY = undefined;
+  process.env.RATE_LIMIT_READ_REFILL_PER_SEC = undefined;
   resetEnvCache();
   resetRateLimitStore();
   await ensureSchema();
@@ -162,10 +162,9 @@ describe('GET /v1/usage', () => {
     await insertUsage({ projectId: TEST_PROJECT_ID, value: 5, ts: '2026-05-11T00:00:00.000Z' });
 
     const app = createApp();
-    const resp = await app.request(
-      '/v1/usage?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z',
-      { headers: authH() },
-    );
+    const resp = await app.request('/v1/usage?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z', {
+      headers: authH(),
+    });
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as {
       project_id: string;
@@ -191,10 +190,9 @@ describe('GET /v1/usage', () => {
     await insertUsage({ projectId: TEST_PROJECT_ID, value: 50, ts: '2026-05-10T00:00:00.000Z' });
 
     const app = createApp();
-    const resp = await app.request(
-      '/v1/usage?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z',
-      { headers: authH() },
-    );
+    const resp = await app.request('/v1/usage?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z', {
+      headers: authH(),
+    });
     const body = (await resp.json()) as { estimated_cost_usd: number };
     expect(body.estimated_cost_usd).toBe(5); // 50 × 0.10
   });
@@ -216,10 +214,9 @@ describe('GET /v1/usage', () => {
     await insertUsage({ projectId: TEST_PROJECT_ID, value: 100, ts: '2026-05-10T00:00:00.000Z' });
 
     const app = createApp();
-    const resp = await app.request(
-      '/v1/usage?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z',
-      { headers: authH(OTHER_API_KEY) },
-    );
+    const resp = await app.request('/v1/usage?from=2026-05-01T00:00:00Z&to=2026-06-01T00:00:00Z', {
+      headers: authH(OTHER_API_KEY),
+    });
     const body = (await resp.json()) as { project_id: string; totals: Record<string, number> };
     expect(body.project_id).toBe(OTHER_PROJECT_ID);
     expect(body.totals['session.minute']).toBe(0);
@@ -228,7 +225,10 @@ describe('GET /v1/usage', () => {
   it('无数据 → totals 0，cost 0', async () => {
     const app = createApp();
     const resp = await app.request('/v1/usage', { headers: authH() });
-    const body = (await resp.json()) as { totals: Record<string, number>; estimated_cost_usd: number };
+    const body = (await resp.json()) as {
+      totals: Record<string, number>;
+      estimated_cost_usd: number;
+    };
     expect(body.totals['session.minute']).toBe(0);
     expect(body.estimated_cost_usd).toBe(0);
   });
@@ -243,10 +243,9 @@ describe('GET /v1/usage', () => {
 
   it('from >= to → 422', async () => {
     const app = createApp();
-    const resp = await app.request(
-      '/v1/usage?from=2026-06-01T00:00:00Z&to=2026-05-01T00:00:00Z',
-      { headers: authH() },
-    );
+    const resp = await app.request('/v1/usage?from=2026-06-01T00:00:00Z&to=2026-05-01T00:00:00Z', {
+      headers: authH(),
+    });
     expect(resp.status).toBe(422);
   });
 

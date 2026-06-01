@@ -239,17 +239,7 @@ export function renderLeaderboardHtml(
 }
 
 function renderScoreTable(model: LeaderboardModel): string {
-  const header =
-    '<thead><tr>' +
-    th('#') +
-    th('Engine') +
-    th('Persona') +
-    th('Weighted hits', 'num') +
-    th('Sites ok/fail', 'num') +
-    th('CreepJS lies', 'num') +
-    th('CreepJS bold-fail', 'num') +
-    th('Sannysoft', 'num') +
-    '</tr></thead>';
+  const header = `<thead><tr>${th('#')}${th('Engine')}${th('Persona')}${th('Weighted hits', 'num')}${th('Sites ok/fail', 'num')}${th('CreepJS lies', 'num')}${th('CreepJS bold-fail', 'num')}${th('Sannysoft', 'num')}</tr></thead>`;
 
   const rows = model.rows
     .map((r) => {
@@ -257,18 +247,7 @@ function renderScoreTable(model: LeaderboardModel): string {
       const sites = r.hasScore ? `${r.sitesOk}/${r.sitesFail}` : '—';
       const weighted = r.hasScore ? fmtNum(r.weightedHits) : '—';
       const cls = r.hasScore ? '' : ' class="no-score"';
-      return (
-        `<tr${cls}>` +
-        td(String(r.rank)) +
-        td(esc(r.engine)) +
-        td(`${esc(r.personaLabel)} <span class="pid">${esc(r.personaId)}</span>`) +
-        td(weighted, 'num') +
-        td(sites, 'num') +
-        td(r.hasScore ? String(r.creepjsLies) : '—', 'num') +
-        td(r.hasScore ? String(r.creepjsBoldFail) : '—', 'num') +
-        td(sann, 'num') +
-        '</tr>'
-      );
+      return `<tr${cls}>${td(String(r.rank))}${td(esc(r.engine))}${td(`${esc(r.personaLabel)} <span class="pid">${esc(r.personaId)}</span>`)}${td(weighted, 'num')}${td(sites, 'num')}${td(r.hasScore ? String(r.creepjsLies) : '—', 'num')}${td(r.hasScore ? String(r.creepjsBoldFail) : '—', 'num')}${td(sann, 'num')}</tr>`;
     })
     .join('');
 
@@ -276,11 +255,7 @@ function renderScoreTable(model: LeaderboardModel): string {
 }
 
 function renderSurfaceMatrix(model: LeaderboardModel): string {
-  const header =
-    '<thead><tr>' +
-    th('Persona') +
-    model.surfaces.map((s) => th(s, 'num')).join('') +
-    '</tr></thead>';
+  const header = `<thead><tr>${th('Persona')}${model.surfaces.map((s) => th(s, 'num')).join('')}</tr></thead>`;
 
   const rows = model.rows
     .map((r) => {

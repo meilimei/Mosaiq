@@ -18,10 +18,10 @@
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app.js';
+import { shutdownChromium } from './chromium.js';
 import { loadEnv } from './env.js';
 import { getLogger } from './logger.js';
-import { shutdownChromium } from './chromium.js';
-import { startCdpRelay, type CdpRelay } from './relay.js';
+import { type CdpRelay, startCdpRelay } from './relay.js';
 
 async function bootstrap() {
   const env = loadEnv();

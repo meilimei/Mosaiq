@@ -34,7 +34,9 @@ const TEMPLATES = {
 const templateName = process.env.MOSAIQ_PERSONA_TEMPLATE ?? 'win11-chrome-us';
 const factory = TEMPLATES[templateName];
 if (!factory) {
-  console.error(`FATAL: unknown template "${templateName}". Available: ${Object.keys(TEMPLATES).join(', ')}`);
+  console.error(
+    `FATAL: unknown template "${templateName}". Available: ${Object.keys(TEMPLATES).join(', ')}`,
+  );
   process.exit(2);
 }
 
@@ -48,7 +50,9 @@ const persona = factory({
   displayName: process.env.MOSAIQ_PERSONA_DISPLAY_NAME ?? `Mosaiq ${templateName} default`,
   masterSeed,
 });
-console.log(`[register-persona] template=${templateName} id=${persona.metadata.id} → POST ${apiUrl}/v1/personas (project=${projectId})`);
+console.log(
+  `[register-persona] template=${templateName} id=${persona.metadata.id} → POST ${apiUrl}/v1/personas (project=${projectId})`,
+);
 
 const resp = await fetch(`${apiUrl}/v1/personas`, {
   method: 'POST',
@@ -69,7 +73,9 @@ if (resp.status === 201) {
 
 if (resp.status === 409 && body?.error?.code === 'persona.duplicate') {
   console.log(`✅ already registered: id=${persona.metadata.id} (idempotent skip)`);
-  console.log(`\nNext step: set MOSAIQ_DEFAULT_PERSONA_ID=${persona.metadata.id} in your client's .env`);
+  console.log(
+    `\nNext step: set MOSAIQ_DEFAULT_PERSONA_ID=${persona.metadata.id} in your client's .env`,
+  );
   process.exit(0);
 }
 

@@ -392,28 +392,10 @@ export function emitProfileTypeScript(
     .replace(/-/g, '_')
     .replace(/[^A-Z0-9_]/g, '_');
 
-  const banner =
-    `// ─────────────────────────────────────────────────────────────────────────────\n` +
-    `// ${verify.gpuBrand || '(unknown brand)'} — captured via bench/capture-real-webgl-profile.html\n` +
-    `//   userAgent: ${payload.userAgent}\n` +
-    `//   captureDate: ${payload.captureDate}\n` +
-    `//   capabilitiesHash: ${verify.capHash}   in whitelist? ${verify.capInWhitelist ? 'YES' : 'NO'}\n` +
-    `//   brandCapabilities: ${verify.brandHashValue}   in whitelist? ${verify.brandInWhitelist ? 'YES' : 'NO'}\n` +
-    `//   CreepJS verdict: ${verify.verdict === 'PASS' ? 'PASS (cap ∧ brand)' : 'FAIL (LowerEntropy.WEBGL)'}\n` +
-    `// ─────────────────────────────────────────────────────────────────────────────`;
+  const banner = `// ─────────────────────────────────────────────────────────────────────────────\n// ${verify.gpuBrand || '(unknown brand)'} — captured via bench/capture-real-webgl-profile.html\n//   userAgent: ${payload.userAgent}\n//   captureDate: ${payload.captureDate}\n//   capabilitiesHash: ${verify.capHash}   in whitelist? ${verify.capInWhitelist ? 'YES' : 'NO'}\n//   brandCapabilities: ${verify.brandHashValue}   in whitelist? ${verify.brandInWhitelist ? 'YES' : 'NO'}\n//   CreepJS verdict: ${verify.verdict === 'PASS' ? 'PASS (cap ∧ brand)' : 'FAIL (LowerEntropy.WEBGL)'}\n// ─────────────────────────────────────────────────────────────────────────────`;
 
   const inline = opts.inlineGlKeys ?? false;
-  return (
-    `${banner}\n\n` +
-    `export const ${constName}: WebglProfile = {\n` +
-    `  id: ${JSON.stringify(id)},\n` +
-    `  name: ${JSON.stringify(payload.renderer)},\n` +
-    `  matchRenderer: ${match.toString()},\n` +
-    `  knownInCreepjsWhitelist: ${known},\n` +
-    `${emitMap('webgl1', payload.webgl1, inline)},\n` +
-    `${emitMap('webgl2', payload.webgl2, inline)},\n` +
-    `};\n`
-  );
+  return `${banner}\n\nexport const ${constName}: WebglProfile = {\n  id: ${JSON.stringify(id)},\n  name: ${JSON.stringify(payload.renderer)},\n  matchRenderer: ${match.toString()},\n  knownInCreepjsWhitelist: ${known},\n${emitMap('webgl1', payload.webgl1, inline)},\n${emitMap('webgl2', payload.webgl2, inline)},\n};\n`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

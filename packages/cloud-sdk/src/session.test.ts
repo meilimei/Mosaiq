@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Persona } from '@runova/persona-schema';
 
-import { ManagedCloudSession } from './session.js';
 import { MosaiqCloudClient } from './client.js';
+import { ManagedCloudSession } from './session.js';
 
 const FIXTURE_PATH = path.resolve(
   __dirname,

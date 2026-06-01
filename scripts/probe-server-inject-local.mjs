@@ -1,10 +1,10 @@
 #!/usr/bin/env node
+import { chromium } from 'playwright-core';
 /**
  * Local probe: pod /control/start → client connectOverCDP (no injectInto) → hc check.
  * Usage: node scripts/probe-server-inject-local.mjs [controlPort] [personaCores]
  */
 import { createWin11ChromeUsPersona } from '../packages/persona-schema/dist/templates/index.js';
-import { chromium } from 'playwright-core';
 
 const controlPort = Number(process.argv[2] ?? '19222');
 const expectedCores = Number(process.argv[3] ?? '8');

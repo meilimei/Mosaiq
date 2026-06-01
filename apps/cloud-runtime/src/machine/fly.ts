@@ -269,7 +269,10 @@ export class FlyMachineManager implements MachineManager {
       });
       this.#alive.delete(machineId);
     } else {
-      log.debug({ machineId }, 'release: machine unknown to fly manager, will still attempt destroy');
+      log.debug(
+        { machineId },
+        'release: machine unknown to fly manager, will still attempt destroy',
+      );
     }
     // 即使 alive 没记录，也尝试 force-destroy —— 应对控制平面重启后被丢失的孤儿。
     await this.#api.destroyMachine(machineId).catch((err) => {

@@ -14,7 +14,7 @@
 
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import { getLogger } from '../utils/logger.js';

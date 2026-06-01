@@ -12,9 +12,10 @@
  * 的语义；周期触发已经在纯函数 reapExpiredSessions 测试里覆盖了。
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Logger } from 'pino';
 import { ensureSchema } from '../db/bootstrap.js';
 import { disposeDb, getDb } from '../db/client.js';
 import { auditEvents, projects, sessions as sessionsTable, usageEvents } from '../db/schema.js';
@@ -26,7 +27,6 @@ import {
   stickyRegistrySet,
 } from '../sticky/registry.js';
 import { reapExpiredSessions, startSessionExpiryJob } from './session-expiry.js';
-import type { Logger } from 'pino';
 
 // ─── fixtures ───────────────────────────────────────────────────────────────
 
@@ -229,7 +229,12 @@ describe('reapExpiredSessions', () => {
       expiresAt: new Date(Date.now() - 60_000).toISOString(),
     });
     const db = await getDb();
-    await reapExpiredSessions({ db, mm: makeFakeMm(), logger: makeFakeLogger(), idleThresholdIso: null });
+    await reapExpiredSessions({
+      db,
+      mm: makeFakeMm(),
+      logger: makeFakeLogger(),
+      idleThresholdIso: null,
+    });
     const events = await db.drizzle
       .select()
       .from(usageEvents)
@@ -542,8 +547,8 @@ describe('reapExpiredSessions', () => {
       id: 'ses_both_expired',
       machineId: 'mch_both_expired',
       status: 'live',
-      expiresAt: past,            // TTL 已过
-      lastSeenAt: idleLastSeen,   // idle 也过
+      expiresAt: past, // TTL 已过
+      lastSeenAt: idleLastSeen, // idle 也过
       keepAlive: true,
     });
 

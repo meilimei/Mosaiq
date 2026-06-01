@@ -80,9 +80,7 @@ describe('createApiKey', () => {
   it('existing project + new key: does not duplicate project row', async () => {
     const handle = await getDb();
     await ensureSchema();
-    await handle.drizzle
-      .insert(projects)
-      .values({ id: 'proj_test_gamma', name: 'pre-existing' });
+    await handle.drizzle.insert(projects).values({ id: 'proj_test_gamma', name: 'pre-existing' });
 
     const result = await createApiKey({
       projectId: 'proj_test_gamma',

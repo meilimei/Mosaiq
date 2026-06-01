@@ -65,6 +65,8 @@
     "bench:convert-profile": "tsx bench/convert-captured-profile.ts",
     "bench:integrate-profiles": "tsx bench/integrate-captured-profiles.ts",
     "bench:capture-self": "tsx bench/capture-self-webgl-profile.ts",
+    "diag:webgl": "tsx bench/diagnose-webgl.ts",
+    "diag:worker-scope": "tsx bench/diagnose-worker-scope.ts",
     "clean": "rimraf dist"
   },
   "dependencies": {

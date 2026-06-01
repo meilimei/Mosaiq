@@ -13,11 +13,11 @@
 import { eq } from 'drizzle-orm';
 
 import { loadEnv } from '../env.js';
-import { getDb } from './client.js';
-import { apiKeys, projects } from './schema.js';
 import { sha256Hex } from '../utils/hash.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
+import { getDb } from './client.js';
+import { apiKeys, projects } from './schema.js';
 
 export interface SeedResult {
   /** 已存在 / 已被使用过的 project（不重置） */

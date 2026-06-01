@@ -128,7 +128,7 @@ export function filterSites(
  */
 export function backoffMs(attempt: number): number {
   if (attempt <= 1) return 0;
-  return BACKOFF_BASE_MS * Math.pow(2, attempt - 2);
+  return BACKOFF_BASE_MS * 2 ** (attempt - 2);
 }
 
 function abortedResult(spec: SiteSpec): SiteResult {

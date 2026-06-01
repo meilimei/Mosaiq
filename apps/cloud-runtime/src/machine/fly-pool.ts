@@ -27,7 +27,7 @@ import {
 } from '../metrics.js';
 import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
-import { FlyApiClient } from './fly-api.js';
+import type { FlyApiClient } from './fly-api.js';
 import type { FlyMachineConfig } from './fly-api.js';
 import { FlyMachineManager } from './fly.js';
 import type { FlyMachineManagerOptions } from './fly.js';
@@ -124,7 +124,9 @@ export class FlyPooledMachineManager implements MachineManager {
       );
     }
     if (opts.poolTargetSize > 50) {
-      throw new Error('FlyPooledMachineManager: poolTargetSize capped at 50 (safety, see PHASE-11.3 §10)');
+      throw new Error(
+        'FlyPooledMachineManager: poolTargetSize capped at 50 (safety, see PHASE-11.3 §10)',
+      );
     }
 
     // 内部 cold 复用同一组 opts。它会自己 new FlyApiClient——我们用它的 api getter
@@ -135,10 +137,12 @@ export class FlyPooledMachineManager implements MachineManager {
 
     this.#targetSize = opts.poolTargetSize;
     this.#replenishIntervalMs = opts.poolReplenishIntervalMs ?? POOL_DEFAULTS.replenishIntervalMs;
-    this.#replenishConcurrency = opts.poolReplenishConcurrency ?? POOL_DEFAULTS.replenishConcurrency;
+    this.#replenishConcurrency =
+      opts.poolReplenishConcurrency ?? POOL_DEFAULTS.replenishConcurrency;
     this.#maxAgeMs = opts.poolMaxAgeMs ?? POOL_DEFAULTS.maxAgeMs;
     this.#provisionTimeoutMs = opts.poolProvisionTimeoutMs ?? POOL_DEFAULTS.provisionTimeoutMs;
-    this.#bootstrapEvictForeign = opts.poolBootstrapEvictForeign ?? POOL_DEFAULTS.bootstrapEvictForeign;
+    this.#bootstrapEvictForeign =
+      opts.poolBootstrapEvictForeign ?? POOL_DEFAULTS.bootstrapEvictForeign;
 
     this.#podImage = opts.podImage;
     this.#region = opts.region;

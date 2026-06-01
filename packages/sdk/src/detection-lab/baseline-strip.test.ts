@@ -241,7 +241,9 @@ describe('stripRunForBaseline — raw', () => {
 
   it('replaces raw.timestamp with BASELINE_TIMESTAMP', () => {
     const out = stripRunForBaseline(
-      makeRun({ raw: makeRaw([{ id: 'sannysoft', ok: true }], { timestamp: '2026-09-15T18:00:00.000Z' }) }),
+      makeRun({
+        raw: makeRaw([{ id: 'sannysoft', ok: true }], { timestamp: '2026-09-15T18:00:00.000Z' }),
+      }),
     );
     expect(out.raw?.timestamp).toBe(BASELINE_TIMESTAMP);
   });
@@ -357,9 +359,7 @@ describe('stripRunForBaseline — site results', () => {
   });
 
   it('omits extracted when input had it undefined', () => {
-    const out = stripRunForBaseline(
-      makeRun({ raw: makeRaw([{ id: 'sannysoft', ok: true }]) }),
-    );
+    const out = stripRunForBaseline(makeRun({ raw: makeRaw([{ id: 'sannysoft', ok: true }]) }));
     expect(out.raw?.results[0]).not.toHaveProperty('extracted');
   });
 });
@@ -459,7 +459,9 @@ describe('stripRunForBaseline — diffRuns round-trip', () => {
     );
     const candidate = makeRun({
       score: makeScore({
-        hits: [makeHit({ surface: 'webdriver', site: 'sannysoft', detector: 'navigator.webdriver' })],
+        hits: [
+          makeHit({ surface: 'webdriver', site: 'sannysoft', detector: 'navigator.webdriver' }),
+        ],
         weightedHits: 3.0,
       }),
       raw: makeRaw([{ id: 'sannysoft', ok: true }]),

@@ -152,7 +152,7 @@ export function normalizeWebglString(s: string | undefined): string {
 export function parseUniquenessPct(s: string | undefined): number | null {
   if (!s) return null;
   const m = s.match(/(\d+(?:\.\d+)?)\s*%/);
-  return m && m[1] ? Number.parseFloat(m[1]) : null;
+  return m?.[1] ? Number.parseFloat(m[1]) : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -576,7 +576,7 @@ export function scoreFingerprintScan(extracted: Record<string, unknown>): SitePa
     hits.push({
       surface: 'other',
       site: 'fingerprint-scan',
-      detector: `fingerprint-scan keyword`,
+      detector: 'fingerprint-scan keyword',
       evidence: `score=${score} verdict=${verdict ?? '?'}`,
       severity: 'high',
     });
@@ -584,7 +584,7 @@ export function scoreFingerprintScan(extracted: Record<string, unknown>): SitePa
     hits.push({
       surface: 'other',
       site: 'fingerprint-scan',
-      detector: `fingerprint-scan suspicious score`,
+      detector: 'fingerprint-scan suspicious score',
       evidence: `score=${score}`,
       severity: 'medium',
     });
@@ -667,7 +667,6 @@ export function scoreSiteResult(
       return scoreIncolumitas(extracted);
     case 'fingerprint-scan':
       return scoreFingerprintScan(extracted);
-    case 'browserleaks-js':
     default:
       return scoreBrowserleaksGeneric(extracted);
   }

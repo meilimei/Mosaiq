@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '../utils/errors.js';
+import type { ApiError } from '../utils/errors.js';
 import {
-  StaticPoolMachineManager,
-  rewriteCdpHost,
   type FetchLike,
   type PodStartResponse,
+  StaticPoolMachineManager,
+  rewriteCdpHost,
 } from './static.js';
 import type { AcquireSpec } from './types.js';
 
@@ -42,9 +42,9 @@ describe('rewriteCdpHost', () => {
     ).toBe('ws://browser-pod-1:9223/devtools/browser/abc');
   });
   it('chromium 没自报 port 时兜底走 origin port', () => {
-    expect(
-      rewriteCdpHost('ws://localhost/devtools/browser/abc', 'http://browser-pod-1:9999'),
-    ).toBe('ws://browser-pod-1:9999/devtools/browser/abc');
+    expect(rewriteCdpHost('ws://localhost/devtools/browser/abc', 'http://browser-pod-1:9999')).toBe(
+      'ws://browser-pod-1:9999/devtools/browser/abc',
+    );
   });
 });
 

@@ -26,8 +26,8 @@
  * for grep / CI assertion.
  */
 
-import { createWin11ChromeUsPersona } from '../packages/persona-schema/dist/templates/index.js';
 import { chromium } from 'playwright-core';
+import { createWin11ChromeUsPersona } from '../packages/persona-schema/dist/templates/index.js';
 
 const baseUrl = (process.env.MOSAIQ_BASE_URL ?? '').replace(/\/+$/, '');
 const apiKey = process.env.MOSAIQ_API_KEY ?? '';
@@ -51,7 +51,13 @@ const authHeaders = {
 
 /** @type {(label: string, obj: unknown) => void} */
 function logStep(label, obj) {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), label, ...((obj && typeof obj === 'object') ? obj : { data: obj }) }));
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      label,
+      ...(obj && typeof obj === 'object' ? obj : { data: obj }),
+    }),
+  );
 }
 
 async function main() {
@@ -94,7 +100,9 @@ async function main() {
   logStep('session_create', { status: createRes.status, ms: createMs, body: createBodyResp });
 
   if (createRes.status !== 201) {
-    throw new Error(`session create failed: HTTP ${createRes.status} ${JSON.stringify(createBodyResp)}`);
+    throw new Error(
+      `session create failed: HTTP ${createRes.status} ${JSON.stringify(createBodyResp)}`,
+    );
   }
   const sessionId = createBodyResp?.id;
   const cdpUrl = createBodyResp?.cdp_url;
@@ -109,7 +117,11 @@ async function main() {
     headers: authHeaders,
   });
   const getBody = await getRes.json();
-  logStep('session_get', { status: getRes.status, ms: Date.now() - t3, status_field: getBody?.status });
+  logStep('session_get', {
+    status: getRes.status,
+    ms: Date.now() - t3,
+    status_field: getBody?.status,
+  });
   if (getRes.status !== 200) {
     throw new Error(`session get failed: HTTP ${getRes.status}`);
   }
@@ -159,7 +171,11 @@ async function main() {
   const delMs = Date.now() - t4;
   // DELETE may return 204 (no body) or 200 with body
   let delBody = null;
-  try { delBody = await delRes.json(); } catch { /* 204 no body */ }
+  try {
+    delBody = await delRes.json();
+  } catch {
+    /* 204 no body */
+  }
   logStep('session_delete', { status: delRes.status, ms: delMs, body: delBody });
   if (delRes.status >= 400) {
     throw new Error(`session delete failed: HTTP ${delRes.status}`);

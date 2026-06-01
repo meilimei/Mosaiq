@@ -106,9 +106,7 @@ async function main(): Promise<void> {
     const sw = detectSoftwareRenderer(payload.renderer);
     if (sw.isSoftware) {
       console.error(
-        `[capture-self] ❌ software renderer detected: ${sw.label}\n` +
-          `[capture-self]    ${sw.hint}\n` +
-          `[capture-self] not writing JSON. Re-run with hardware acceleration enabled.`,
+        `[capture-self] ❌ software renderer detected: ${sw.label}\n[capture-self]    ${sw.hint}\n[capture-self] not writing JSON. Re-run with hardware acceleration enabled.`,
       );
       process.exit(3);
     }
@@ -131,10 +129,10 @@ async function main(): Promise<void> {
 
     const filename = suggestFilename(verify.gpuBrand, payload.renderer);
     const outPath = resolve(PROFILES_DIR, filename);
-    writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n');
+    writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`);
     console.log(`[capture-self] wrote ${outPath}`);
     console.log('[capture-self] next:');
-    console.log(`[capture-self]   pnpm --filter @runova/sdk run bench:integrate-profiles`);
+    console.log('[capture-self]   pnpm --filter @runova/sdk run bench:integrate-profiles');
   } finally {
     await browser.close();
   }

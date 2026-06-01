@@ -14,7 +14,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { loadEnv, resetEnvCache, type Env } from './env.js';
+import { type Env, loadEnv, resetEnvCache } from './env.js';
 
 function loadWith(overrides: NodeJS.ProcessEnv): Env {
   resetEnvCache();
@@ -194,9 +194,7 @@ describe('env schema — phase 11.5 keepAlive knobs', () => {
     }) as never);
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      expect(() =>
-        loadWith({ SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS: '30' }),
-      ).toThrow(/exit:1/);
+      expect(() => loadWith({ SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS: '30' })).toThrow(/exit:1/);
       expect(errSpy).toHaveBeenCalledWith(
         expect.stringContaining('SESSION_IDLE_TIMEOUT_KEEPALIVE_SECONDS'),
       );
@@ -212,9 +210,7 @@ describe('env schema — phase 11.5 keepAlive knobs', () => {
     }) as never);
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      expect(() =>
-        loadWith({ KEEPALIVE_SESSIONS_PER_PROJECT_MAX: '51' }),
-      ).toThrow(/exit:1/);
+      expect(() => loadWith({ KEEPALIVE_SESSIONS_PER_PROJECT_MAX: '51' })).toThrow(/exit:1/);
       expect(errSpy).toHaveBeenCalledWith(
         expect.stringContaining('KEEPALIVE_SESSIONS_PER_PROJECT_MAX'),
       );
@@ -240,9 +236,7 @@ describe('env schema — phase 11.5 keepAlive knobs', () => {
       expect(errSpy).toHaveBeenCalledWith(
         expect.stringContaining('SESSION_TTL_MAX_KEEPALIVE_SECONDS'),
       );
-      expect(errSpy).toHaveBeenCalledWith(
-        expect.stringMatching(/>= SESSION_TTL_MAX_SECONDS/),
-      );
+      expect(errSpy).toHaveBeenCalledWith(expect.stringMatching(/>= SESSION_TTL_MAX_SECONDS/));
     } finally {
       exitSpy.mockRestore();
       errSpy.mockRestore();

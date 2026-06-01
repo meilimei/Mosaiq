@@ -135,10 +135,11 @@ async function main() {
   const totalRetries = raw.totalRetries ?? 0;
   const sitesWithRetry = raw.sitesWithRetry ?? 0;
   console.log(
-    `[bench] done in ${raw.overallMs}ms — OK=${raw.sitesOk} FAIL=${raw.sitesFail}` +
-      (totalRetries > 0
+    `[bench] done in ${raw.overallMs}ms — OK=${raw.sitesOk} FAIL=${raw.sitesFail}${
+      totalRetries > 0
         ? ` (${sitesWithRetry} sites needed retries, ${totalRetries} total retries)`
-        : ''),
+        : ''
+    }`,
   );
   console.log(`[bench] next: tsx bench/report.ts ${resultsDir}`);
 }

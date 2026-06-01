@@ -18,17 +18,17 @@
  * 内存被 dump 也拿不到 plaintext context。
  */
 
-import { Hono } from 'hono';
 import { Readable } from 'node:stream';
 import { and, eq, isNull } from 'drizzle-orm';
+import { Hono } from 'hono';
 
+import { getContextStorage } from '../contexts/storage.js';
 import { getDb } from '../db/client.js';
 import { contexts as contextsTable } from '../db/schema.js';
 import { loadEnv } from '../env.js';
 import { contextSnapshotBytes, contextsTotal } from '../metrics.js';
-import { getContextStorage } from '../contexts/storage.js';
-import { ApiError } from '../utils/errors.js';
 import { verifyInternalToken } from '../utils/crypto.js';
+import { ApiError } from '../utils/errors.js';
 import { getLogger } from '../utils/logger.js';
 
 export const internalContextsRoute = new Hono();
@@ -50,11 +50,14 @@ async function verifyAndLoad(
   ctxId: string,
   op: 'download' | 'snapshot',
   token: string | undefined,
-): Promise<{
-  row: NonNullable<Awaited<ReturnType<typeof loadCtxRow>>>;
-  storageKey: string;
-  storageBackend: string;
-} | { row: null }> {
+): Promise<
+  | {
+      row: NonNullable<Awaited<ReturnType<typeof loadCtxRow>>>;
+      storageKey: string;
+      storageBackend: string;
+    }
+  | { row: null }
+> {
   const env = loadEnv();
   if (!env.MOSAIQ_INTERNAL_HMAC_SECRET) {
     // Feature disabled — internal endpoints behave like 401 (don't leak that the
@@ -173,7 +176,9 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
   }
 
   // Hono / fetch web ReadableStream → Node Readable for storage.write
-  const nodeStream = Readable.fromWeb(reqBody as unknown as import('node:stream/web').ReadableStream);
+  const nodeStream = Readable.fromWeb(
+    reqBody as unknown as import('node:stream/web').ReadableStream,
+  );
 
   const storage = await getContextStorage(env.MOSAIQ_CONTEXT_STORAGE_PATH);
   let bytes: number;

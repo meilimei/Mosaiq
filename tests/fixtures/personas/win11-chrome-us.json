@@ -3,11 +3,7 @@
   "metadata": {
     "id": "win11-chrome-us",
     "displayName": "CI Fixture — Win11 Chrome US",
-    "tags": [
-      "template:win11-chrome-us",
-      "fixture",
-      "ci"
-    ],
+    "tags": ["template:win11-chrome-us", "fixture", "ci"],
     "notes": "Deterministic fixture for the v0.10 Detection Lab CI gate. Do not hand-edit — regenerate via `pnpm build-fixture-personas`.",
     "createdAt": "1970-01-01T00:00:00.000Z",
     "updatedAt": "1970-01-01T00:00:00.000Z",
@@ -22,10 +18,7 @@
       "platformLabel": "Win32"
     },
     "locale": "en-US",
-    "languages": [
-      "en-US",
-      "en"
-    ],
+    "languages": ["en-US", "en"],
     "timezone": "America/New_York",
     "screen": {
       "width": 1920,

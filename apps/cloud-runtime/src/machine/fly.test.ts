@@ -46,10 +46,12 @@ interface FetchCall {
   headers?: Record<string, string>;
 }
 
-function makeStubFetch(routes: Array<{
-  match: (url: string, init?: RequestInit) => boolean;
-  handler: (url: string, init?: RequestInit) => Promise<Response> | Response;
-}>): { fetchImpl: FetchLike; calls: FetchCall[] } {
+function makeStubFetch(
+  routes: Array<{
+    match: (url: string, init?: RequestInit) => boolean;
+    handler: (url: string, init?: RequestInit) => Promise<Response> | Response;
+  }>,
+): { fetchImpl: FetchLike; calls: FetchCall[] } {
   const calls: FetchCall[] = [];
   const fetchImpl = (async (url: string, init?: RequestInit) => {
     const body = init?.body ? safeJson(String(init.body)) : undefined;
@@ -76,7 +78,10 @@ function safeJson(s: string): unknown {
   }
 }
 
-function manager(fetchImpl: FetchLike, overrides: Partial<ConstructorParameters<typeof FlyMachineManager>[0]> = {}) {
+function manager(
+  fetchImpl: FetchLike,
+  overrides: Partial<ConstructorParameters<typeof FlyMachineManager>[0]> = {},
+) {
   return new FlyMachineManager({
     apiToken: 'fly_tok_test',
     appName: 'mosaiq-browser-pod-test',
@@ -105,8 +110,7 @@ describe('FlyMachineManager — happy path', () => {
       // POST create
       {
         match: (u, init) =>
-          init?.method === 'POST' &&
-          u === `${FLY_BASE}/apps/mosaiq-browser-pod-test/machines`,
+          init?.method === 'POST' && u === `${FLY_BASE}/apps/mosaiq-browser-pod-test/machines`,
         handler: () =>
           new Response(
             JSON.stringify({
@@ -126,10 +130,10 @@ describe('FlyMachineManager — happy path', () => {
         handler: () => {
           getMachineCalls++;
           const state = getMachineCalls >= 3 ? 'started' : 'starting';
-          return new Response(
-            JSON.stringify({ id: 'mch_fly_001', state, private_ip: POD_IP }),
-            { status: 200, headers: { 'content-type': 'application/json' } },
-          );
+          return new Response(JSON.stringify({ id: 'mch_fly_001', state, private_ip: POD_IP }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
         },
       },
       // pod /healthz
@@ -181,7 +185,7 @@ describe('FlyMachineManager — happy path', () => {
     });
 
     // auth header 一定在
-    expect(calls[0]?.headers?.['authorization']).toBe('Bearer fly_tok_test');
+    expect(calls[0]?.headers?.authorization).toBe('Bearer fly_tok_test');
 
     // capacity 反映 alive=1
     const cap = await mm.capacity();
@@ -215,10 +219,9 @@ describe('FlyMachineManager — happy path', () => {
       {
         match: (u) => u === `${POD_ORIGIN}/control/start`,
         handler: () =>
-          new Response(
-            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/dev/u', machineId: 'mid' }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/dev/u', machineId: 'mid' }), {
+            status: 200,
+          }),
       },
       // /control/stop
       {
@@ -313,18 +316,16 @@ describe('FlyMachineManager — happy path', () => {
       {
         match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_x', state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_x', state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_x'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_x', state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_x', state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u) => u.endsWith('/healthz'),
@@ -333,10 +334,9 @@ describe('FlyMachineManager — happy path', () => {
       {
         match: (u) => u.endsWith('/control/start'),
         handler: () =>
-          new Response(
-            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }), {
+            status: 200,
+          }),
       },
       {
         match: (u) => u.endsWith('/control/stop'),
@@ -379,18 +379,16 @@ describe('FlyMachineManager — failure paths', () => {
       {
         match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_bad', state: 'created', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_bad', state: 'created', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_bad'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_bad', state: 'failed', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_bad', state: 'failed', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'DELETE' && u.includes('/machines/mch_bad'),
@@ -411,18 +409,16 @@ describe('FlyMachineManager — failure paths', () => {
       {
         match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_slow', state: 'created', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_slow', state: 'created', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_slow'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_slow', state: 'starting', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_slow', state: 'starting', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'DELETE',
@@ -444,18 +440,16 @@ describe('FlyMachineManager — failure paths', () => {
       {
         match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_zz', state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_zz', state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_zz'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_zz', state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_zz', state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u) => u.endsWith('/healthz'),
@@ -508,9 +502,7 @@ describe('FlyMachineManager — failure paths', () => {
 
     // 同步启动 5 个 acquire（cap=2）。详见 local-docker.test.ts 同款测试里
     // unhandled-rejection 动机的注释。
-    type AcquireStatus =
-      | { kind: 'resolved' }
-      | { kind: 'rejected'; reason: unknown };
+    type AcquireStatus = { kind: 'resolved' } | { kind: 'rejected'; reason: unknown };
     const statusPromises: Promise<AcquireStatus>[] = [1, 2, 3, 4, 5].map((i) =>
       mm.acquire({ ...acquireSpec, sessionId: `ses_race_${i}` }).then(
         (): AcquireStatus => ({ kind: 'resolved' }),
@@ -554,18 +546,16 @@ describe('FlyMachineManager — failure paths', () => {
       {
         match: (u, init) => init?.method === 'POST' && u.endsWith('/machines'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_p', state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_p', state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/mch_p'),
         handler: () =>
-          new Response(
-            JSON.stringify({ id: 'mch_p', state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ id: 'mch_p', state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          }),
       },
       {
         match: (u) => u.endsWith('/healthz'),
@@ -574,10 +564,9 @@ describe('FlyMachineManager — failure paths', () => {
       {
         match: (u) => u.endsWith('/control/start'),
         handler: () =>
-          new Response(
-            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }), {
+            status: 200,
+          }),
       },
     ]);
     const mm = manager(fetchImpl, { maxMachines: 1 });
@@ -638,10 +627,9 @@ describe('FlyMachineManager — constructor + shutdown', () => {
         match: (u, init) => init?.method === 'GET' && u.includes('/machines/'),
         handler: (u) => {
           const id = u.split('/').at(-1)!;
-          return new Response(
-            JSON.stringify({ id, state: 'started', private_ip: POD_IP }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ id, state: 'started', private_ip: POD_IP }), {
+            status: 200,
+          });
         },
       },
       {
@@ -651,10 +639,9 @@ describe('FlyMachineManager — constructor + shutdown', () => {
       {
         match: (u) => u.endsWith('/control/start'),
         handler: () =>
-          new Response(
-            JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }),
-            { status: 200 },
-          ),
+          new Response(JSON.stringify({ cdpUrl: 'ws://0.0.0.0:9223/d/u', machineId: 'm' }), {
+            status: 200,
+          }),
       },
       {
         match: (u) => u.endsWith('/control/stop'),
