@@ -88,14 +88,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # NON-BLOCKING until GitHub Pages is enabled for the repo
-    # (Settings → Pages → Source: GitHub Actions). `actions/deploy-pages` HARD
-    # FAILS with "Pages not enabled" / 404 until that one-time setting is done,
-    # which would mark every main-push leaderboard run red for a pending manual
-    # step. continue-on-error keeps the build job (the actual artifact) green and
-    # lets the deploy succeed automatically once Pages is turned on — at which
-    # point this can be removed to make broken deploys visible again.
-    continue-on-error: true
+    # GitHub Pages is enabled for the repo (Settings → Pages → Source: GitHub
+    # Actions) and serving the leaderboard at https://meilimei.github.io/Mosaiq/.
+    # The previous `continue-on-error: true` (which kept the deploy green while
+    # Pages was still pending) has been removed so genuine deploy failures are
+    # now visible (red) instead of silently swallowed.
     # Minimum scope for the Pages deploy action.
     permissions:
       pages: write
