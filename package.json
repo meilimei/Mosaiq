@@ -18,6 +18,7 @@
     "build:all": "pnpm -r run build",
     "dev:desktop": "pnpm --filter @mosaiq/desktop dev",
     "mosaiq": "tsx packages/cli/src/cli.ts",
+    "open-persona": "pnpm --filter @runova/sdk open-persona",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
