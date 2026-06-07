@@ -37,6 +37,11 @@ import { loadEnv } from './env.js';
 import { type ServerStealthHandle, applyServerStealth } from './inject.js';
 import { getLogger } from './logger.js';
 import { buildChromiumFlags } from './persona-flags.js';
+import {
+  type ProxyForwarderHandle,
+  needsAuthForwarder,
+  startProxyForwarder,
+} from './proxy-forward.js';
 
 export interface RunningChromium {
   machineId: string;
@@ -109,6 +114,8 @@ let current: {
   injectHandle: ServerStealthHandle | null;
   /** captcha watcher 句柄；kill 时与 injectHandle 一并 close。null = 未挂。 */
   captchaHandle: CaptchaWatcherHandle | null;
+  /** Option A: 本地认证转发代理句柄；kill 时 close。null = 未用（无认证代理）。 */
+  proxyForwarder: ProxyForwarderHandle | null;
 } | null = null;
 
 /**
@@ -212,12 +219,34 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
   }
 
   const exe = resolveChromiumExecutable();
+
+  // ── Option A（issue #5）：带认证的上游代理走 pod 内本地转发代理 ──
+  // chromium 的 --proxy-server 不带认证；当 persona 上游代理带 username 且为
+  // http/https 时，起一个本地转发器注入 Proxy-Authorization，让 chromium 指向它。
+  // 受 env POD_PROXY_AUTH_FORWARD 总开关约束（false = 回退传统直连，认证被丢弃）。
+  // socks5+认证暂不支持（需独立握手），走 else 分支（传统 flag，认证丢失）。
+  let proxyForwarder: ProxyForwarderHandle | null = null;
+  let proxyServerOverride: string | undefined;
+  const upstream = input.persona.network.proxy;
+  if (upstream && env.POD_PROXY_AUTH_FORWARD && needsAuthForwarder(upstream)) {
+    try {
+      proxyForwarder = await startProxyForwarder(upstream);
+      proxyServerOverride = proxyForwarder.url;
+    } catch (err) {
+      log.error(
+        { err: err instanceof Error ? err.message : String(err), upstreamHost: upstream.host },
+        'proxy-forward: failed to start; falling back to direct (auth will be dropped)',
+      );
+    }
+  }
+
   const flags = buildChromiumFlags({
     persona: input.persona,
     internalCdpPort: env.POD_CDP_INTERNAL_PORT,
     userDataDir: sessionUserDir,
     headless: env.POD_HEADLESS,
     ...(input.viewport ? { viewport: input.viewport } : {}),
+    ...(proxyServerOverride ? { proxyServerOverride } : {}),
   });
 
   log.info(
@@ -260,6 +289,7 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
       const wasManaged = current.managedKill;
       const handle = current.injectHandle;
       const captcha = current.captchaHandle;
+      const forwarder = current.proxyForwarder;
       current = null;
       // Option A: 关掉服务端注入的 playwright 连接。unmanaged 退出（crash/TTL/self-
       // death）时 chromium 已死，连接会自然报错；managed 退出时 killChromium 已先关，
@@ -267,6 +297,8 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
       void handle?.close();
       // captcha watcher 同理：double-close 安全（内部 best-effort catch）。
       void captcha?.close();
+      // Option A: 关本地认证转发代理（chromium 已退出，无连接需服务）。
+      void forwarder?.close();
       // Phase 11.6: managed kill（killChromium）会在 snapshot 之后自己 rm，这里
       // 跳过避免在 snapshot 读取 user-data-dir 之前就把它删了。Unmanaged 退出
       // （crash / TTL SIGTERM / chromium self-death）照常立即清理，不 snapshot。
@@ -306,6 +338,9 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
       'chromium spawn failed; captured stderr/stdout below',
     );
     proc.kill('SIGKILL');
+    // Option A: chromium 没起来，关掉已建的本地转发代理（current 此刻还没赋值，
+    // exit handler 不会处理它）。
+    void proxyForwarder?.close();
     // Re-throw with diagnostic suffix — 控制平面会把这个 message 拼到
     // /v1/sessions 响应 detail.body 里，使诊断无需 ssh 进机器。
     const baseMsg = err instanceof Error ? err.message : String(err);
@@ -380,6 +415,7 @@ export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningC
     managedKill: false,
     injectHandle,
     captchaHandle,
+    proxyForwarder,
   };
   log.info(
     {
@@ -435,6 +471,7 @@ export async function killChromium(machineId: string, opts: KillOptions = {}): P
   const contextProjectId = current.contextProjectId;
   const injectHandle = current.injectHandle;
   const captchaHandle = current.captchaHandle;
+  const proxyForwarder = current.proxyForwarder;
   current.managedKill = true; // exit handler 跳过 rm，交给本函数
   if (current.cleanupTimer) clearTimeout(current.cleanupTimer);
 
@@ -442,6 +479,8 @@ export async function killChromium(machineId: string, opts: KillOptions = {}): P
   // chromium 被杀时报一堆 disconnect 错误。best-effort。captcha watcher 同样先关。
   await injectHandle?.close();
   await captchaHandle?.close();
+  // Option A: 关本地认证转发代理（exit handler 之后还会 double-close，幂等安全）。
+  await proxyForwarder?.close();
 
   proc.kill('SIGTERM');
   const killed = await waitForExit(proc, 5_000);

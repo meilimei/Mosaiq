@@ -55,6 +55,17 @@ const EnvSchema = z.object({
     .transform((v) => (typeof v === 'boolean' ? v : v.toLowerCase() === 'true')),
 
   /**
+   * Option A 本地认证转发代理总开关（kill-switch，issue #5）。默认 true：当 persona
+   * 的上游代理带 username 且协议为 http/https 时，pod 起一个本地转发代理注入
+   * Proxy-Authorization，让 chromium 经它出网（带认证的住宅/ISP 代理才能用）。设
+   * 'false' 即时回退到传统 `--proxy-server` 直连（认证会被丢弃，仅用于排障/回滚）。
+   */
+  POD_PROXY_AUTH_FORWARD: z
+    .union([z.boolean(), z.string()])
+    .default('true')
+    .transform((v) => (typeof v === 'boolean' ? v : v.toLowerCase() === 'true')),
+
+  /**
    * Chromium spawn 后等 /json/version 就绪的超时。30s 在 LocalDocker 测试足够，但
    * Fly firecracker microVM 上 chromium 内部有 15s+ 的初始化静默期（推测是
    * NetworkService DNS resolver init + 字体配置扫描的组合，看不到 stderr log），

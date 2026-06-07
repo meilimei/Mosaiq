@@ -29,10 +29,16 @@ export interface SpawnFlagsInput {
   userDataDir: string;
   headless: boolean;
   viewport?: { width: number; height: number };
+  /**
+   * Option A（issue #5）：若设，chromium 的 `--proxy-server` 直接用此值（指向 pod 内
+   * 本地认证转发代理 `http://127.0.0.1:<port>`），而非 persona.network.proxy 的
+   * host:port。带认证的上游代理走这条路，凭据由转发器注入、不进 chromium 命令行。
+   */
+  proxyServerOverride?: string;
 }
 
 export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
-  const { persona, internalCdpPort, userDataDir, headless, viewport } = input;
+  const { persona, internalCdpPort, userDataDir, headless, viewport, proxyServerOverride } = input;
 
   const width = viewport?.width ?? persona.system.screen.width;
   const height = viewport?.height ?? persona.system.screen.height;
@@ -87,8 +93,11 @@ export function buildChromiumFlags(input: SpawnFlagsInput): string[] {
     `--window-size=${width},${height}`,
   ];
 
-  // proxy
-  if (persona.network.proxy) {
+  // proxy —— 优先用本地认证转发代理的 URL（Option A，issue #5：上游带认证时由
+  // proxy-forward.ts 注入 Proxy-Authorization）；否则走传统直连 host:port。
+  if (proxyServerOverride) {
+    flags.push(`--proxy-server=${proxyServerOverride}`);
+  } else if (persona.network.proxy) {
     const p = persona.network.proxy;
     const scheme = p.protocol === 'socks5' ? 'socks5' : p.protocol;
     flags.push(`--proxy-server=${scheme}://${p.host}:${p.port}`);

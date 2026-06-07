@@ -81,3 +81,42 @@ describe('buildChromiumFlags', () => {
     expect(disableFeatures!).toContain('MediaRouter');
   });
 });
+
+describe('buildChromiumFlags proxy (Option A / issue #5)', () => {
+  const base = { internalCdpPort: 9224, userDataDir: '/tmp/profile/m', headless: true };
+  const personaWithProxy = {
+    ...persona,
+    network: {
+      proxy: {
+        protocol: 'https',
+        host: 'geo.iproyal.com',
+        port: 12321,
+        username: 'u',
+        password: 'p',
+        bypassList: [],
+      },
+    },
+  } as unknown as Persona;
+
+  it('proxyServerOverride wins and upstream host:port is NOT emitted (creds stay out of argv)', () => {
+    const flags = buildChromiumFlags({
+      persona: personaWithProxy,
+      ...base,
+      proxyServerOverride: 'http://127.0.0.1:51234',
+    });
+    expect(flags).toContain('--proxy-server=http://127.0.0.1:51234');
+    expect(flags.some((f) => f.includes('geo.iproyal.com'))).toBe(false);
+    // 凭据绝不出现在命令行
+    expect(flags.some((f) => f.includes('u:p') || f.includes(':p@'))).toBe(false);
+  });
+
+  it('falls back to upstream host:port when no override (legacy / no-auth path)', () => {
+    const flags = buildChromiumFlags({ persona: personaWithProxy, ...base });
+    expect(flags).toContain('--proxy-server=https://geo.iproyal.com:12321');
+  });
+
+  it('emits no --proxy-server when persona has no proxy and no override', () => {
+    const flags = buildChromiumFlags({ persona, ...base });
+    expect(flags.some((f) => f.startsWith('--proxy-server='))).toBe(false);
+  });
+});
