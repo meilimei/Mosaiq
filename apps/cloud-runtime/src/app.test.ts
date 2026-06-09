@@ -7,13 +7,19 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from './app.js';
 import { ensureDefaultPersonas, ensureSchema } from './db/bootstrap.js';
 import { disposeDb, getDb } from './db/client.js';
-import { apiKeys, contexts as contextsTable, projects, usageEvents } from './db/schema.js';
+import {
+  apiKeys,
+  contexts as contextsTable,
+  projects,
+  sessions as sessionsTable,
+  usageEvents,
+} from './db/schema.js';
 import { resetEnvCache } from './env.js';
 import { setMachineManagerForTesting, shutdownMachineManager } from './machine/factory.js';
 import type { AcquireSpec, AcquiredMachine, MachineManager } from './machine/types.js';
@@ -41,11 +47,15 @@ class FakeMachineManager implements MachineManager {
   releaseOpts: Array<{ machineId: string; snapshotUrl?: string }> = [];
   capacityNow = { ready: 1, busy: 0, cap: 1 };
   shouldFailWith: string | null = null;
+  acquireDelayMs = 0;
 
   async acquire(spec: AcquireSpec): Promise<AcquiredMachine> {
     if (this.shouldFailWith) {
       const e = new Error(this.shouldFailWith);
       throw e;
+    }
+    if (this.acquireDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.acquireDelayMs));
     }
     this.acquired.push(spec);
     this.capacityNow = { ready: 0, busy: 1, cap: 1 };
@@ -80,12 +90,12 @@ beforeEach(async () => {
   process.env.PUBLIC_BASE_URL = 'http://localhost:8787';
   // 测试默认给宽松 rate-limit，避免无关 test 偶然 burst 越界。专门测限流的
   // 用例自己在 beforeEach 里 override。
-  process.env.RATE_LIMIT_STRICT_CAPACITY = undefined;
-  process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC = undefined;
-  process.env.RATE_LIMIT_WRITE_CAPACITY = undefined;
-  process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC = undefined;
-  process.env.RATE_LIMIT_READ_CAPACITY = undefined;
-  process.env.RATE_LIMIT_READ_REFILL_PER_SEC = undefined;
+  delete process.env.RATE_LIMIT_STRICT_CAPACITY;
+  delete process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC;
+  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
+  delete process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC;
+  delete process.env.RATE_LIMIT_READ_CAPACITY;
+  delete process.env.RATE_LIMIT_READ_REFILL_PER_SEC;
   resetEnvCache();
   resetRateLimitStore();
   resetStickyRegistryForTesting();
@@ -310,7 +320,12 @@ describe('POST /v1/sessions', () => {
       new RegExp(`^ws://localhost:8787/v1/sessions/${body.id}/cdp\\?token=sks_[A-Za-z0-9_-]{22}$`),
     );
     expect(body.persona.metadata.id).toBe('win11-chrome-us');
-    expect(body.stealth).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
+    expect(body.stealth).toEqual({
+      inject: true,
+      humanize: true,
+      rebrowserPatches: true,
+      solveCaptchas: false,
+    });
     expect(body.status).toBe('live');
     expect(fakeMm.acquired).toHaveLength(1);
     expect(fakeMm.acquired[0]!.sessionId).toBe(body.id);
@@ -518,7 +533,12 @@ describe('GET /v1/sessions — list (Browserbase sessions.list() compat, phase 1
     expect(s.signingKey).toMatch(/^sks_[A-Za-z0-9_-]{22}$/);
     expect(s.keepAlive).toBe(false);
     expect(s.cdp_url).toBe(s.connectUrl);
-    expect(s.stealth).toEqual({ inject: true, humanize: true, rebrowserPatches: true });
+    expect(s.stealth).toEqual({
+      inject: true,
+      humanize: true,
+      rebrowserPatches: true,
+      solveCaptchas: false,
+    });
   });
 
   it('status=RUNNING 只返回 live；status=COMPLETED 只返回已关闭', async () => {
@@ -1184,7 +1204,7 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     expect(body.error.detail.activeCount).toBe(2);
     expect(body.error.detail.quota).toBe(2);
 
-    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
   });
 
   it('KEEPALIVE_SESSIONS_PER_PROJECT_MAX=0 → 所有 keepAlive 请求即时 429（kill switch）', async () => {
@@ -1216,7 +1236,7 @@ describe('Phase 11.5 — keepAlive honor + sticky routing + quota', () => {
     });
     expect(normal.status).toBe(201);
 
-    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
   });
 
   it('POST keepAlive=true 不传 stickyKey → 201，sticky registry 仍为空', async () => {
@@ -1398,7 +1418,42 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     expect(body.error.detail.activeCount).toBe(2);
     expect(body.error.detail.quota).toBe(2);
 
-    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+  });
+
+  it('并发 POST session 会把 requested reservation 计入配额', async () => {
+    process.env.SESSIONS_PER_PROJECT_MAX = '1';
+    resetEnvCache();
+    fakeMm.acquireDelayMs = 50;
+    const app = createApp();
+
+    const makeReq = () =>
+      app.request('/v1/sessions', {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({
+          projectId: TEST_PROJECT_ID,
+          persona: { inline: PERSONA_FIXTURE },
+        }),
+      });
+
+    const [a, b] = await Promise.all([makeReq(), makeReq()]);
+    expect([a.status, b.status].sort()).toEqual([201, 429]);
+    expect(fakeMm.acquired).toHaveLength(1);
+
+    const handle = await getDb();
+    const rows = await handle.drizzle
+      .select()
+      .from(sessionsTable)
+      .where(
+        and(
+          eq(sessionsTable.projectId, TEST_PROJECT_ID),
+          inArray(sessionsTable.status, ['requested', 'live']),
+        ),
+      );
+    expect(rows).toHaveLength(1);
+
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
   });
 
   it('SESSIONS_PER_PROJECT_MAX=0 → kill switch, 所有新 session 立即 429', async () => {
@@ -1418,7 +1473,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     const body = (await resp.json()) as { error: { code: string } };
     expect(body.error.code).toBe('quota.sessions_exceeded');
 
-    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
   });
 
   it('关闭一个 session 后，名额释放 → 下一个 201 成功', async () => {
@@ -1466,7 +1521,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     });
     expect(retry.status).toBe(201);
 
-    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
   });
 
   it('并发配额是 per-project 隔离的', async () => {
@@ -1496,7 +1551,7 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     });
     expect(b.status).toBe(201);
 
-    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
   });
 
   it('keepAlive session 先走总 SESSIONS_PER_PROJECT_MAX，再走 keepAlive 子 cap', async () => {
@@ -1531,8 +1586,8 @@ describe('Phase 11.8 — per-project concurrent session cap', () => {
     const body = (await keepAliveOverflow.json()) as { error: { code: string } };
     expect(body.error.code).toBe('quota.sessions_exceeded');
 
-    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
-    process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
+    delete process.env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX;
   });
 });
 
@@ -1612,7 +1667,7 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
-    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
   });
 
   it('自然月窗口外的用量不计入当月 quota 计算', async () => {
@@ -1649,7 +1704,7 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
-    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
   });
 
   it('月度用量限制是 per-project 隔离的', async () => {
@@ -1698,7 +1753,7 @@ describe('Phase 11.8 — per-project monthly browser-minute cap', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, TEST_PROJECT_ID));
-    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
   });
 });
 

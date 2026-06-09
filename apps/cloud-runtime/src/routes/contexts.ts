@@ -12,7 +12,7 @@
  * 见 docs/PHASE-11.6-CONTEXTS-COOKIE-STORAGE.md §5。
  */
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { ensureContextsEnabled } from '../contexts/feature.js';
@@ -46,40 +46,44 @@ contextsRoute.post('/', rateLimitTier('write'), async (c) => {
 
   const handle = await getDb();
 
-  // Quota: 每 project 最大活跃 contexts 数（未 soft-deleted）。
-  const activeRows = await handle.drizzle
-    .select({ count: sql<number>`count(*)` })
-    .from(contextsTable)
-    .where(and(eq(contextsTable.projectId, auth.projectId), isNull(contextsTable.deletedAt)));
-  const activeCount = Number(activeRows[0]?.count ?? 0);
-  if (activeCount >= env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX) {
-    audit(c, 'context.create', `project:${auth.projectId}`, 'denied', {
-      reason: 'contexts_saturated',
-      activeCount,
-      quota: env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX,
-    });
-    contextsTotal.inc({ op: 'create', outcome: 'failed' });
-    throw new ApiError(
-      'pool.contexts_saturated',
-      `project ${auth.projectId} has ${activeCount} active contexts (quota ${env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX}); DELETE an unused context before retrying`,
-      { activeCount, quota: env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX },
-    );
-  }
-
   const id = newId('ctx');
   // storageKey 由 cloud-runtime 控制 —— 客户**不能**指定，避免 path traversal 攻击向。
   const storageKey = `${id}.tar.zst.enc`;
 
-  await handle.drizzle.insert(contextsTable).values({
-    id,
-    projectId: auth.projectId,
-    storageBackend: 'fs',
-    storageKey,
-    encAlgo: 'aes-256-gcm-v1',
-    // encNonce: null   (initial empty state — first snapshot will populate)
-    // bytes: null
-    // activeSessionId: null
-    // lastSnapshotAt: null
+  handle.drizzle.transaction((tx) => {
+    const activeRows = tx
+      .select({ id: contextsTable.id })
+      .from(contextsTable)
+      .where(and(eq(contextsTable.projectId, auth.projectId), isNull(contextsTable.deletedAt)))
+      .all();
+    const activeCount = activeRows.length;
+    if (activeCount >= env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX) {
+      audit(c, 'context.create', `project:${auth.projectId}`, 'denied', {
+        reason: 'contexts_saturated',
+        activeCount,
+        quota: env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX,
+      });
+      contextsTotal.inc({ op: 'create', outcome: 'failed' });
+      throw new ApiError(
+        'pool.contexts_saturated',
+        `project ${auth.projectId} has ${activeCount} active contexts (quota ${env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX}); DELETE an unused context before retrying`,
+        { activeCount, quota: env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX },
+      );
+    }
+
+    tx.insert(contextsTable)
+      .values({
+        id,
+        projectId: auth.projectId,
+        storageBackend: 'fs',
+        storageKey,
+        encAlgo: 'aes-256-gcm-v1',
+        // encNonce: null   (initial empty state — first snapshot will populate)
+        // bytes: null
+        // activeSessionId: null
+        // lastSnapshotAt: null
+      })
+      .run();
   });
 
   const row = (

@@ -1,34 +1,25 @@
-# Detection Lab Leaderboard — public static-site publish.
+# Mosaiq public site + Detection Lab Leaderboard publish.
 #
-# Regenerates the public leaderboard (scripts/build-leaderboard.mts) from the
-# committed baseline runs under tests/fixtures/baseline-runs/ and publishes it
-# to GitHub Pages.
-#
-# Why a separate workflow from detection-lab.yml?
-#   - detection-lab.yml is the *regression gate*: it runs real Chromium against
-#     live sites and fails on regressions (~15 min, network-bound).
-#   - this workflow is *pure projection*: it reads already-committed baseline
-#     JSON and emits a static HTML page (<5s, no browser). Cheap enough to run
-#     on every relevant PR (build-only, no deploy) for validation.
+# The landing page lives at _site/index.html. The leaderboard generator reads
+# committed baseline runs under tests/fixtures/baseline-runs/ and writes only
+# _site/leaderboard/index.html so it cannot overwrite the landing page.
 #
 # Trigger policy:
-#   - pull_request: build-only (validate the generator runs + uploads the page
-#     as an artifact); never deploys.
-#   - push:main: build + deploy to Pages (the canonical published board).
+#   - pull_request: build-only validation; never deploys.
+#   - push:main: build + deploy to GitHub Pages.
 #   - workflow_dispatch: manual rebuild/redeploy handle.
 #
-# NOTE: deploying requires GitHub Pages to be enabled for the repo
-# (Settings → Pages → Source: GitHub Actions). Until a baseline.json is
-# committed under tests/fixtures/baseline-runs/<persona>/, the page renders an
-# empty-state ("no runs yet"); see tests/fixtures/baseline-runs/README.md for
-# the bootstrap flow.
+# Deploying requires GitHub Pages to be enabled for the repo:
+# Settings -> Pages -> Source: GitHub Actions.
 
-name: Leaderboard
+name: Public Site
 
 on:
   pull_request:
     branches: [main]
     paths:
+      - '_site/**'
+      - 'docs/SITE-BRAND-HANDOFF.md'
       - 'packages/sdk/src/detection-lab/leaderboard.ts'
       - 'scripts/build-leaderboard.mts'
       - 'tests/fixtures/baseline-runs/**'
@@ -36,20 +27,21 @@ on:
   push:
     branches: [main]
     paths:
+      - '_site/**'
+      - 'docs/SITE-BRAND-HANDOFF.md'
       - 'packages/sdk/src/detection-lab/leaderboard.ts'
       - 'scripts/build-leaderboard.mts'
       - 'tests/fixtures/baseline-runs/**'
       - '.github/workflows/leaderboard.yml'
   workflow_dispatch: {}
 
-# Cancel superseded builds on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: build leaderboard
+    name: build public site
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -70,11 +62,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Pure projection from committed baselines → ./_site/index.html.
-      # tsx imports the SDK + persona-schema sources directly (the leaderboard
-      # module is dependency-free), so no prior package build is needed.
       - name: Build leaderboard
-        run: pnpm build-leaderboard --out ./_site
+        run: pnpm build-leaderboard --out ./_site/leaderboard
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -83,17 +72,10 @@ jobs:
 
   deploy:
     name: deploy to Pages
-    # Only publish from main / manual dispatch — never from PRs.
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # GitHub Pages is enabled for the repo (Settings → Pages → Source: GitHub
-    # Actions) and serving the leaderboard at https://meilimei.github.io/Mosaiq/.
-    # The previous `continue-on-error: true` (which kept the deploy green while
-    # Pages was still pending) has been removed so genuine deploy failures are
-    # now visible (red) instead of silently swallowed.
-    # Minimum scope for the Pages deploy action.
     permissions:
       pages: write
       id-token: write

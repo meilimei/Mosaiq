@@ -36,6 +36,10 @@ services:
       SESSION_TTL_DEFAULT_SECONDS: 1800
       SESSION_TTL_MAX_SECONDS: 7200
       PUBLIC_BASE_URL: http://localhost:8787
+      MOSAIQ_INTERNAL_BASE_URL: http://cloud-runtime:8787
+      MOSAIQ_CONTEXT_MASTER_KEY: ${MOSAIQ_CONTEXT_MASTER_KEY:-}
+      MOSAIQ_INTERNAL_HMAC_SECRET: ${MOSAIQ_INTERNAL_HMAC_SECRET:-}
+      MOSAIQ_CONTEXT_SIZE_MAX_MB: ${MOSAIQ_CONTEXT_SIZE_MAX_MB:-200}
     volumes:
       - cloud-runtime-data:/app/data
     depends_on:
@@ -58,6 +62,8 @@ services:
       NODE_ENV: development
       LOG_LEVEL: info
       POD_HEADLESS: "true"
+      POD_CONTEXT_MASTER_KEY: ${MOSAIQ_CONTEXT_MASTER_KEY:-}
+      POD_CONTEXT_SIZE_MAX_MB: ${MOSAIQ_CONTEXT_SIZE_MAX_MB:-200}
     volumes:
       - browser-pod-1-data:/data
     # chromium 需要稍多 shm，否则 tab crash
@@ -76,6 +82,8 @@ services:
       NODE_ENV: development
       LOG_LEVEL: info
       POD_HEADLESS: "true"
+      POD_CONTEXT_MASTER_KEY: ${MOSAIQ_CONTEXT_MASTER_KEY:-}
+      POD_CONTEXT_SIZE_MAX_MB: ${MOSAIQ_CONTEXT_SIZE_MAX_MB:-200}
     volumes:
       - browser-pod-2-data:/data
     shm_size: "1gb"

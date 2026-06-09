@@ -181,9 +181,12 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
   );
 
   const storage = await getContextStorage(env.MOSAIQ_CONTEXT_STORAGE_PATH);
+  const pendingKey = `${row.storageKey}.pending.${Date.now()}.${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
   let bytes: number;
   try {
-    bytes = await storage.write(row.storageKey, nodeStream);
+    bytes = await storage.write(pendingKey, nodeStream);
   } catch (err) {
     log.error({ err, ctxId }, 'internal snapshot: storage write failed');
     contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
@@ -196,9 +199,7 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
       { ctxId, bytes, maxBytes },
       'internal snapshot: oversize after streaming, rolling back',
     );
-    // Best-effort cleanup; the row keeps its old metadata (bytes/lastSnapshotAt
-    // not updated below), so a subsequent download still gets the previous good blob.
-    await storage.delete(row.storageKey).catch(() => undefined);
+    await storage.delete(pendingKey).catch(() => undefined);
     contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
     return c.body(null, 413);
   }
@@ -207,13 +208,28 @@ internalContextsRoute.put('/:id/snapshot', async (c) => {
   // We re-read just those bytes from disk —— way smaller than holding all in memory.
   let encNonceHex: string | null = null;
   try {
-    const headerStream = await storage.read(row.storageKey);
+    const headerStream = await storage.read(pendingKey);
     if (headerStream) {
       const header = await readFirstNBytes(headerStream, 12);
       if (header) encNonceHex = header.toString('hex');
     }
   } catch (err) {
     log.warn({ err, ctxId }, 'internal snapshot: failed to read nonce header');
+  }
+
+  const pendingStream = await storage.read(pendingKey);
+  if (!pendingStream) {
+    contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
+    throw new ApiError('internal.unknown', 'pending context snapshot disappeared before commit');
+  }
+  try {
+    await storage.write(row.storageKey, pendingStream);
+  } catch (err) {
+    log.error({ err, ctxId }, 'internal snapshot: final storage write failed');
+    contextsTotal.inc({ op: 'snapshot', outcome: 'failed' });
+    throw err;
+  } finally {
+    await storage.delete(pendingKey).catch(() => undefined);
   }
 
   const nowIso = new Date().toISOString();

@@ -1,4 +1,4 @@
-# 证据与验证手册（Evidence & Validation）
+﻿# 证据与验证手册（Evidence & Validation）
 
 > **为什么有这篇**：Mosaiq 的整个卖点是「真自检 / 过 IPHey/CreepJS / 强于 Browserbase」，但目前仓库里**没有任何 committed 的实测证据**——`tests/fixtures/baseline-runs/` 为空、leaderboard 未公开、没有硬目标（Cloudflare/DataDome）与真账号实测记录。在拿到这些证据前，对外宣称反检测能力都是**未经证明**的。这篇是把「证明它真能打」从口号变成可执行步骤的 runbook。
 >
@@ -72,7 +72,7 @@ node scripts/ci-compare-baseline.mjs write-baseline \
 把 Mosaiq vs Browserbase / AdsPower / Multilogin 的实测分做成静态站，这是 PRD §2 承诺的 GTM 资产。
 
 ```bash
-pnpm build-leaderboard            # 从 committed baselines 生成静态 HTML → _site/
+pnpm build-leaderboard            # committed baselines -> _site/leaderboard/index.html
 ```
 
 - CI：`.github/workflows/leaderboard.yml` 在 PR 上 build artifact、在 `main` 上 deploy 到 GitHub Pages。
@@ -119,3 +119,4 @@ Detection Lab 的 12 个站点是**自动化体检**，但**不能替代**真实
 - 没有 committed baseline / 公开 leaderboard 之前：**不要**对外宣称具体通过率数字。
 - 云端深层反指纹：v0.11 起**默认服务端注入**（裸 baseURL swap 即有深层 stealth）；关闭注入见 session `stealth.inject` / `POD_SERVER_INJECT`（见 [`docs/CLOUD-RUNTIME-ARCH.md`](./CLOUD-RUNTIME-ARCH.md) §2.5）。
 - 竞品对比分：必须可复现（跑法 + 日期 + 版本），否则不发。
+

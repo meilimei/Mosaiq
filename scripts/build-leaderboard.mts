@@ -16,7 +16,7 @@
 // (the leaderboard module is pure — no playwright/runtime deps pulled in).
 //
 // Usage:
-//   pnpm build-leaderboard                 # → site/leaderboard/index.html
+//   pnpm build-leaderboard                 # → _site/leaderboard/index.html
 //   pnpm build-leaderboard --out <dir>     # write index.html into <dir>
 //   pnpm build-leaderboard --now <iso>     # pin generatedAt (deterministic)
 // =============================================================================
@@ -49,7 +49,7 @@ function argValue(flag: string): string | undefined {
 }
 
 const outArg = argValue('--out');
-const outDir = outArg ? resolve(process.cwd(), outArg) : resolve(ROOT, 'site', 'leaderboard');
+const outDir = outArg ? resolve(process.cwd(), outArg) : resolve(ROOT, '_site', 'leaderboard');
 const nowIso = argValue('--now');
 
 const entries: LeaderboardEntry[] = [];

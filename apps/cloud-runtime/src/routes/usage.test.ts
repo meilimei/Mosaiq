@@ -52,9 +52,9 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   process.env.PUBLIC_BASE_URL = 'http://localhost:8787';
-  process.env.UNIT_PRICE_USD_PER_MINUTE = undefined;
-  process.env.RATE_LIMIT_READ_CAPACITY = undefined;
-  process.env.RATE_LIMIT_READ_REFILL_PER_SEC = undefined;
+  delete process.env.UNIT_PRICE_USD_PER_MINUTE;
+  delete process.env.RATE_LIMIT_READ_CAPACITY;
+  delete process.env.RATE_LIMIT_READ_REFILL_PER_SEC;
   resetEnvCache();
   resetRateLimitStore();
   await ensureSchema();

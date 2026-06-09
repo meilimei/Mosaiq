@@ -248,6 +248,38 @@ describe('PUT /v1/_internal/contexts/:id/snapshot', () => {
     expect(row.lastSnapshotAt).toBeNull();
   });
 
+  it('413 after streaming preserves previous good blob', async () => {
+    process.env.MOSAIQ_CONTEXT_SIZE_MAX_MB = '1'; // 1 MB cap
+    resetEnvCache();
+    const key = deriveKey(masterKey, TEST_PROJECT_ID);
+    const oldBlob = encryptBlob(Buffer.from('previous profile'), key).blob;
+    const { id, storageKey } = await insertContext({ bytes: oldBlob.length });
+
+    const storage = await getContextStorage(tmpStorageRoot);
+    await storage.write(storageKey, await stream(oldBlob));
+
+    const oversize = Buffer.alloc(2 * 1024 * 1024);
+    const token = signInternalToken(hmacSecret, id, 'snapshot');
+    const app = createApp();
+    const resp = await app.request(`/v1/_internal/contexts/${id}/snapshot?token=${token}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: oversize,
+    });
+    expect(resp.status).toBe(413);
+
+    const back = await storage.read(storageKey);
+    expect(back).not.toBeNull();
+    const recv = await collect(back!);
+    expect(recv.equals(oldBlob)).toBe(true);
+
+    const handle = await getDb();
+    const row = (
+      await handle.drizzle.select().from(contextsTable).where(eq(contextsTable.id, id)).limit(1)
+    )[0]!;
+    expect(row.bytes).toBe(oldBlob.length);
+  });
+
   it('404 when context id does not exist', async () => {
     const token = signInternalToken(hmacSecret, 'ctx_unknown_xxxxxxxxxxxx', 'snapshot');
     const app = createApp();

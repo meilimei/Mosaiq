@@ -75,10 +75,10 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   process.env.METRICS_TOKEN = METRICS_TOKEN;
-  process.env.RATE_LIMIT_STRICT_CAPACITY = undefined;
-  process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC = undefined;
-  process.env.RATE_LIMIT_WRITE_CAPACITY = undefined;
-  process.env.RATE_LIMIT_READ_CAPACITY = undefined;
+  delete process.env.RATE_LIMIT_STRICT_CAPACITY;
+  delete process.env.RATE_LIMIT_STRICT_REFILL_PER_SEC;
+  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
+  delete process.env.RATE_LIMIT_READ_CAPACITY;
   resetEnvCache();
   resetRateLimitStore();
   resetMetricsForTesting();
@@ -434,7 +434,7 @@ describe('counter wiring', () => {
     const text = await m.text();
     expect(text).toMatch(/quota_denied_total\{reason="sessions"\}\s+1/);
 
-    process.env.SESSIONS_PER_PROJECT_MAX = undefined;
+    delete process.env.SESSIONS_PER_PROJECT_MAX;
   });
 
   it('Phase 11.8: monthly minute cap denied → quota_denied_total{reason="minutes"} increments', async () => {
@@ -472,6 +472,6 @@ describe('counter wiring', () => {
 
     // Clean up
     await db.delete(usageEvents).where(eq(usageEvents.projectId, PROJECT_ID));
-    process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX = undefined;
+    delete process.env.MINUTES_PER_PROJECT_PER_MONTH_MAX;
   });
 });

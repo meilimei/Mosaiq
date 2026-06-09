@@ -9,7 +9,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../app.js';
@@ -35,9 +35,9 @@ beforeEach(async () => {
   process.env.MOSAIQ_CONTEXT_MASTER_KEY = randomBytes(32).toString('base64');
   process.env.MOSAIQ_INTERNAL_HMAC_SECRET = randomBytes(48).toString('base64');
   // Disable rate-limit interference
-  process.env.RATE_LIMIT_WRITE_CAPACITY = undefined;
-  process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC = undefined;
-  process.env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX = undefined;
+  delete process.env.RATE_LIMIT_WRITE_CAPACITY;
+  delete process.env.RATE_LIMIT_WRITE_REFILL_PER_SEC;
+  delete process.env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX;
   resetEnvCache();
   resetRateLimitStore();
   await ensureSchema();
@@ -149,6 +149,25 @@ describe('POST /v1/contexts', () => {
     expect(body.error.code).toBe('pool.contexts_saturated');
     expect(body.error.detail.activeCount).toBe(2);
     expect(body.error.detail.quota).toBe(2);
+  });
+
+  it('concurrent POSTs respect MOSAIQ_CONTEXTS_PER_PROJECT_MAX', async () => {
+    process.env.MOSAIQ_CONTEXTS_PER_PROJECT_MAX = '1';
+    resetEnvCache();
+    const app = createApp();
+
+    const [a, b] = await Promise.all([
+      app.request('/v1/contexts', { method: 'POST', headers: authH(), body: '{}' }),
+      app.request('/v1/contexts', { method: 'POST', headers: authH(), body: '{}' }),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([201, 429]);
+    const handle = await getDb();
+    const rows = await handle.drizzle
+      .select()
+      .from(contextsTable)
+      .where(and(eq(contextsTable.projectId, TEST_PROJECT_ID), isNull(contextsTable.deletedAt)));
+    expect(rows).toHaveLength(1);
   });
 
   it('soft-deleted contexts do NOT count toward quota', async () => {

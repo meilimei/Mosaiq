@@ -117,6 +117,13 @@ let current: {
   /** Option A: 本地认证转发代理句柄；kill 时 close。null = 未用（无认证代理）。 */
   proxyForwarder: ProxyForwarderHandle | null;
 } | null = null;
+let startingMachineId: string | null = null;
+
+export class PodBusyError extends Error {
+  constructor(readonly machineId: string) {
+    super(`pod is busy: machineId=${machineId}`);
+  }
+}
 
 /**
  * Ring buffer式捕获 child process 输出。只保留最后的 STD_TAIL_BYTES，
@@ -197,10 +204,24 @@ async function waitForCdp(port: number, timeoutMs: number): Promise<string> {
 }
 
 export async function spawnChromium(input: ChromiumSpawnInput): Promise<RunningChromium> {
-  if (current) {
-    throw new Error(`pod is busy: machineId=${current.info.machineId}`);
+  const busyMachineId = getBusyMachineId();
+  if (busyMachineId) {
+    throw new PodBusyError(busyMachineId);
   }
 
+  startingMachineId = input.machineId;
+  try {
+    return await spawnChromiumInner(input);
+  } catch (err) {
+    const sessionUserDir = path.join(path.resolve(loadEnv().POD_PROFILE_DIR), input.machineId);
+    await rm(sessionUserDir, { recursive: true, force: true }).catch(() => undefined);
+    throw err;
+  } finally {
+    if (startingMachineId === input.machineId) startingMachineId = null;
+  }
+}
+
+async function spawnChromiumInner(input: ChromiumSpawnInput): Promise<RunningChromium> {
   const env = loadEnv();
   const log = getLogger();
 
@@ -517,6 +538,10 @@ export async function killChromium(machineId: string, opts: KillOptions = {}): P
 
 export function getRunning(): RunningChromium | null {
   return current?.info ?? null;
+}
+
+export function getBusyMachineId(): string | null {
+  return current?.info.machineId ?? startingMachineId;
 }
 
 export async function shutdownChromium(): Promise<void> {

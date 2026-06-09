@@ -291,6 +291,12 @@ const EnvSchema = z
     MINUTES_PER_PROJECT_PER_MONTH_MAX: z.coerce.number().int().min(0).max(10_000_000).default(0),
 
     PUBLIC_BASE_URL: z.string().url().default('http://localhost:8787'),
+    /**
+     * Base URL used by browser-pod containers to call cloud-runtime internal
+     * context endpoints. Defaults to PUBLIC_BASE_URL for Fly/prod, but local
+     * docker-compose needs a service-DNS URL instead of host localhost.
+     */
+    MOSAIQ_INTERNAL_BASE_URL: z.string().url().optional(),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.SEED_API_KEY !== '') {

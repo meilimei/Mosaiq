@@ -19,14 +19,29 @@ import type { MachineManager } from './types.js';
 
 let cached: MachineManager | null = null;
 
+function buildPodEnv(env: ReturnType<typeof loadEnv>): Record<string, string> {
+  return {
+    POD_CONTEXT_SIZE_MAX_MB: String(env.MOSAIQ_CONTEXT_SIZE_MAX_MB),
+    ...(env.MOSAIQ_CONTEXT_MASTER_KEY
+      ? { POD_CONTEXT_MASTER_KEY: env.MOSAIQ_CONTEXT_MASTER_KEY }
+      : {}),
+  };
+}
+
 export function getMachineManager(): MachineManager {
   if (cached) return cached;
   const env = loadEnv();
+  const podEnv = buildPodEnv(env);
   switch (env.MACHINE_MANAGER) {
     case 'static': {
       const podAddrs = env.POD_ADDRS.split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      if (env.MOSAIQ_CONTEXT_MASTER_KEY) {
+        getLogger().warn(
+          'machine-manager: contexts are enabled; static browser-pod containers must also set POD_CONTEXT_MASTER_KEY',
+        );
+      }
       cached = new StaticPoolMachineManager({ podAddrs });
       break;
     }
@@ -39,6 +54,7 @@ export function getMachineManager(): MachineManager {
         maxContainers: env.DOCKER_MAX_CONTAINERS,
         shmBytes: env.DOCKER_POD_SHM_BYTES,
         podControlPort: env.FLY_POD_CONTROL_PORT, // 同 pod 镜像，复用同一 PORT 约定
+        podEnv,
       });
       break;
     case 'fly': {
@@ -53,6 +69,7 @@ export function getMachineManager(): MachineManager {
         maxMachines: env.FLY_MAX_MACHINES,
         machineCpus: env.FLY_MACHINE_CPUS,
         machineMemoryMb: env.FLY_MACHINE_MEMORY_MB,
+        podEnv,
       };
       if (env.POOL_TARGET_SIZE > 0) {
         // Phase 11.3a pool wrap

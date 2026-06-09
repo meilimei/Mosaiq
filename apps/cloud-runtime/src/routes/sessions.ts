@@ -12,7 +12,7 @@
  * 调用 cdp/proxy.ts 完成反向代理。
  */
 
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
@@ -401,30 +401,9 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   // 拒绝 → 不拨 pod / 不计费 / 不占 slot。keepAlive 子 cap（下方）是更紧的附加限。
   // 计数 WHERE project_id AND status='live'：sessions_project_idx 前缀命中 project_id，
   // cap ≤ 1000 行扫描成本可忽略（同 keepAlive cap 论证）。
-  const liveSessions = await handle.drizzle
-    .select({ id: sessionsTable.id })
-    .from(sessionsTable)
-    .where(and(eq(sessionsTable.projectId, auth.projectId), eq(sessionsTable.status, 'live')));
-  const liveSessionCount = liveSessions.length;
-  if (liveSessionCount >= env.SESSIONS_PER_PROJECT_MAX) {
-    // c.header 必须在 throw 之前 set 才会被 Hono onError 路径保留（同 keepAlive cap）
-    c.header('Retry-After', '60');
-    audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
-      reason: 'sessions_exceeded',
-      activeCount: liveSessionCount,
-      quota: env.SESSIONS_PER_PROJECT_MAX,
-    });
-    quotaDeniedTotal.inc({ reason: 'sessions' });
-    throw new ApiError(
-      'quota.sessions_exceeded',
-      `project ${auth.projectId} has ${liveSessionCount} live sessions (quota ${env.SESSIONS_PER_PROJECT_MAX})`,
-      {
-        activeCount: liveSessionCount,
-        quota: env.SESSIONS_PER_PROJECT_MAX,
-        retryAfterSeconds: 60,
-      },
-    );
-  }
+  // Quota enforcement happens in the reservation transaction below. Counting
+  // both requested and live rows there makes concurrent creates see each other
+  // before any machine is acquired.
 
   // ── Phase 11.8: per-project monthly browser-minute cap ────────────────
   // 仅在 MINUTES_PER_PROJECT_PER_MONTH_MAX 配置且 > 0 时启用检查。
@@ -460,35 +439,8 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     // 用 SELECT id 数 length，不引入 sql<number>`COUNT(*)` 复杂度；configured cap ≤ 50
     // 让 row scan 成本可忽略，索引 sessions_keepalive_idle_idx (status, keep_alive, last_seen_at)
     // 也让前缀 (status='live', keep_alive=1) 命中 covering scan。
-    const liveKeepAlive = await handle.drizzle
-      .select({ id: sessionsTable.id })
-      .from(sessionsTable)
-      .where(
-        and(
-          eq(sessionsTable.projectId, auth.projectId),
-          eq(sessionsTable.keepAlive, true),
-          eq(sessionsTable.status, 'live'),
-        ),
-      );
-    const activeCount = liveKeepAlive.length;
-    if (activeCount >= env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX) {
-      // c.header 必须在 throw 之前 set 才会被 Hono onError 路径保留
-      c.header('Retry-After', '60');
-      audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
-        reason: 'keepalive_saturated',
-        activeCount,
-        quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
-      });
-      throw new ApiError(
-        'pool.keepalive_saturated',
-        `project ${auth.projectId} has ${activeCount} live keepAlive sessions (quota ${env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX})`,
-        {
-          activeCount,
-          quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
-          retryAfterSeconds: 60,
-        },
-      );
-    }
+    // keepAlive quota is enforced in the same reservation transaction as the
+    // total session quota so requested rows also reserve keepAlive capacity.
 
     // ── sticky lookup ───────────────────────────────────────────
     if (stickyKey) {
@@ -586,6 +538,149 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     };
   }
 
+  const reservationNow = new Date();
+  const expiresAt = new Date(reservationNow.getTime() + ttl * 1000);
+  let reservationInserted = false;
+  let contextLocked = false;
+
+  handle.drizzle.transaction((tx) => {
+    const reservedSessions = tx
+      .select({ id: sessionsTable.id })
+      .from(sessionsTable)
+      .where(
+        and(
+          eq(sessionsTable.projectId, auth.projectId),
+          inArray(sessionsTable.status, ['requested', 'live']),
+        ),
+      )
+      .all();
+    const liveSessionCount = reservedSessions.length;
+    if (liveSessionCount >= env.SESSIONS_PER_PROJECT_MAX) {
+      c.header('Retry-After', '60');
+      audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
+        reason: 'sessions_exceeded',
+        activeCount: liveSessionCount,
+        quota: env.SESSIONS_PER_PROJECT_MAX,
+      });
+      quotaDeniedTotal.inc({ reason: 'sessions' });
+      throw new ApiError(
+        'quota.sessions_exceeded',
+        `project ${auth.projectId} has ${liveSessionCount} live/requested sessions (quota ${env.SESSIONS_PER_PROJECT_MAX})`,
+        {
+          activeCount: liveSessionCount,
+          quota: env.SESSIONS_PER_PROJECT_MAX,
+          retryAfterSeconds: 60,
+        },
+      );
+    }
+
+    if (effectiveKeepAlive) {
+      const reservedKeepAlive = tx
+        .select({ id: sessionsTable.id })
+        .from(sessionsTable)
+        .where(
+          and(
+            eq(sessionsTable.projectId, auth.projectId),
+            eq(sessionsTable.keepAlive, true),
+            inArray(sessionsTable.status, ['requested', 'live']),
+          ),
+        )
+        .all();
+      const activeCount = reservedKeepAlive.length;
+      if (activeCount >= env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX) {
+        c.header('Retry-After', '60');
+        audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
+          reason: 'keepalive_saturated',
+          activeCount,
+          quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+        });
+        throw new ApiError(
+          'pool.keepalive_saturated',
+          `project ${auth.projectId} has ${activeCount} live/requested keepAlive sessions (quota ${env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX})`,
+          {
+            activeCount,
+            quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+            retryAfterSeconds: 60,
+          },
+        );
+      }
+    }
+
+    tx.insert(sessionsTable)
+      .values({
+        id: sessionId,
+        projectId: auth.projectId,
+        personaId: personaIdForRow,
+        machineId: `pending_${sessionId}`,
+        status: 'requested',
+        cdpInternalUrl: 'pending',
+        cdpPublicUrl: publicCdpUrl(sessionId),
+        openedAt: reservationNow.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        lastSeenAt: reservationNow.toISOString(),
+        clientAddr:
+          c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ??
+          c.req.header('x-real-ip') ??
+          null,
+        clientLabel: req.client_label ?? null,
+        metadataJson: JSON.stringify({ stealth, viewport }),
+        userMetadata: req.userMetadata ? JSON.stringify(req.userMetadata) : '{}',
+        signingKey,
+        keepAlive: effectiveKeepAlive,
+        contextId: contextReq ? contextReq.id : null,
+        contextPersist: contextReq ? contextReq.persist : false,
+      })
+      .run();
+
+    if (contextReq) {
+      const locked = tx
+        .update(contextsTable)
+        .set({ activeSessionId: sessionId, activeSessionAcquiredAt: reservationNow.toISOString() })
+        .where(
+          and(
+            eq(contextsTable.id, contextReq.id),
+            eq(contextsTable.projectId, auth.projectId),
+            isNull(contextsTable.deletedAt),
+            isNull(contextsTable.activeSessionId),
+          ),
+        )
+        .returning({ id: contextsTable.id })
+        .all();
+      if (locked.length === 0) {
+        const holder = tx
+          .select({
+            activeSessionId: contextsTable.activeSessionId,
+            acquiredAt: contextsTable.activeSessionAcquiredAt,
+          })
+          .from(contextsTable)
+          .where(
+            and(
+              eq(contextsTable.id, contextReq.id),
+              eq(contextsTable.projectId, auth.projectId),
+              isNull(contextsTable.deletedAt),
+            ),
+          )
+          .limit(1)
+          .all()[0];
+        audit(c, 'session.create', `context:${contextReq.id}`, 'denied', {
+          reason: holder ? 'in_use_race' : 'not_found_race',
+        });
+        throw holder
+          ? new ApiError(
+              'context.in_use',
+              `context ${contextReq.id} was claimed by another session concurrently`,
+              {
+                activeSessionId: holder.activeSessionId,
+                acquiredAt: holder.acquiredAt,
+              },
+            )
+          : new ApiError('context.not_found', `context ${contextReq.id} not found`);
+      }
+      contextLocked = true;
+    }
+  });
+  reservationInserted = true;
+
   const mm = getMachineManager();
   let machine: Awaited<ReturnType<typeof mm.acquire>>;
   const acquireStart = process.hrtime.bigint();
@@ -612,6 +707,24 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       { keepalive: keepaliveLabel },
       Number(process.hrtime.bigint() - acquireStart) / 1e9,
     );
+    if (reservationInserted) {
+      await handle.drizzle
+        .update(sessionsTable)
+        .set({
+          status: 'errored',
+          closedAt: new Date().toISOString(),
+          errorMessage: err instanceof Error ? err.message : String(err),
+        })
+        .where(eq(sessionsTable.id, sessionId));
+    }
+    if (contextLocked && contextReq) {
+      await handle.drizzle
+        .update(contextsTable)
+        .set({ activeSessionId: null, activeSessionAcquiredAt: null })
+        .where(
+          and(eq(contextsTable.id, contextReq.id), eq(contextsTable.activeSessionId, sessionId)),
+        );
+    }
     audit(c, 'session.create', `session:${sessionId}`, 'errored', {
       cause: err instanceof Error ? err.message : String(err),
     });
@@ -619,9 +732,8 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   }
 
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + ttl * 1000);
 
-  await handle.drizzle.insert(sessionsTable).values({
+  const promoted = await handle.drizzle.update(sessionsTable).set({
     id: sessionId,
     projectId: auth.projectId,
     personaId: personaIdForRow,
@@ -643,46 +755,22 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
     // Phase 11.6: 绑定 context（若有）。contextId 落库后下方再 OCC 锁 contexts 行。
     contextId: contextReq ? contextReq.id : null,
     contextPersist: contextReq ? contextReq.persist : false,
-  });
-
-  // ── Phase 11.6: atomic OCC lock on the context row ──────────────────────
-  // Pod 已 acquire + session 行已落库。现在原子地认领 context：rows-affected=0
-  // 说明 pre-check 之后、这里之前有并发 session 抢先锁了（TOCTOU race），需要
-  // 回滚本 session（release pod + 标 closed）并回 409。
-  if (contextReq) {
-    const locked = await handle.drizzle
-      .update(contextsTable)
-      .set({ activeSessionId: sessionId, activeSessionAcquiredAt: now.toISOString() })
-      .where(and(eq(contextsTable.id, contextReq.id), isNull(contextsTable.activeSessionId)))
-      .returning({ id: contextsTable.id });
-    if (locked.length === 0) {
-      await mm.release(machine.id, { hold: false }).catch((err) => {
-        log.warn({ err, sessionId }, 'release after lost context race failed (ignored)');
-      });
+  }).where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.status, 'requested')))
+    .returning({ id: sessionsTable.id });
+  if (promoted.length === 0) {
+    await mm.release(machine.id, { hold: false }).catch((err) => {
+      log.warn({ err, sessionId }, 'release after reservation promote failed');
+    });
+    if (contextLocked && contextReq) {
       await handle.drizzle
-        .update(sessionsTable)
-        .set({ status: 'closed', closedAt: new Date().toISOString() })
-        .where(eq(sessionsTable.id, sessionId));
-      const holder = (
-        await handle.drizzle
-          .select({
-            activeSessionId: contextsTable.activeSessionId,
-            acquiredAt: contextsTable.activeSessionAcquiredAt,
-          })
-          .from(contextsTable)
-          .where(eq(contextsTable.id, contextReq.id))
-          .limit(1)
-      )[0];
-      audit(c, 'session.create', `context:${contextReq.id}`, 'denied', { reason: 'in_use_race' });
-      throw new ApiError(
-        'context.in_use',
-        `context ${contextReq.id} was claimed by another session concurrently`,
-        {
-          activeSessionId: holder?.activeSessionId ?? null,
-          acquiredAt: holder?.acquiredAt ?? null,
-        },
-      );
+        .update(contextsTable)
+        .set({ activeSessionId: null, activeSessionAcquiredAt: null })
+        .where(
+          and(eq(contextsTable.id, contextReq.id), eq(contextsTable.activeSessionId, sessionId)),
+        )
+        .catch(() => undefined);
     }
+    throw new Error(`session reservation ${sessionId} missing or no longer requested`);
   }
 
   // Phase 11.5: 注册 sticky entry。失败（同 key 已注册）会被 stickyRegistrySet

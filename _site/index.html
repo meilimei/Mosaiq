@@ -1,23 +1,1366 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mosaiq Detection Lab Leaderboard</title>
-<style>:root{--fg:#1a1a1a;--muted:#666;--line:#e2e2e2;--hit:#c0392b;--bg:#fff}*{box-sizing:border-box}body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--fg);background:var(--bg)}main{max-width:980px;margin:0 auto;padding:2rem 1.25rem 4rem}h1{font-size:1.6rem;margin:0 0 .25rem}h2{font-size:1.15rem;margin:2.25rem 0 .75rem}.meta{color:var(--muted);margin:.25rem 0 1.5rem;font-size:.9rem}.methodology{color:var(--fg);background:#f7f7f7;border:1px solid var(--line);border-radius:8px;padding:.75rem 1rem}.methodology p{margin:0}table.board{border-collapse:collapse;width:100%;font-size:.9rem}table.board th,table.board td{border:1px solid var(--line);padding:.4rem .55rem;text-align:left}table.board th{background:#fafafa;font-weight:600}table.board td.num,table.board th.num{text-align:right;font-variant-numeric:tabular-nums}table.board tbody tr:nth-child(odd){background:#fcfcfc}table.board tr.no-score{color:var(--muted)}td.hit{color:var(--hit);font-weight:600}.pid{color:var(--muted);font-size:.78rem;font-family:ui-monospace,monospace}table.matrix{font-size:.82rem}.empty{color:var(--muted)}footer{margin-top:2.5rem;color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:1rem}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;background:#f0f0f0;padding:.05em .35em;border-radius:4px}</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mosaiq | Browser Infrastructure for Agentic Automation</title>
+  <meta name="description" content="Mosaiq is a codename for browser infrastructure that combines persona-based anti-detection, Detection Lab evidence, CLI workflows, and Browserbase-compatible cloud sessions.">
+  <meta name="theme-color" content="#f6f7f4">
+  <!-- Canonical / og:url use the current GitHub Pages deploy URL. When a custom
+       domain lands, update these + SITE_CONFIG.primaryDomain + robots/sitemap
+       (see docs/SITE-BRAND-HANDOFF.md). -->
+  <link rel="canonical" href="https://meilimei.github.io/Mosaiq/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://meilimei.github.io/Mosaiq/">
+  <meta property="og:site_name" content="Mosaiq">
+  <meta property="og:title" content="Mosaiq | Browser Infrastructure for Agentic Automation">
+  <meta property="og:description" content="Persona-based anti-detection, Detection Lab evidence, CLI workflows, and Browserbase-compatible cloud sessions.">
+  <!-- Social crawlers don't execute JS and don't reliably resolve relative
+       paths under a project subpath, so og/twitter image URLs are absolute. -->
+  <meta property="og:image" content="https://meilimei.github.io/Mosaiq/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mosaiq | Browser Infrastructure for Agentic Automation">
+  <meta name="twitter:description" content="Persona-based anti-detection, Detection Lab evidence, CLI workflows, and Browserbase-compatible cloud sessions.">
+  <meta name="twitter:image" content="https://meilimei.github.io/Mosaiq/assets/og-image.png">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f6f7f4;
+      --paper-2: #ecefe9;
+      --ink: #101411;
+      --muted: #5f6860;
+      --quiet: #7b847c;
+      --line: #d7ddd4;
+      --panel: #ffffff;
+      --panel-2: #f8faf7;
+      --green: #237a58;
+      --teal: #2e6f73;
+      --amber: #b57a1d;
+      --red: #b7524d;
+      --violet: #6c5e9e;
+      --shadow: 0 18px 60px rgba(27, 38, 31, 0.12);
+      --radius: 8px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.55 var(--sans);
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    button,
+    a.button {
+      min-height: 44px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(16, 20, 17, 0.1);
+      background: rgba(246, 247, 244, 0.88);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      gap: 18px;
+    }
+
+    .brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 170px;
+      font-weight: 750;
+    }
+
+    .brand-mark {
+      display: grid;
+      grid-template-columns: repeat(2, 8px);
+      grid-template-rows: repeat(2, 8px);
+      gap: 3px;
+      width: 25px;
+      height: 25px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .brand-mark span {
+      border-radius: 3px;
+      background: var(--green);
+    }
+
+    .brand-mark span:nth-child(2) {
+      background: var(--teal);
+    }
+
+    .brand-mark span:nth-child(3) {
+      background: var(--amber);
+    }
+
+    .brand-mark span:nth-child(4) {
+      background: var(--violet);
+    }
+
+    .navlinks {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .navlinks a:hover {
+      color: var(--ink);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--ink);
+      border-radius: 7px;
+      padding: 10px 15px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 700;
+      line-height: 1;
+      white-space: nowrap;
+      transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+    }
+
+    .button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 30px rgba(16, 20, 17, 0.16);
+    }
+
+    .button.secondary {
+      background: transparent;
+      color: var(--ink);
+      border-color: var(--line);
+      box-shadow: none;
+    }
+
+    .button.secondary:hover {
+      border-color: rgba(16, 20, 17, 0.32);
+      background: rgba(255, 255, 255, 0.64);
+    }
+
+    .hero {
+      position: relative;
+      min-height: calc(100svh - 56px);
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+      background:
+        linear-gradient(90deg, rgba(246, 247, 244, 0.96) 0%, rgba(246, 247, 244, 0.86) 38%, rgba(246, 247, 244, 0.18) 74%),
+        var(--paper);
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(16, 20, 17, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(16, 20, 17, 0.05) 1px, transparent 1px);
+      background-size: 44px 44px;
+      mask-image: linear-gradient(90deg, transparent, #000 18%, #000 88%, transparent);
+      pointer-events: none;
+    }
+
+    .hero-inner {
+      position: relative;
+      display: grid;
+      align-items: center;
+      max-width: 1180px;
+      min-height: calc(100svh - 56px);
+      margin: 0 auto;
+      padding: 72px 24px 110px;
+    }
+
+    .hero-copy {
+      position: relative;
+      z-index: 2;
+      max-width: 620px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 5px rgba(35, 122, 88, 0.12);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 780px;
+      font-size: clamp(48px, 8vw, 92px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    .hero-subtitle {
+      max-width: 540px;
+      margin-top: 24px;
+      color: #38413b;
+      font-size: 21px;
+      line-height: 1.5;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .hero-notes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hero-notes span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 11px;
+      background: rgba(255, 255, 255, 0.62);
+      white-space: nowrap;
+    }
+
+    .hero-scene {
+      position: absolute;
+      right: max(-40px, calc((100vw - 1180px) / 2 - 90px));
+      bottom: -24px;
+      width: min(690px, 50vw);
+      min-width: 520px;
+      pointer-events: none;
+    }
+
+    .browser-frame {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(16, 20, 17, 0.16);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .window-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 38px;
+      border-bottom: 1px solid var(--line);
+      padding: 0 14px;
+      background: #f5f7f3;
+    }
+
+    .window-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #d75b56;
+    }
+
+    .window-dot:nth-child(2) {
+      background: #d99b25;
+    }
+
+    .window-dot:nth-child(3) {
+      background: #3f9f6d;
+    }
+
+    .url-pill {
+      flex: 1;
+      height: 22px;
+      margin-left: 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+    }
+
+    .app-preview {
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      min-height: 430px;
+    }
+
+    .preview-sidebar {
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      background: #f8faf7;
+    }
+
+    .preview-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 22px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .preview-nav-item {
+      height: 34px;
+      margin-bottom: 9px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .preview-nav-item.active {
+      border-color: rgba(35, 122, 88, 0.18);
+      background: rgba(35, 122, 88, 0.1);
+      color: var(--green);
+      font-weight: 750;
+    }
+
+    .preview-main {
+      padding: 20px;
+      background: #fff;
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .preview-title {
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .preview-meta {
+      color: var(--quiet);
+      font: 12px var(--mono);
+    }
+
+    .mini-button {
+      display: inline-flex;
+      align-items: center;
+      height: 32px;
+      border-radius: 7px;
+      padding: 0 10px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .score-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .score-tile {
+      min-height: 82px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--panel-2);
+    }
+
+    .score-label {
+      color: var(--quiet);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .score-value {
+      margin-top: 8px;
+      font: 800 28px/1 var(--sans);
+    }
+
+    .score-value.good {
+      color: var(--green);
+    }
+
+    .score-value.warn {
+      color: var(--amber);
+    }
+
+    .chart {
+      position: relative;
+      height: 128px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(rgba(16, 20, 17, 0.055) 1px, transparent 1px) 0 0 / 100% 32px,
+        #fbfcfa;
+      overflow: hidden;
+    }
+
+    .chart svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .preview-table {
+      width: 100%;
+      margin-top: 16px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .preview-table th,
+    .preview-table td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .preview-table th {
+      color: var(--quiet);
+      font-weight: 700;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: rgba(35, 122, 88, 0.1);
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .next-hint {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 22px;
+      max-width: 1180px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    section {
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 84px 24px;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.86fr) minmax(280px, 0.44fr);
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 34px;
+    }
+
+    h2 {
+      max-width: 760px;
+      font-size: clamp(32px, 4vw, 54px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    .section-copy {
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .proof-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .proof-item {
+      min-height: 146px;
+      padding: 22px;
+      border-right: 1px solid var(--line);
+    }
+
+    .proof-item:last-child {
+      border-right: 0;
+    }
+
+    .proof-number {
+      font: 800 34px/1 var(--sans);
+    }
+
+    .proof-label {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .proof-source {
+      margin-top: 12px;
+      color: var(--quiet);
+      font: 12px var(--mono);
+    }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .product-card,
+    .plan-card,
+    .brand-card {
+      min-height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+      background: var(--panel);
+    }
+
+    .product-card h3,
+    .plan-card h3,
+    .brand-card h3 {
+      font-size: 19px;
+      line-height: 1.25;
+    }
+
+    .product-card p,
+    .plan-card p,
+    .brand-card p {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .card-tag {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 10px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);
+      gap: 28px;
+      align-items: stretch;
+    }
+
+    .terminal {
+      border: 1px solid #27302b;
+      border-radius: 8px;
+      background: #111612;
+      color: #e6ede5;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 38px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 0 14px;
+      color: #9ca99f;
+      font: 12px var(--mono);
+    }
+
+    pre {
+      margin: 0;
+      padding: 20px;
+      overflow: auto;
+      font: 13px/1.7 var(--mono);
+      white-space: pre;
+    }
+
+    .code-accent {
+      color: #8ed4b4;
+    }
+
+    .code-dim {
+      color: #97a49b;
+    }
+
+    .leaderboard {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .leaderboard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+      padding: 18px 20px;
+    }
+
+    .leaderboard-header strong {
+      font-size: 18px;
+    }
+
+    .leaderboard table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .leaderboard th,
+    .leaderboard td {
+      border-bottom: 1px solid var(--line);
+      padding: 13px 16px;
+      text-align: left;
+    }
+
+    .leaderboard th {
+      color: var(--quiet);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .leaderboard tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .surface-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .surface {
+      min-height: 58px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--panel-2);
+      font-size: 12px;
+    }
+
+    .surface b {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--green);
+      font-size: 16px;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .plan-card {
+      min-height: 260px;
+    }
+
+    .plan-card .month {
+      display: inline-flex;
+      margin-bottom: 18px;
+      color: var(--amber);
+      font: 800 13px var(--mono);
+      text-transform: uppercase;
+    }
+
+    .brand-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+    }
+
+    .brand-card ul {
+      display: grid;
+      gap: 9px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .brand-card li {
+      display: flex;
+      gap: 8px;
+    }
+
+    .brand-card li::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 7px;
+      height: 7px;
+      margin-top: 8px;
+      border-radius: 999px;
+      background: var(--green);
+    }
+
+    .footer {
+      background: #111612;
+      color: #e8eee7;
+    }
+
+    .footer .section-inner {
+      padding-top: 58px;
+      padding-bottom: 58px;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .footer p {
+      color: #aeb9b1;
+      max-width: 680px;
+    }
+
+    .footer-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .footer .button {
+      border-color: #e8eee7;
+      background: #e8eee7;
+      color: #111612;
+    }
+
+    .footer .button.secondary {
+      color: #e8eee7;
+      background: transparent;
+      border-color: rgba(232, 238, 231, 0.28);
+    }
+
+    @media (max-width: 1120px) {
+      .hero {
+        min-height: auto;
+      }
+
+      .hero-inner {
+        min-height: auto;
+        padding-bottom: 430px;
+      }
+
+      .hero-scene {
+        right: 24px;
+        bottom: 30px;
+        width: calc(100% - 48px);
+        min-width: 0;
+      }
+
+      .browser-frame {
+        transform: none;
+      }
+
+      .section-head,
+      .split,
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .proof-strip,
+      .product-grid,
+      .timeline,
+      .brand-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .proof-item:nth-child(2) {
+        border-right: 0;
+      }
+
+      .proof-item:nth-child(-n + 2) {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .surface-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .footer-actions {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .nav {
+        padding: 12px 16px;
+      }
+
+      .navlinks {
+        display: none;
+      }
+
+      .hero-inner {
+        padding: 54px 16px 390px;
+      }
+
+      h1 {
+        font-size: clamp(45px, 15vw, 68px);
+      }
+
+      .hero-subtitle {
+        font-size: 18px;
+      }
+
+      .hero-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .hero-notes span {
+        width: 100%;
+      }
+
+      .hero-scene {
+        left: 16px;
+        right: 16px;
+        width: auto;
+      }
+
+      .app-preview {
+        grid-template-columns: 1fr;
+        min-height: 330px;
+      }
+
+      .preview-sidebar {
+        display: none;
+      }
+
+      .score-row {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .score-row .score-tile:nth-child(3) {
+        grid-column: span 2;
+      }
+
+      .preview-table th:nth-child(3),
+      .preview-table td:nth-child(3) {
+        display: none;
+      }
+
+      .section-inner {
+        padding: 64px 16px;
+      }
+
+      .proof-strip,
+      .product-grid,
+      .timeline,
+      .brand-grid,
+      .surface-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .proof-item {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .proof-item:last-child {
+        border-bottom: 0;
+      }
+
+      .leaderboard {
+        overflow-x: auto;
+      }
+
+      .leaderboard table {
+        min-width: 700px;
+      }
+
+      .next-hint {
+        left: 16px;
+        right: 16px;
+      }
+    }
+  </style>
 </head>
 <body>
-<main>
-<h1>Mosaiq Detection Lab Leaderboard</h1>
-<p class="meta">Generated 2026-05-31T00:49:41.658Z · SDK 0.10.0 · 4 persona(s) · 1 engine(s)</p>
-<section class="methodology"><p>Each row is a real <code>mosaiq detection-lab run</code> against the committed fixture persona, scored across a battery of public fingerprint / bot-detection sites. <strong>Lower <code>weightedHits</code> is better</strong> (fewer detector hits = stronger anti-detection). Numbers are reproducible from this repo’s baseline runs; no figures are hand-edited. Competitor engines are only listed when we have a real measured run — we never estimate or fabricate their scores.</p></section>
-<h2>Ranking</h2>
-<table class="board"><thead><tr><th>#</th><th>Engine</th><th>Persona</th><th class="num">Weighted hits</th><th class="num">Sites ok/fail</th><th class="num">CreepJS lies</th><th class="num">CreepJS bold-fail</th><th class="num">Sannysoft</th></tr></thead><tbody><tr><td>1</td><td>Mosaiq</td><td>macOS Sonoma + Chrome 130 (US) <span class="pid">macos-sonoma-chrome-us</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td><td class="num">1</td><td class="num">31/57</td></tr><tr><td>2</td><td>Mosaiq</td><td>Ubuntu 22.04 + Chrome 130 (US) <span class="pid">ubuntu-2204-chrome-us</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td><td class="num">1</td><td class="num">31/57</td></tr><tr><td>3</td><td>Mosaiq</td><td>Windows 10 22H2 + Chrome 130 (US) <span class="pid">win10-chrome-us</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td><td class="num">1</td><td class="num">31/57</td></tr><tr><td>4</td><td>Mosaiq</td><td>Windows 11 + Chrome 130 (US) <span class="pid">win11-chrome-us</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td><td class="num">1</td><td class="num">31/57</td></tr></tbody></table>
-<h2>Hits by surface</h2>
-<table class="board matrix"><thead><tr><th>Persona</th><th class="num">webdriver</th><th class="num">navigator</th><th class="num">canvas</th><th class="num">webgl</th><th class="num">audio</th><th class="num">font</th><th class="num">webrtc</th><th class="num">screen</th><th class="num">permissions</th><th class="num">timezone</th><th class="num">plugins</th><th class="num">other</th></tr></thead><tbody><tr><td>macOS Sonoma + Chrome 130 (US) <span class="pid">macos-sonoma-chrome-us</span></td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num hit">1</td></tr><tr><td>Ubuntu 22.04 + Chrome 130 (US) <span class="pid">ubuntu-2204-chrome-us</span></td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num hit">1</td></tr><tr><td>Windows 10 22H2 + Chrome 130 (US) <span class="pid">win10-chrome-us</span></td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num hit">1</td></tr><tr><td>Windows 11 + Chrome 130 (US) <span class="pid">win11-chrome-us</span></td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num hit">1</td></tr></tbody></table>
-<footer>
-<p>Reproduce locally: <code>pnpm mosaiq detection-lab run &lt;persona-id&gt;</code>, then regenerate this page with <code>pnpm build-leaderboard</code>.</p>
-</footer>
-</main>
+  <script>
+    window.SITE_CONFIG = {
+      productName: "Mosaiq",
+      codenameLabel: "Codename",
+      tagline: "Browser Infrastructure for the Agentic AI Economy",
+      finalNamePending: true,
+      primaryDomain: "",
+      domainCandidates: ["mosaiq.dev", "mosaiq.cloud", "runova.dev"],
+      githubUrl: "https://github.com/meilimei/Mosaiq",
+      quickstartUrl: "https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md",
+      docsUrl: "https://github.com/meilimei/Mosaiq/tree/main/docs",
+      cloudBaseUrl: "https://mosaiq-cloud-runtime.fly.dev",
+      waitlistUrl: "",
+      cliPackage: "@runova/cli",
+      sdkPackage: "@runova/sdk",
+      cloudSdkPackage: "@runova/cloud-sdk"
+    };
+  </script>
+
+  <header class="topbar">
+    <nav class="nav" aria-label="主导航">
+      <a class="brand-lockup" href="#top" aria-label="回到首页">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span data-brand>Mosaiq</span>
+      </a>
+      <div class="navlinks">
+        <a href="#product">产品</a>
+        <a href="#proof">证据</a>
+        <a href="#go-to-market">推广</a>
+        <a href="#brand">品牌预案</a>
+      </div>
+      <a class="button secondary" data-config-href="githubUrl" href="https://github.com/meilimei/Mosaiq">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-label="Mosaiq 首屏">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <div class="kicker"><span class="status-dot"></span><span data-codename>Codename</span> <span data-brand>Mosaiq</span></div>
+          <h1><span data-brand>Mosaiq</span></h1>
+          <p class="hero-subtitle">
+            为 AI Agent、Playwright 自动化和跨账号运营准备的浏览器基础设施。当前版本已经具备 SDK/CLI、桌面 Persona 管理、Detection Lab 自检，以及 Browserbase 形状的 Cloud Runtime alpha。
+          </p>
+          <div class="hero-actions">
+            <a class="button" data-config-href="quickstartUrl" href="https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md">查看 Quickstart -></a>
+            <a class="button secondary" href="#proof">看真实基线</a>
+          </div>
+          <div class="hero-notes">
+            <span>品牌名待定，站点已预留改名配置</span>
+            <span>npm 使用 <b data-config-text="cliPackage">@runova/cli</b></span>
+            <span>Cloud alpha 支持 baseURL 迁移</span>
+          </div>
+        </div>
+
+        <div class="hero-scene" aria-hidden="true">
+          <div class="browser-frame">
+            <div class="window-bar">
+              <span class="window-dot"></span><span class="window-dot"></span><span class="window-dot"></span>
+              <span class="url-pill"></span>
+            </div>
+            <div class="app-preview">
+              <aside class="preview-sidebar">
+                <div class="preview-logo">
+                  <span class="brand-mark"><span></span><span></span><span></span><span></span></span>
+                  <span data-brand>Mosaiq</span>
+                </div>
+                <div class="preview-nav-item active">Detection Lab</div>
+                <div class="preview-nav-item">Personas</div>
+                <div class="preview-nav-item">Cloud Sessions</div>
+                <div class="preview-nav-item">Artifacts</div>
+              </aside>
+              <div class="preview-main">
+                <div class="preview-header">
+                  <div>
+                    <div class="preview-title">Detection Lab</div>
+                    <div class="preview-meta">win11-chrome-us / baseline</div>
+                  </div>
+                  <span class="mini-button">New Run</span>
+                </div>
+                <div class="score-row">
+                  <div class="score-tile">
+                    <div class="score-label">Weighted hits</div>
+                    <div class="score-value good">0.5</div>
+                  </div>
+                  <div class="score-tile">
+                    <div class="score-label">Sites OK</div>
+                    <div class="score-value">12/12</div>
+                  </div>
+                  <div class="score-tile">
+                    <div class="score-label">CreepJS lies</div>
+                    <div class="score-value warn">0</div>
+                  </div>
+                </div>
+                <div class="chart">
+                  <svg viewBox="0 0 480 128" role="img" aria-label="Detection Lab 趋势图">
+                    <polyline points="0,98 60,82 120,74 180,70 240,58 300,52 360,46 420,42 480,40" fill="none" stroke="#237a58" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                    <polyline points="0,116 480,116" fill="none" stroke="#d7ddd4" stroke-width="1"></polyline>
+                    <circle cx="480" cy="40" r="5" fill="#237a58"></circle>
+                  </svg>
+                </div>
+                <table class="preview-table">
+                  <thead><tr><th>Persona</th><th>Status</th><th>Surface</th></tr></thead>
+                  <tbody>
+                    <tr><td>macOS Sonoma</td><td><span class="badge">clean</span></td><td>canvas / webgl / ua</td></tr>
+                    <tr><td>Ubuntu 22.04</td><td><span class="badge">clean</span></td><td>audio / fonts / worker</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="next-hint">向下看当前已交付能力、可验证证据和推广路径</div>
+      </div>
+    </section>
+
+    <section id="product">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>先卖真实可跑的东西，再讲长期愿景。</h2>
+          <p class="section-copy">
+            这个展示站刻意把“当前可用”和“路线图”拆开。对外推广时，主叙事应该是证据、迁移成本、开发者体验，而不是还在冷藏中的 Chromium fork 承诺。
+          </p>
+        </div>
+        <div class="product-grid">
+          <article class="product-card">
+            <span class="card-tag">Desktop</span>
+            <h3>Persona 管理和 Detection Lab UI</h3>
+            <p>桌面端用于创建、克隆、导入导出 Persona，并直接查看每次自检的趋势、雷达图、站点结果和截图证据。</p>
+          </article>
+          <article class="product-card">
+            <span class="card-tag">SDK / CLI</span>
+            <h3>从 npm 直接接入自动化流程</h3>
+            <p><span data-config-text="cliPackage">@runova/cli</span> 和 <span data-config-text="sdkPackage">@runova/sdk</span> 提供 persona CRUD、Detection Lab run、run-all 回归门禁和 Playwright 注入路径。</p>
+          </article>
+          <article class="product-card">
+            <span class="card-tag">Cloud alpha</span>
+            <h3>Browserbase 兼容形状，降低迁移成本</h3>
+            <p>Cloud Runtime alpha 已具备 session API、CDP-over-WebSocket、server-side injection，并支持通过 baseURL 从 Browserbase 风格调用迁移。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="proof">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>把反检测能力变成可追溯的基线。</h2>
+          <p class="section-copy">
+            Detection Lab 不是一句营销词。当前仓库已经提交 4 个 fixture persona 的 baseline，页面保留分数、站点通过数和 surface 命中，后续竞品分数只在有可复现实测时加入。
+          </p>
+        </div>
+        <div class="proof-strip" aria-label="当前证据指标">
+          <div class="proof-item">
+            <div class="proof-number">4</div>
+            <div class="proof-label">已提交 baseline persona</div>
+            <div class="proof-source">win11 / win10 / macOS / Ubuntu</div>
+          </div>
+          <div class="proof-item">
+            <div class="proof-number">12/12</div>
+            <div class="proof-label">每个 baseline 的站点 OK 数</div>
+            <div class="proof-source">Detection Lab fixture run</div>
+          </div>
+          <div class="proof-item">
+            <div class="proof-number">0.5</div>
+            <div class="proof-label">当前 weightedHits 基线</div>
+            <div class="proof-source">Lower is better</div>
+          </div>
+          <div class="proof-item">
+            <div class="proof-number">0</div>
+            <div class="proof-label">CreepJS liesCount</div>
+            <div class="proof-source">scorer calibrated</div>
+          </div>
+        </div>
+
+        <div class="leaderboard" style="margin-top: 22px;">
+          <div class="leaderboard-header">
+            <strong>Detection Lab Leaderboard</strong>
+            <a href="leaderboard/">查看完整 Leaderboard -></a>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Persona</th>
+                <th>Engine</th>
+                <th class="num">Weighted hits</th>
+                <th class="num">Sites ok/fail</th>
+                <th class="num">CreepJS lies</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>macOS Sonoma + Chrome</td><td><span data-brand>Mosaiq</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td></tr>
+              <tr><td>Ubuntu 22.04 + Chrome</td><td><span data-brand>Mosaiq</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td></tr>
+              <tr><td>Windows 10 + Chrome</td><td><span data-brand>Mosaiq</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td></tr>
+              <tr><td>Windows 11 + Chrome</td><td><span data-brand>Mosaiq</span></td><td class="num">0.5</td><td class="num">12/0</td><td class="num">0</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="surface-grid" aria-label="检测面">
+          <div class="surface"><b>0</b>webdriver</div>
+          <div class="surface"><b>0</b>navigator</div>
+          <div class="surface"><b>0</b>canvas</div>
+          <div class="surface"><b>0</b>webgl</div>
+          <div class="surface"><b>0</b>audio</div>
+          <div class="surface"><b>0</b>timezone</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="go-to-market">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>推广第一步：让用户 30 秒内知道为什么要试。</h2>
+          <p class="section-copy">
+            当前最适合的转化入口不是长官网，而是一个证据型落地页：清楚说明能替代哪段工作流、怎么验证、怎么迁移，以及哪些能力还在路线图里。
+          </p>
+        </div>
+        <div class="split">
+          <div class="terminal" aria-label="安装和迁移代码">
+            <div class="terminal-bar"><span>quickstart</span><span>copy-ready</span></div>
+            <pre><code><span class="code-dim"># CLI path</span>
+npm i -g <span class="code-accent" data-config-text="cliPackage">@runova/cli</span>
+npx playwright install chromium
+mosaiq personas templates list
+mosaiq detection-lab run alice
+
+<span class="code-dim"># Browserbase-style cloud migration</span>
+const bb = new Browserbase({
+  apiKey: process.env.MOSAIQ_API_KEY,
+  baseURL: "<span data-config-text="cloudBaseUrl">https://mosaiq-cloud-runtime.fly.dev</span>"
+});</code></pre>
+          </div>
+          <div class="product-grid" style="grid-template-columns: 1fr;">
+            <article class="product-card">
+              <span class="card-tag">Hook</span>
+              <h3>“换一个 baseURL” 是第一句推广文案</h3>
+              <p>Stagehand / Browserbase 用户最在意迁移成本。展示站把这件事放到首屏之后，让用户立刻知道可以低风险试用。</p>
+            </article>
+            <article class="product-card">
+              <span class="card-tag">Trust</span>
+              <h3>Detection Lab 是可信资产</h3>
+              <p>所有数字都来自 committed baseline。竞品对比只在拥有真实跑法、日期和版本时加入，避免推广时被数据反噬。</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>路线图说清楚，不把未来当现在卖。</h2>
+          <p class="section-copy">
+            展示站保留路线图区，但语气保持克制。它的作用是让早期用户看到方向，而不是把尚未落地的 Chromium fork、SOC 2、多 region 当成当前能力。
+          </p>
+        </div>
+        <div class="timeline">
+          <article class="plan-card">
+            <span class="month">Now</span>
+            <h3>Evidence first</h3>
+            <p>持续更新 baseline、leaderboard、硬目标真账号实测，把“能打”变成可复现记录。</p>
+          </article>
+          <article class="plan-card">
+            <span class="month">Next</span>
+            <h3>External users</h3>
+            <p>找 Stagehand、browser-use、Playwright 用户试迁移，收集真实失败 surface 并回流 issue。</p>
+          </article>
+          <article class="plan-card">
+            <span class="month">After signal</span>
+            <h3>Cloud hardening</h3>
+            <p>付费或融资信号出现后，再推进多实例、配额、计费、recording/replay 等云端加固项。</p>
+          </article>
+          <article class="plan-card">
+            <span class="month">Longer term</span>
+            <h3>Kernel path</h3>
+            <p>Chromium fork 和 TLS/JA4 深层能力仍是长期方向，但当前以 SDK 注入路径验证需求。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="brand">
+      <div class="section-inner">
+        <div class="section-head">
+          <h2>品牌名和域名未定，页面已经按可替换设计。</h2>
+          <p class="section-copy">
+            <span data-brand>Mosaiq</span> 当前只是代号。域名注册成功后，优先改配置对象，再改 DNS/托管和 README 链接。包名继续用 <span data-config-text="cliPackage">@runova/cli</span>，可以降低品牌更换对安装路径的影响。
+          </p>
+        </div>
+        <div class="brand-grid">
+          <article class="brand-card">
+            <h3>页面级改名</h3>
+            <p>本页顶部有 <code>SITE_CONFIG</code>，集中控制产品名、候选域名、Cloud baseURL、GitHub 和 Quickstart 链接。</p>
+            <ul>
+              <li>改 <code>productName</code> 会同步页面中的品牌占位</li>
+              <li>改 <code>primaryDomain</code> 后可生成正式 canonical 语义</li>
+              <li>空的 <code>waitlistUrl</code> 不会显示无效报名入口</li>
+            </ul>
+          </article>
+          <article class="brand-card">
+            <h3>域名候选</h3>
+            <p>建议先用短域名做主站，长尾域名只做跳转，避免推广材料分裂。</p>
+            <ul data-domain-list>
+              <li>mosaiq.dev</li>
+              <li>mosaiq.cloud</li>
+              <li>runova.dev</li>
+            </ul>
+          </article>
+          <article class="brand-card">
+            <h3>推广后续</h3>
+            <p>域名确定后再追加等待名单、邮件地址、OG 图片和正式部署配置。当前先保证能被分享、能解释、能验证。</p>
+            <ul>
+              <li>补充 CNAME 或托管平台自定义域名</li>
+              <li>更新 README、Quickstart、pitch deck 中的链接</li>
+              <li>统一 Cloud API 的公开 baseURL</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="section-inner">
+      <div class="footer-grid">
+        <div>
+          <div class="brand-lockup" style="margin-bottom: 14px;">
+            <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+            <span data-brand>Mosaiq</span>
+          </div>
+          <p>
+            当前品牌名仍是代号。这个展示站的目标是先成为推广入口：解释产品、展示证据、降低试用门槛，并为最终域名和品牌切换留下干净路径。
+          </p>
+        </div>
+        <div class="footer-actions">
+          <a class="button" data-config-href="quickstartUrl" href="https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md">开始试用</a>
+          <a class="button secondary" data-config-href="docsUrl" href="https://github.com/meilimei/Mosaiq/tree/main/docs">阅读文档</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const config = window.SITE_CONFIG;
+      const setText = (selector, value) => {
+        document.querySelectorAll(selector).forEach((node) => {
+          node.textContent = value;
+        });
+      };
+
+      setText("[data-brand]", config.productName);
+      setText("[data-codename]", config.finalNamePending ? config.codenameLabel : "Product");
+
+      document.querySelectorAll("[data-config-text]").forEach((node) => {
+        const key = node.getAttribute("data-config-text");
+        if (key && config[key]) node.textContent = config[key];
+      });
+
+      document.querySelectorAll("[data-config-href]").forEach((node) => {
+        const key = node.getAttribute("data-config-href");
+        if (key && config[key]) node.setAttribute("href", config[key]);
+      });
+
+      const domainList = document.querySelector("[data-domain-list]");
+      if (domainList && Array.isArray(config.domainCandidates)) {
+        domainList.innerHTML = "";
+        config.domainCandidates.forEach((domain) => {
+          const item = document.createElement("li");
+          item.textContent = domain;
+          domainList.appendChild(item);
+        });
+      }
+
+      document.title = `${config.productName} | ${config.tagline}`;
+      const socialTitle = `${config.productName} | ${config.tagline}`;
+      const socialDescription = `${config.productName} combines persona-based anti-detection, Detection Lab evidence, CLI workflows, and Browserbase-compatible cloud sessions.`;
+      const description = document.querySelector('meta[name="description"]');
+      if (description) {
+        description.setAttribute("content", socialDescription);
+      }
+      const setMeta = (selector, content) => {
+        const node = document.querySelector(selector);
+        if (node) node.setAttribute("content", content);
+      };
+      setMeta('meta[property="og:title"]', socialTitle);
+      setMeta('meta[property="og:description"]', socialDescription);
+      setMeta('meta[name="twitter:title"]', socialTitle);
+      setMeta('meta[name="twitter:description"]', socialDescription);
+    })();
+  </script>
 </body>
 </html>

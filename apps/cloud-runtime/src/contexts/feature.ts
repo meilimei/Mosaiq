@@ -43,7 +43,8 @@ export function ensureContextsEnabled(): void {
  * so the join below never doubles `//`.
  */
 function internalBaseUrl(): string {
-  return loadEnv().PUBLIC_BASE_URL.replace(/\/+$/, '');
+  const env = loadEnv();
+  return (env.MOSAIQ_INTERNAL_BASE_URL ?? env.PUBLIC_BASE_URL).replace(/\/+$/, '');
 }
 
 /**

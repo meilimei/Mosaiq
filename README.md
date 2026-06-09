@@ -34,9 +34,10 @@ mosaiq personas templates list   # 看 4 个 OS 模板
 import { Browserbase } from '@browserbasehq/sdk';
 import { chromium } from 'playwright-core';
 
+const baseURL = 'https://mosaiq-cloud-runtime.fly.dev';
 const bb = new Browserbase({
   apiKey: process.env.MOSAIQ_API_KEY,                   // msq_sk_live_...
-  baseURL: 'https://mosaiq-cloud-runtime.fly.dev',      // ← 唯一改动
+  baseURL,                                              // ← 唯一改动
 });
 
 const session = await bb.sessions.create({});          // 默认 persona seed
@@ -45,6 +46,10 @@ const page = await browser.newPage();
 await page.goto('https://example.com');
 console.log(await page.title());                       // → "Example Domain"
 await browser.close();
+await fetch(`${baseURL}/v1/sessions/${session.id}`, {
+  method: 'DELETE',
+  headers: { authorization: `Bearer ${process.env.MOSAIQ_API_KEY}` },
+});
 ```
 
 > ✅ **反指纹注入口径（v0.11 起：服务端注入默认开启）**：上面这条「改一行 baseURL」路径现在**就能拿到深层 stealth**——pod 在 chromium 起好后服务端注入与 desktop launcher 完全相同的 `injectAll`（canvas / WebGL / audio / UA-CH / 字体 / worker scope），裸 `connectOverCDP`（含 `@browserbasehq/sdk` 无脑迁移路径）的页面一加载就带全套深层伪装。本地实测：raw `connectOverCDP`（**不调** `injectInto`）即得 `navigator.hardwareConcurrency=8` / WebGL renderer = persona GPU 等深层 spoof 值。

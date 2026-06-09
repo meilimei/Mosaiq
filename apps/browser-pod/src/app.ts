@@ -15,7 +15,7 @@ import { z } from 'zod';
 
 import { parsePersona } from '@runova/persona-schema';
 
-import { getRunning, killChromium, spawnChromium } from './chromium.js';
+import { PodBusyError, getBusyMachineId, getRunning, killChromium, spawnChromium } from './chromium.js';
 import { newId } from './ids.js';
 import { getLogger } from './logger.js';
 
@@ -59,12 +59,13 @@ export function createApp(): Hono {
 
   app.get('/healthz', (c) => {
     const running = getRunning();
+    const busyMachineId = getBusyMachineId();
     return c.json({
       ok: true,
       service: 'browser-pod',
       version: '0.11.0',
-      busy: running !== null,
-      machineId: running?.machineId ?? null,
+      busy: busyMachineId !== null,
+      machineId: running?.machineId ?? busyMachineId,
       pid: running?.pid ?? null,
       // captcha watcher 计数（无运行 chromium / 未启用 solveCaptchas 时为 null）。
       captcha: running?.captcha ?? null,
@@ -92,8 +93,9 @@ export function createApp(): Hono {
       );
     }
 
-    if (getRunning()) {
-      return c.json({ error: 'pod busy', machineId: getRunning()?.machineId }, 409);
+    const busyMachineId = getBusyMachineId();
+    if (busyMachineId) {
+      return c.json({ error: 'pod busy', machineId: busyMachineId }, 409);
     }
 
     const machineId = newId();
@@ -112,6 +114,9 @@ export function createApp(): Hono {
         ...(req.context ? { context: req.context } : {}),
       });
     } catch (err) {
+      if (err instanceof PodBusyError) {
+        return c.json({ error: 'pod busy', machineId: err.machineId }, 409);
+      }
       log.error({ err, sessionId: req.sessionId }, 'spawnChromium failed');
       return c.json(
         {

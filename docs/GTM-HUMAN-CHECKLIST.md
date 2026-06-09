@@ -1,4 +1,4 @@
-# Mosaiq GTM 人工清单（Track B）
+﻿# Mosaiq GTM 人工清单（Track B）
 
 > **用途**：工程夯实（Track A）可由 AI/CI 推进；下列步骤**只能由人**执行（凭据、账号、对外沟通）。每项附验收口径，完成后在方框打 `[x]`。
 
@@ -17,10 +17,10 @@
 
 ---
 
-## 2. GitHub Pages 上线 Leaderboard
+## 2. GitHub Pages public site
 
 - [ ] 仓库 Settings → Pages → Source = **GitHub Actions**
-- [ ] 确认 `main` 上 `leaderboard.yml` / `jekyll-gh-pages.yml` 跑绿
+- [ ] 确认 `main` 上 `leaderboard.yml` 跑绿
 - [ ] 打开 Pages URL，可见 Mosaiq vs 竞品诚实对比（来自 committed baselines）
 
 **验收**：公开 URL 可访问；过不了的项标红（不挑数据）。
@@ -69,3 +69,4 @@
 | detection-report issue | 定位 `packages/sdk/src/injection/runner.ts` → 修 → `diag:worker-scope` / `diag:webgl` 绿 → 更新 baseline |
 | LaunchAI prod | 优先 cloud-runtime / browser-pod；sticky 见 phase 11.5 文档 |
 | 外部用户 | 记录迁移摩擦点；API 缺口记入 ROADMAP anti-scope 评审 |
+
