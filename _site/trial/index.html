@@ -1,0 +1,686 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mosaiq Trial | 申请浏览器自动化试用</title>
+  <meta name="description" content="申请 Mosaiq Cloud Runtime 试用，获取一次性 API key，验证 Browserbase-compatible cloud sessions、persona-based stealth 和 Detection Lab evidence。">
+  <meta name="theme-color" content="#f6f7f4">
+  <link rel="canonical" href="https://meilimei.github.io/Mosaiq/trial/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Mosaiq Trial">
+  <meta property="og:description" content="为 AI Agent 和 Playwright 自动化申请 Mosaiq Cloud Runtime 试用。">
+  <meta property="og:image" content="https://meilimei.github.io/Mosaiq/assets/og-image.png">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --ink: #16201d;
+      --muted: #65716c;
+      --paper: #f6f7f4;
+      --panel: #ffffff;
+      --line: #dfe5de;
+      --green: #2d7f5e;
+      --green-ink: #0f3d2e;
+      --coral: #de6b4f;
+      --blue: #2f6f9f;
+      --yellow: #f1c84c;
+      --shadow: 0 20px 60px rgba(20, 32, 29, 0.11);
+      color-scheme: light;
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(22, 32, 29, 0.05) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(22, 32, 29, 0.04) 1px, transparent 1px),
+        var(--paper);
+      background-size: 44px 44px;
+      color: var(--ink);
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .site-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .nav {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 22px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+    }
+
+    .mark {
+      width: 36px;
+      height: 36px;
+      border: 1px solid #14201d;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--panel);
+      box-shadow: 4px 4px 0 #14201d;
+    }
+
+    .mark svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .nav-links a:hover {
+      color: var(--ink);
+    }
+
+    main {
+      flex: 1;
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 42px 0 72px;
+    }
+
+    .trial-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
+      gap: 28px;
+      align-items: start;
+    }
+
+    .intro {
+      padding: 18px 0 0;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--green-ink);
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      background: var(--yellow);
+      border: 1px solid var(--ink);
+      transform: rotate(45deg);
+    }
+
+    h1 {
+      margin: 18px 0 18px;
+      font-size: clamp(42px, 8vw, 84px);
+      line-height: 0.96;
+      letter-spacing: 0;
+      max-width: 720px;
+    }
+
+    .lead {
+      margin: 0;
+      color: #3d4843;
+      font-size: 18px;
+      line-height: 1.7;
+      max-width: 690px;
+    }
+
+    .quota-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 28px 0;
+      max-width: 680px;
+    }
+
+    .quota {
+      min-height: 94px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.76);
+      padding: 16px;
+    }
+
+    .quota strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .quota span {
+      display: block;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .asset-panel {
+      margin-top: 26px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .asset-panel img {
+      width: 100%;
+      display: block;
+      background: #f0f5f0;
+    }
+
+    .form-panel {
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 8px 8px 0 #14201d;
+      padding: 24px;
+    }
+
+    .form-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .form-header h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #e7f3ec;
+      color: var(--green-ink);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    form {
+      display: grid;
+      gap: 16px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    label {
+      color: #2d3834;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid #bdc8c1;
+      border-radius: 8px;
+      background: #fbfcfb;
+      color: var(--ink);
+      font: inherit;
+      font-size: 15px;
+      padding: 12px 13px;
+      outline: none;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(45, 127, 94, 0.15);
+    }
+
+    textarea {
+      min-height: 118px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 10px;
+      align-items: start;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .check-row input {
+      width: 18px;
+      height: 18px;
+      margin: 2px 0 0;
+      accent-color: var(--green);
+    }
+
+    .button-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    button,
+    .button {
+      min-height: 44px;
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--green);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 10px 16px;
+      cursor: pointer;
+      box-shadow: 4px 4px 0 #14201d;
+    }
+
+    button:hover,
+    .button:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 5px 5px 0 #14201d;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+      transform: none;
+      box-shadow: 4px 4px 0 #14201d;
+    }
+
+    .button.secondary {
+      background: #ffffff;
+      color: var(--ink);
+    }
+
+    .status {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8faf7;
+      padding: 16px;
+      display: none;
+    }
+
+    .status.is-visible {
+      display: block;
+    }
+
+    .status h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+
+    .status p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .status.error {
+      border-color: #e2a496;
+      background: #fff3ef;
+    }
+
+    .key-box {
+      border: 1px solid #c9d5ce;
+      border-radius: 8px;
+      background: #14201d;
+      color: #e7f3ec;
+      padding: 14px;
+      overflow: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      word-break: break-all;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .meta-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      min-width: 0;
+    }
+
+    .meta-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .meta-item strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    footer {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 26px 0 40px;
+      color: var(--muted);
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 880px) {
+      .trial-grid,
+      .two,
+      .quota-strip,
+      .meta-grid {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 46px;
+      }
+
+      .nav {
+        align-items: flex-start;
+      }
+
+      .nav-links {
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+    }
+
+    @media (max-width: 540px) {
+      .nav {
+        width: min(100% - 22px, 1180px);
+      }
+
+      main,
+      footer {
+        width: min(100% - 22px, 1180px);
+      }
+
+      .form-panel {
+        padding: 18px;
+        box-shadow: 5px 5px 0 #14201d;
+      }
+
+      .form-header {
+        display: grid;
+      }
+
+      h1 {
+        font-size: 39px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    window.SITE_CONFIG = {
+      productName: "Mosaiq",
+      cloudBaseUrl: "https://mosaiq-cloud-runtime.fly.dev",
+      quickstartUrl: "https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md",
+      docsUrl: "https://github.com/meilimei/Mosaiq/tree/main/docs",
+      githubUrl: "https://github.com/meilimei/Mosaiq"
+    };
+  </script>
+  <div class="site-shell">
+    <nav class="nav" aria-label="主导航">
+      <a class="brand" href="../">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z" stroke="#16201d" stroke-width="1.8"/>
+            <path d="M8.4 9.2 12 7.2l3.6 2v4.1L12 15.4l-3.6-2.1V9.2Z" fill="#2d7f5e"/>
+          </svg>
+        </span>
+        <span data-product>Mosaiq</span>
+      </a>
+      <div class="nav-links">
+        <a href="../">首页</a>
+        <a data-config-href="quickstartUrl" href="https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md">Quickstart</a>
+        <a data-config-href="docsUrl" href="https://github.com/meilimei/Mosaiq/tree/main/docs">Docs</a>
+        <a data-config-href="githubUrl" href="https://github.com/meilimei/Mosaiq">GitHub</a>
+      </div>
+    </nav>
+
+    <main>
+      <section class="trial-grid" aria-label="试用申请">
+        <div class="intro">
+          <div class="eyebrow">Public Trial</div>
+          <h1>申请 <span data-product>Mosaiq</span> 试用</h1>
+          <p class="lead">
+            面向 AI Agent、Playwright 自动化和跨账号运营团队开放 Cloud Runtime 试用。提交后会立即创建独立 project 与一次性 API key；请在成功页保存 key，它不会被再次展示。
+          </p>
+
+          <div class="quota-strip" aria-label="试用额度">
+            <div class="quota">
+              <strong>7 天</strong>
+              <span>用于验证接入链路、稳定性和 Detection Lab 证据。</span>
+            </div>
+            <div class="quota">
+              <strong>300 分钟</strong>
+              <span>试用浏览器分钟数上限，避免成本失控。</span>
+            </div>
+            <div class="quota">
+              <strong>1 并发</strong>
+              <span>包含 1 个普通 session 与 1 个 keepAlive 上限。</span>
+            </div>
+          </div>
+
+          <div class="asset-panel">
+            <img src="../assets/og-image.svg" alt="Mosaiq browser infrastructure preview">
+          </div>
+        </div>
+
+        <section class="form-panel" aria-label="创建试用 Key">
+          <div class="form-header">
+            <h2>创建试用 Key</h2>
+            <span class="pill">No credit card</span>
+          </div>
+
+          <form id="trial-form">
+            <div class="two">
+              <div class="field">
+                <label for="full_name">姓名</label>
+                <input id="full_name" name="full_name" autocomplete="name" required minlength="2" maxlength="120" placeholder="你的姓名">
+              </div>
+              <div class="field">
+                <label for="email">工作邮箱</label>
+                <input id="email" name="email" type="email" autocomplete="email" required maxlength="254" placeholder="you@company.com">
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="company_name">公司或项目</label>
+              <input id="company_name" name="company_name" autocomplete="organization" maxlength="120" placeholder="可选">
+            </div>
+
+            <div class="field">
+              <label for="use_case">准备用它验证什么</label>
+              <textarea id="use_case" name="use_case" required minlength="20" maxlength="2000" placeholder="例如：我们需要让 agent 在登录态站点中执行调研、表单提交、跨账号检查，并希望验证反检测基线。"></textarea>
+            </div>
+
+            <input type="hidden" name="source" value="site:trial-page">
+
+            <label class="check-row" for="agree_to_terms">
+              <input id="agree_to_terms" name="agree_to_terms" type="checkbox" required>
+              <span>我确认试用 key 仅用于合法自动化评估，不用于绕过服务条款、垃圾信息、凭证滥用或高风险抓取。</span>
+            </label>
+
+            <div class="button-row">
+              <button id="submit-button" type="submit">创建试用 Key</button>
+              <a class="button secondary" data-config-href="quickstartUrl" href="https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md">查看 Quickstart</a>
+            </div>
+          </form>
+
+          <div id="status" class="status" aria-live="polite"></div>
+        </section>
+      </section>
+    </main>
+
+    <footer>
+      <span><span data-product>Mosaiq</span> is a codename until the domain is finalized.</span>
+      <span id="api-base-label">Runtime: https://mosaiq-cloud-runtime.fly.dev</span>
+    </footer>
+  </div>
+
+  <script>
+    (() => {
+      const config = window.SITE_CONFIG;
+      const form = document.getElementById("trial-form");
+      const status = document.getElementById("status");
+      const submit = document.getElementById("submit-button");
+      const apiBase = config.cloudBaseUrl.replace(/\/$/, "");
+      const endpoint = `${apiBase}/v1/public/trials`;
+
+      document.querySelectorAll("[data-product]").forEach((node) => {
+        node.textContent = config.productName;
+      });
+      document.querySelectorAll("[data-config-href]").forEach((node) => {
+        const key = node.getAttribute("data-config-href");
+        if (config[key]) node.setAttribute("href", config[key]);
+      });
+      document.getElementById("api-base-label").textContent = `Runtime: ${apiBase}`;
+
+      const escapeHtml = (value) =>
+        String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+
+      const showError = (message) => {
+        status.className = "status error is-visible";
+        status.innerHTML = `<h3>创建失败</h3><p>${escapeHtml(message)}</p>`;
+      };
+
+      const showSuccess = (payload) => {
+        const key = payload.api_key_plaintext;
+        const projectId = payload.project_id;
+        const expiresAt = new Date(payload.trial_expires_at).toLocaleString();
+        const apiBaseUrl = payload.api_base_url || apiBase;
+        status.className = "status is-visible";
+        status.innerHTML = `
+          <h3>试用 Key 已创建</h3>
+          <p>请现在保存 API key。刷新或离开页面后，它不会再次出现。</p>
+          <div class="key-box" id="key-box">${escapeHtml(key)}</div>
+          <div class="meta-grid">
+            <div class="meta-item"><span>Project</span><strong>${escapeHtml(projectId)}</strong></div>
+            <div class="meta-item"><span>Expires</span><strong>${escapeHtml(expiresAt)}</strong></div>
+            <div class="meta-item"><span>Minutes</span><strong>${escapeHtml(payload.trial_minutes_cap)} browser-minutes</strong></div>
+            <div class="meta-item"><span>Runtime</span><strong>${escapeHtml(apiBaseUrl)}</strong></div>
+          </div>
+          <div class="key-box">export MOSAIQ_API_KEY="${escapeHtml(key)}"
+export MOSAIQ_API_BASE_URL="${escapeHtml(apiBaseUrl)}"</div>
+          <div class="button-row">
+            <button type="button" id="copy-key">复制 Key</button>
+            <a class="button secondary" href="${escapeHtml(config.quickstartUrl)}">打开 Quickstart</a>
+          </div>
+        `;
+        document.getElementById("copy-key").addEventListener("click", async () => {
+          await navigator.clipboard.writeText(key);
+          document.getElementById("copy-key").textContent = "已复制";
+        });
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        status.className = "status is-visible";
+        status.innerHTML = "<h3>正在创建</h3><p>正在向 Cloud Runtime 申请试用 project 与 API key。</p>";
+        submit.disabled = true;
+        submit.textContent = "创建中...";
+
+        const data = new FormData(form);
+        const payload = {
+          full_name: data.get("full_name"),
+          email: data.get("email"),
+          company_name: data.get("company_name") || undefined,
+          use_case: data.get("use_case"),
+          source: data.get("source"),
+          agree_to_terms: data.get("agree_to_terms") === "on"
+        };
+
+        try {
+          const resp = await fetch(endpoint, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const json = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            const retry = resp.headers.get("retry-after");
+            const suffix = retry ? ` 请在 ${retry} 秒后重试。` : "";
+            throw new Error(json.error?.message || `Request failed (${resp.status}).${suffix}`);
+          }
+          showSuccess(json);
+          form.reset();
+        } catch (err) {
+          showError(err instanceof Error ? err.message : String(err));
+        } finally {
+          submit.disabled = false;
+          submit.textContent = "创建试用 Key";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
+

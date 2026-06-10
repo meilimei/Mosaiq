@@ -23,6 +23,11 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  plan: text('plan').notNull().default('custom'),
+  trialExpiresAt: text('trial_expires_at'),
+  trialSessionCap: integer('trial_session_cap'),
+  trialKeepAliveCap: integer('trial_keepalive_cap'),
+  trialMinutesCap: integer('trial_minutes_cap'),
   /**
    * Phase 11.7b: Stripe customer id (`cus_...`) this project's billable usage is
    * attributed to. NULL = not yet wired to billing; the StripeMeterReporter
@@ -62,6 +67,33 @@ export const apiKeys = sqliteTable(
 // sessions — 一次浏览器 session 一行
 // ─────────────────────────────────────────────────────────────────────────────
 
+export const trialSignups = sqliteTable(
+  'trial_signups',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    apiKeyId: text('api_key_id')
+      .notNull()
+      .references(() => apiKeys.id, { onDelete: 'cascade' }),
+    fullName: text('full_name').notNull(),
+    email: text('email').notNull(),
+    companyName: text('company_name'),
+    useCase: text('use_case').notNull(),
+    source: text('source'),
+    status: text('status').notNull(),
+    createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    expiresAt: text('expires_at').notNull(),
+    revokedAt: text('revoked_at'),
+  },
+  (t) => ({
+    projectUq: uniqueIndex('trial_signups_project_uq').on(t.projectId),
+    apiKeyUq: uniqueIndex('trial_signups_api_key_uq').on(t.apiKeyId),
+    emailIdx: index('trial_signups_email_idx').on(t.email),
+    statusExpiresIdx: index('trial_signups_status_expires_idx').on(t.status, t.expiresAt),
+  }),
+);
 export const sessions = sqliteTable(
   'sessions',
   {
@@ -356,6 +388,7 @@ export const auditEvents = sqliteTable(
 
 export type Project = typeof projects.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
+export type TrialSignupRow = typeof trialSignups.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type PersonaRow = typeof personas.$inferSelect;
 export type UsageEvent = typeof usageEvents.$inferSelect;

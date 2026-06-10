@@ -18,6 +18,11 @@ const STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    plan TEXT NOT NULL DEFAULT 'custom',
+    trial_expires_at TEXT,
+    trial_session_cap INTEGER,
+    trial_keepalive_cap INTEGER,
+    trial_minutes_cap INTEGER,
     stripe_customer_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
@@ -35,6 +40,25 @@ const STATEMENTS: string[] = [
   'CREATE UNIQUE INDEX IF NOT EXISTS api_keys_key_hash_uq ON api_keys (key_hash)',
   'CREATE INDEX IF NOT EXISTS api_keys_project_idx ON api_keys (project_id)',
 
+  // trial_signups
+  `CREATE TABLE IF NOT EXISTS trial_signups (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    api_key_id TEXT NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    company_name TEXT,
+    use_case TEXT NOT NULL,
+    source TEXT,
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT
+  )`,
+  'CREATE UNIQUE INDEX IF NOT EXISTS trial_signups_project_uq ON trial_signups (project_id)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS trial_signups_api_key_uq ON trial_signups (api_key_id)',
+  'CREATE INDEX IF NOT EXISTS trial_signups_email_idx ON trial_signups (email)',
+  'CREATE INDEX IF NOT EXISTS trial_signups_status_expires_idx ON trial_signups (status, expires_at)',
   // sessions
   `CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -194,9 +218,34 @@ const COLUMN_ADDITIONS: ReadonlyArray<{
     alterSql: 'ALTER TABLE usage_events ADD COLUMN reported_at TEXT',
   },
   {
-    // Phase 11.7b: per-project Stripe customer mapping. Nullable — pre-existing
+    table: 'projects',
+    column: 'plan',
+    alterSql: "ALTER TABLE projects ADD COLUMN plan TEXT NOT NULL DEFAULT 'custom'",
+  },
+  {
+    table: 'projects',
+    column: 'trial_expires_at',
+    alterSql: 'ALTER TABLE projects ADD COLUMN trial_expires_at TEXT',
+  },
+  {
+    table: 'projects',
+    column: 'trial_session_cap',
+    alterSql: 'ALTER TABLE projects ADD COLUMN trial_session_cap INTEGER',
+  },
+  {
+    table: 'projects',
+    column: 'trial_keepalive_cap',
+    alterSql: 'ALTER TABLE projects ADD COLUMN trial_keepalive_cap INTEGER',
+  },
+  {
+    table: 'projects',
+    column: 'trial_minutes_cap',
+    alterSql: 'ALTER TABLE projects ADD COLUMN trial_minutes_cap INTEGER',
+  },
+  {
+    // Phase 11.7b: per-project Stripe customer mapping. Nullable 鈥?pre-existing
     // projects migrate to NULL (not yet wired to billing). The StripeMeterReporter
-    // refuses to push usage for an unmapped project. See docs/PHASE-11.7-USAGE-METERING.md §11.7b.
+    // refuses to push usage for an unmapped project. See docs/PHASE-11.7-USAGE-METERING.md 搂11.7b.
     table: 'projects',
     column: 'stripe_customer_id',
     alterSql: 'ALTER TABLE projects ADD COLUMN stripe_customer_id TEXT',
@@ -231,8 +280,12 @@ const INDEX_ADDITIONS: ReadonlyArray<string> = [
   'CREATE INDEX IF NOT EXISTS contexts_active_session_idx ON contexts (active_session_id)',
   // Phase 11.7: partial index for the usage-report job's "unreported" scan. Runs
   // AFTER COLUMN_ADDITIONS so reported_at exists on upgrade DBs by now. Partial
-  // (WHERE reported_at IS NULL) keeps the index tiny — most rows end up reported.
+  // (WHERE reported_at IS NULL) keeps the index tiny 鈥?most rows end up reported.
   'CREATE INDEX IF NOT EXISTS usage_events_unreported_idx ON usage_events (reported_at) WHERE reported_at IS NULL',
+  'CREATE UNIQUE INDEX IF NOT EXISTS trial_signups_project_uq ON trial_signups (project_id)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS trial_signups_api_key_uq ON trial_signups (api_key_id)',
+  'CREATE INDEX IF NOT EXISTS trial_signups_email_idx ON trial_signups (email)',
+  'CREATE INDEX IF NOT EXISTS trial_signups_status_expires_idx ON trial_signups (status, expires_at)',
 ];
 
 export async function ensureSchema(): Promise<void> {
@@ -258,7 +311,7 @@ export async function ensureSchema(): Promise<void> {
     handle.drizzle.run(sql.raw(stmt));
   }
 
-  log.info({ tables: 6 }, 'schema ensured');
+  log.info({ tables: 8 }, 'schema ensured');
 }
 
 /**

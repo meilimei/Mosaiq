@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Hono app 工厂。
  *
  * 抽出来便于在测试里 .request() 直接打。生产路径在 index.ts 里把它挂到
@@ -13,6 +13,7 @@ import { contextsRoute } from './routes/contexts.js';
 import { healthRoute } from './routes/health.js';
 import { internalContextsRoute } from './routes/internal-contexts.js';
 import { metricsRoute } from './routes/metrics.js';
+import { publicTrialRoute } from './routes/public.js';
 import { personasRoute } from './routes/personas.js';
 import { sessionsRoute } from './routes/sessions.js';
 import { usageRoute } from './routes/usage.js';
@@ -31,6 +32,7 @@ export function createApp(): Hono {
 
   // /v1/metrics 走独立 token（scraper 跟业务 key 解耦）
   app.route('/v1/metrics', metricsRoute);
+  app.route('/v1/public', publicTrialRoute);
 
   // Phase 11.6: /v1/_internal/contexts/* 走 HMAC token（cloud-runtime ↔ pod 内
   // 部端点）；不挂 bearerAuth，token 校验在 handler 内。Mount 在 authed 之前
@@ -60,3 +62,4 @@ export function createApp(): Hono {
 
   return app;
 }
+

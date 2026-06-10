@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 控制平面入口。
  *
  * 一个 Node http.Server 同时承载：
@@ -25,6 +25,7 @@ import { disposeDb, getDb } from './db/client.js';
 import { seedDevAuth } from './db/seed.js';
 import { loadEnv } from './env.js';
 import { startSessionExpiryJob } from './jobs/session-expiry.js';
+import { startTrialExpiryJob } from './jobs/trial-expiry.js';
 import { startUsageReportJob } from './jobs/usage-report.js';
 import { getMachineManager, shutdownMachineManager } from './machine/factory.js';
 import { logSingleInstanceAssumption } from './ops/single-instance-guard.js';
@@ -114,6 +115,12 @@ async function bootstrap() {
 
   // Phase 11.7: usage-report job —— 周期把未上报的 usage_events 推给 MeterReporter
   // （默认 noop，STRIPE_API_KEY 非空时走 Stripe，phase 11.7b）。与 reaper 并列长跑。
+  const trialExpiryJob = startTrialExpiryJob({
+    intervalMs: env.TRIAL_EXPIRY_INTERVAL_MS,
+    getDb,
+    logger: log,
+  });
+
   const usageReportJob = startUsageReportJob({
     intervalMs: env.USAGE_REPORT_INTERVAL_MS,
     getDb,
@@ -124,8 +131,8 @@ async function bootstrap() {
   const shutdown = async (sig: string) => {
     log.info({ sig }, 'shutdown initiated');
     // 先停后台 job，避免 shutdown 中途某个 tick 调已 dispose 的 mm/db。
-    // 两个 stop() 都会 await 各自的 in-flight tick 完成。
-    await Promise.allSettled([expiryJob.stop(), usageReportJob.stop()]);
+    // 这些 stop() 都会 await 各自的 in-flight tick 完成。
+    await Promise.allSettled([expiryJob.stop(), trialExpiryJob.stop(), usageReportJob.stop()]);
     server.close(() => log.info('http server closed'));
     await Promise.allSettled([shutdownMachineManager(), disposeDb()]);
     process.exit(0);
@@ -138,3 +145,5 @@ bootstrap().catch((err) => {
   console.error('[cloud-runtime] fatal during bootstrap:', err);
   process.exit(1);
 });
+
+

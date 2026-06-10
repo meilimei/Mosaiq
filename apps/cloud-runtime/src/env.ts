@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloud Runtime 环境变量 schema 校验。
  *
  * 启动时一次性 parse，失败立即退出，避免运行时遇到 undefined env 才崩。
@@ -200,6 +200,7 @@ const EnvSchema = z
      * 测试可调到 1000（最小值）加速；< 1000 startSessionExpiryJob 会抛错。
      */
     SESSION_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(30_000),
+    TRIAL_EXPIRY_INTERVAL_MS: z.coerce.number().int().min(1000).max(3_600_000).default(60_000),
 
     // ─── Rate limit (token bucket per api_key_id) ───────────────────────────
     //
@@ -400,3 +401,4 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
 export function resetEnvCache(): void {
   cached = null;
 }
+

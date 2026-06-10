@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'auth.missing_token'
   | 'auth.dual_header'
   | 'request.invalid'
+  | 'request.conflict'
   | 'request.not_found'
   | 'pool.exhausted'
   | 'pool.pod_unhealthy'
@@ -20,6 +21,7 @@ export type ErrorCode =
   | 'pool.contexts_saturated'
   | 'quota.sessions_exceeded'
   | 'quota.minutes_exceeded'
+  | 'quota.trial_expired'
   | 'rate.limit_exceeded'
   | 'session.not_found'
   | 'session.closed'
@@ -38,6 +40,7 @@ const statusByCode: Record<ErrorCode, number> = {
   'auth.missing_token': 401,
   'auth.dual_header': 400,
   'request.invalid': 422,
+  'request.conflict': 409,
   'request.not_found': 404,
   'pool.exhausted': 503,
   // Phase 11.6: per-project contexts quota hit (MOSAIQ_CONTEXTS_PER_PROJECT_MAX).
@@ -59,6 +62,7 @@ const statusByCode: Record<ErrorCode, number> = {
   // because releasing current resources doesn't solve it (user must wait for reset or upgrade).
   // detail = { usedMinutes, quotaMinutes, windowFrom, windowTo }.
   'quota.minutes_exceeded': 402,
+  'quota.trial_expired': 402,
   'rate.limit_exceeded': 429,
   // Phase 11.6: contextId not found / not owned by caller's project / soft-deleted.
   // Don't distinguish forbidden vs not-found here (avoid resource enumeration leak).

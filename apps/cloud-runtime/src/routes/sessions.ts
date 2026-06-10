@@ -1,4 +1,4 @@
-/**
+﻿/**
  * /v1/sessions REST handlers。
  *
  * 设计稿 §5.1-5.4：
@@ -26,6 +26,7 @@ import {
 import { getDb } from '../db/client.js';
 import {
   contexts as contextsTable,
+  projects as projectsTable,
   personas as personasTable,
   sessions as sessionsTable,
 } from '../db/schema.js';
@@ -47,6 +48,7 @@ import { computeBillableMinutes, recordUsage } from '../usage/emitter.js';
 import { ApiError } from '../utils/errors.js';
 import { newId } from '../utils/ids.js';
 import { getLogger } from '../utils/logger.js';
+import { isTrialExpired, resolveProjectQuota } from '../trial.js';
 
 export const sessionsRoute = new Hono();
 
@@ -394,6 +396,43 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       : null;
 
   const handle = await getDb();
+  const projectRows = await handle.drizzle
+    .select({
+      plan: projectsTable.plan,
+      trialExpiresAt: projectsTable.trialExpiresAt,
+      trialSessionCap: projectsTable.trialSessionCap,
+      trialKeepAliveCap: projectsTable.trialKeepAliveCap,
+      trialMinutesCap: projectsTable.trialMinutesCap,
+    })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, auth.projectId))
+    .limit(1);
+  const project = projectRows[0];
+  const projectQuota = project
+    ? resolveProjectQuota(project, env)
+    : {
+        isTrial: false,
+        trialExpiresAt: null,
+        sessionCap: env.SESSIONS_PER_PROJECT_MAX,
+        keepAliveCap: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+        minutesCap: env.MINUTES_PER_PROJECT_PER_MONTH_MAX,
+      };
+  const nowIso = new Date().toISOString();
+  if (project && isTrialExpired(project, nowIso)) {
+    audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
+      reason: 'trial_expired',
+      trialExpiresAt: projectQuota.trialExpiresAt,
+    });
+    throw new ApiError(
+      'quota.trial_expired',
+      `project ${auth.projectId} trial expired at ${projectQuota.trialExpiresAt ?? 'unknown'}`,
+      {
+        projectId: auth.projectId,
+        trialExpiresAt: projectQuota.trialExpiresAt,
+      },
+    );
+  }
+
 
   // ── Phase 11.8: per-project concurrent live-session cap ───────────────
   // 适用于**所有** session（keepAlive 与否）。补 11.5 只 cap keepAlive 的缺口——
@@ -408,24 +447,24 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
   // ── Phase 11.8: per-project monthly browser-minute cap ────────────────
   // 仅在 MINUTES_PER_PROJECT_PER_MONTH_MAX 配置且 > 0 时启用检查。
   // 通过 aggregateUsage 捞本自然月 (UTC) 历史已产生用量并比对。
-  if (env.MINUTES_PER_PROJECT_PER_MONTH_MAX > 0) {
+  if (projectQuota.minutesCap > 0) {
     const { fromIso, toIso } = currentMonthWindowUtc();
     const totals = await aggregateUsage(handle, auth.projectId, fromIso, toIso);
     const usedMinutes = totals['session.minute'] ?? 0;
 
-    if (usedMinutes >= env.MINUTES_PER_PROJECT_PER_MONTH_MAX) {
+    if (usedMinutes >= projectQuota.minutesCap) {
       audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
         reason: 'minutes_exceeded',
         usedMinutes,
-        quotaMinutes: env.MINUTES_PER_PROJECT_PER_MONTH_MAX,
+        quotaMinutes: projectQuota.minutesCap,
       });
       quotaDeniedTotal.inc({ reason: 'minutes' });
       throw new ApiError(
         'quota.minutes_exceeded',
-        `project ${auth.projectId} used ${usedMinutes} min this month (quota ${env.MINUTES_PER_PROJECT_PER_MONTH_MAX})`,
+        `project ${auth.projectId} used ${usedMinutes} min this month (quota ${projectQuota.minutesCap})`,
         {
           usedMinutes,
-          quotaMinutes: env.MINUTES_PER_PROJECT_PER_MONTH_MAX,
+          quotaMinutes: projectQuota.minutesCap,
           windowFrom: fromIso,
           windowTo: toIso,
         },
@@ -555,20 +594,20 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
       )
       .all();
     const liveSessionCount = reservedSessions.length;
-    if (liveSessionCount >= env.SESSIONS_PER_PROJECT_MAX) {
+    if (liveSessionCount >= projectQuota.sessionCap) {
       c.header('Retry-After', '60');
       audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
         reason: 'sessions_exceeded',
         activeCount: liveSessionCount,
-        quota: env.SESSIONS_PER_PROJECT_MAX,
+        quota: projectQuota.sessionCap,
       });
       quotaDeniedTotal.inc({ reason: 'sessions' });
       throw new ApiError(
         'quota.sessions_exceeded',
-        `project ${auth.projectId} has ${liveSessionCount} live/requested sessions (quota ${env.SESSIONS_PER_PROJECT_MAX})`,
+        `project ${auth.projectId} has ${liveSessionCount} live/requested sessions (quota ${projectQuota.sessionCap})`,
         {
           activeCount: liveSessionCount,
-          quota: env.SESSIONS_PER_PROJECT_MAX,
+          quota: projectQuota.sessionCap,
           retryAfterSeconds: 60,
         },
       );
@@ -587,19 +626,19 @@ sessionsRoute.post('/', rateLimitTier('strict'), async (c) => {
         )
         .all();
       const activeCount = reservedKeepAlive.length;
-      if (activeCount >= env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX) {
+      if (activeCount >= projectQuota.keepAliveCap) {
         c.header('Retry-After', '60');
         audit(c, 'session.create', `project:${auth.projectId}`, 'denied', {
           reason: 'keepalive_saturated',
           activeCount,
-          quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+          quota: projectQuota.keepAliveCap,
         });
         throw new ApiError(
           'pool.keepalive_saturated',
-          `project ${auth.projectId} has ${activeCount} live/requested keepAlive sessions (quota ${env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX})`,
+          `project ${auth.projectId} has ${activeCount} live/requested keepAlive sessions (quota ${projectQuota.keepAliveCap})`,
           {
             activeCount,
-            quota: env.KEEPALIVE_SESSIONS_PER_PROJECT_MAX,
+            quota: projectQuota.keepAliveCap,
             retryAfterSeconds: 60,
           },
         );
@@ -1013,3 +1052,5 @@ sessionsRoute.delete('/:id', rateLimitTier('write'), async (c) => {
 
 // 注：phase 11.4 之后，Browserbase 兼容直接由 /v1/sessions 自身承载（dual-shape
 // request body + native superset response）。原占位 /browserbase-compat 501 stub 已删除。
+
+
