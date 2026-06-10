@@ -981,8 +981,11 @@
       githubUrl: "https://github.com/meilimei/Mosaiq",
       quickstartUrl: "https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md",
       trialUrl: "trial/",
+      onboardingUrl: "onboarding/",
+      pricingUrl: "pricing/",
       docsUrl: "https://github.com/meilimei/Mosaiq/tree/main/docs",
       cloudBaseUrl: "https://mosaiq-cloud-runtime.fly.dev",
+      billingContactUrl: "https://github.com/meilimei/Mosaiq/issues/new?title=Cloud%20Runtime%20billing%20upgrade",
       waitlistUrl: "",
       cliPackage: "@runova/cli",
       sdkPackage: "@runova/sdk",
@@ -999,6 +1002,7 @@
       <div class="navlinks">
         <a href="#product">产品</a>
         <a data-config-href="trialUrl" href="trial/">试用</a>
+        <a data-config-href="pricingUrl" href="pricing/">价格</a>
         <a href="#proof">证据</a>
         <a href="#go-to-market">推广</a>
         <a href="#brand">品牌预案</a>
@@ -1023,7 +1027,7 @@
           <div class="hero-notes">
             <span>品牌名待定，站点已预留改名配置</span>
             <span>npm 使用 <b data-config-text="cliPackage">@runova/cli</b></span>
-            <span>Cloud alpha 支持 baseURL 迁移</span>
+            <span>Cloud alpha 支持 baseURL 迁移和试用后 onboarding</span>
           </div>
         </div>
 
@@ -1216,6 +1220,11 @@ const bb = new Browserbase({
               <h3>Detection Lab 是可信资产</h3>
               <p>所有数字都来自 committed baseline。竞品对比只在拥有真实跑法、日期和版本时加入，避免推广时被数据反噬。</p>
             </article>
+            <article class="product-card">
+              <span class="card-tag">Trial to paid</span>
+              <h3>试用之后有明确的接入和账单路径</h3>
+              <p>新补的 pricing / onboarding 页面把试用 key、环境变量、session 创建、usage 查询和升级咨询连成一条链路。</p>
+            </article>
           </div>
         </div>
       </div>
@@ -1309,6 +1318,7 @@ const bb = new Browserbase({
         </div>
         <div class="footer-actions">
           <a class="button" data-config-href="trialUrl" href="trial/">开始试用</a>
+          <a class="button secondary" data-config-href="pricingUrl" href="pricing/">查看价格</a>
           <a class="button secondary" data-config-href="docsUrl" href="https://github.com/meilimei/Mosaiq/tree/main/docs">阅读文档</a>
         </div>
       </div>

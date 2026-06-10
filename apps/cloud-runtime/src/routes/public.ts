@@ -115,6 +115,8 @@ publicTrialRoute.post('/trials', async (c) => {
   const req = parsed.data;
   const email = req.email.trim().toLowerCase();
   const expiresAt = trialExpiresAtFromNow();
+  const apiBaseUrl = env.PUBLIC_BASE_URL.replace(/\/+$/, '');
+  const siteBaseUrl = env.PUBLIC_SITE_BASE_URL.replace(/\/+$/, '');
 
   const handle = await getDb();
   const db = handle.drizzle;
@@ -176,9 +178,13 @@ publicTrialRoute.post('/trials', async (c) => {
       trial_minutes_cap: TRIAL_MINUTES_CAP,
       trial_session_cap: TRIAL_SESSION_CAP,
       trial_keepalive_cap: TRIAL_KEEPALIVE_CAP,
-      api_base_url: env.PUBLIC_BASE_URL,
+      api_base_url: apiBaseUrl,
       quickstart_url: 'https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md',
       docs_url: 'https://github.com/meilimei/Mosaiq/tree/main/docs',
+      onboarding_url: `${siteBaseUrl}/onboarding/`,
+      pricing_url: `${siteBaseUrl}/pricing/`,
+      billing_url: `${siteBaseUrl}/pricing/#billing`,
+      usage_url: `${apiBaseUrl}/v1/usage`,
     },
     201,
   );

@@ -31,6 +31,7 @@ beforeEach(async () => {
   process.env.SEED_API_KEY = '';
   process.env.MACHINE_MANAGER = 'static';
   process.env.PUBLIC_BASE_URL = 'https://runtime.example.test';
+  process.env.PUBLIC_SITE_BASE_URL = 'https://site.example.test/mosaiq';
   resetEnvCache();
   resetPublicTrialLimiterForTesting();
   await ensureSchema();
@@ -59,12 +60,20 @@ describe('POST /v1/public/trials', () => {
       api_key_id: string;
       api_key_plaintext: string;
       api_base_url: string;
+      billing_url: string;
+      onboarding_url: string;
+      pricing_url: string;
       trial_minutes_cap: number;
       trial_session_cap: number;
       trial_keepalive_cap: number;
+      usage_url: string;
     };
     expect(body.api_key_plaintext).toMatch(/^msq_sk_live_/);
     expect(body.api_base_url).toBe('https://runtime.example.test');
+    expect(body.onboarding_url).toBe('https://site.example.test/mosaiq/onboarding/');
+    expect(body.pricing_url).toBe('https://site.example.test/mosaiq/pricing/');
+    expect(body.billing_url).toBe('https://site.example.test/mosaiq/pricing/#billing');
+    expect(body.usage_url).toBe('https://runtime.example.test/v1/usage');
     expect(body.trial_minutes_cap).toBe(TRIAL_MINUTES_CAP);
     expect(body.trial_session_cap).toBe(TRIAL_SESSION_CAP);
     expect(body.trial_keepalive_cap).toBe(TRIAL_KEEPALIVE_CAP);

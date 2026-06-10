@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mosaiq Pricing | Cloud Runtime billing</title>
+  <meta name="description" content="Mosaiq Cloud Runtime pricing, public trial limits, browser-minute billing, and early-access upgrade path.">
+  <meta name="theme-color" content="#f6f7f4">
+  <link rel="canonical" href="https://meilimei.github.io/Mosaiq/pricing/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Mosaiq Pricing">
+  <meta property="og:description" content="Public trial, usage-based Cloud Runtime pricing, billing flow, and upgrade path.">
+  <meta property="og:image" content="https://meilimei.github.io/Mosaiq/assets/og-image.png">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <style>
+    :root {
+      --ink: #14201d;
+      --muted: #62706a;
+      --paper: #f6f7f4;
+      --paper-2: #ecefe9;
+      --panel: #ffffff;
+      --line: #d7ded6;
+      --green: #277a58;
+      --green-soft: #e5f3eb;
+      --blue: #2f6f9f;
+      --blue-soft: #e5eff8;
+      --coral: #d46b52;
+      --yellow: #f0c84b;
+      --violet: #6c5e9e;
+      --shadow: 0 20px 60px rgba(20, 32, 29, 0.11);
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(90deg, rgba(20, 32, 29, 0.05) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(20, 32, 29, 0.04) 1px, transparent 1px),
+        var(--paper);
+      background-size: 44px 44px;
+      color: var(--ink);
+      font: 16px/1.55 var(--sans);
+      letter-spacing: 0;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid rgba(20, 32, 29, 0.1);
+      background: rgba(246, 247, 244, 0.9);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav-inner {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 14px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 150px;
+      font-weight: 850;
+    }
+
+    .mark {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 3px 3px 0 var(--ink);
+      display: grid;
+      grid-template-columns: repeat(2, 8px);
+      grid-template-rows: repeat(2, 8px);
+      gap: 4px;
+      place-content: center;
+    }
+
+    .mark span {
+      border-radius: 3px;
+      background: var(--green);
+    }
+
+    .mark span:nth-child(2) {
+      background: var(--blue);
+    }
+
+    .mark span:nth-child(3) {
+      background: var(--yellow);
+    }
+
+    .mark span:nth-child(4) {
+      background: var(--violet);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .nav-links a:hover {
+      color: var(--ink);
+    }
+
+    .button {
+      min-height: 44px;
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--green);
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 15px;
+      font-weight: 850;
+      line-height: 1;
+      box-shadow: 4px 4px 0 var(--ink);
+      white-space: nowrap;
+      transition: transform 150ms ease, box-shadow 150ms ease;
+    }
+
+    .button:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 5px 5px 0 var(--ink);
+    }
+
+    .button.secondary {
+      background: #fff;
+      color: var(--ink);
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      min-height: 72vh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+      gap: 36px;
+      align-items: center;
+      padding: 74px 0 48px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--ink);
+      background: var(--yellow);
+      transform: rotate(45deg);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      margin-top: 18px;
+      max-width: 760px;
+      font-size: clamp(48px, 8vw, 88px);
+      line-height: 0.96;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 690px;
+      margin-top: 22px;
+      color: #35423d;
+      font-size: 19px;
+      line-height: 1.7;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .hero-facts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      max-width: 720px;
+      margin-top: 32px;
+    }
+
+    .fact {
+      min-height: 88px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.78);
+      padding: 14px;
+    }
+
+    .fact strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .fact span {
+      display: block;
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .visual-panel {
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 8px 8px 0 var(--ink);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .visual-panel img {
+      display: block;
+      width: 100%;
+      background: #eef4ef;
+    }
+
+    .meter-preview {
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .meter-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .meter-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .meter-row span {
+      color: var(--muted);
+    }
+
+    section {
+      padding: 56px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.78fr) minmax(280px, 0.42fr);
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      font-size: clamp(31px, 5vw, 54px);
+      line-height: 1.04;
+      letter-spacing: 0;
+    }
+
+    .section-copy {
+      color: var(--muted);
+      line-height: 1.75;
+    }
+
+    .plan-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .plan-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 20px;
+      display: grid;
+      align-content: start;
+      gap: 16px;
+      min-height: 500px;
+    }
+
+    .plan-card.highlight {
+      border-color: var(--ink);
+      box-shadow: 6px 6px 0 var(--ink);
+    }
+
+    .plan-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: #114534;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+
+    .tag.blue {
+      background: var(--blue-soft);
+      color: #17415f;
+    }
+
+    .tag.coral {
+      background: #fae8e1;
+      color: #793826;
+    }
+
+    .plan-card h3 {
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .price {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-height: 54px;
+    }
+
+    .price strong {
+      font-size: 40px;
+      line-height: 1;
+    }
+
+    .price span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .plan-note {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      min-height: 66px;
+    }
+
+    .feature-list {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: #2d3935;
+      font-size: 14px;
+    }
+
+    .feature-list li {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .feature-list li::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      margin-top: 6px;
+      border: 1px solid var(--ink);
+      background: var(--yellow);
+      transform: rotate(45deg);
+    }
+
+    .billing-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .billing-step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+      padding: 18px;
+      min-height: 230px;
+    }
+
+    .step-number {
+      width: 34px;
+      height: 34px;
+      border: 1px solid var(--ink);
+      border-radius: 8px;
+      background: var(--yellow);
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      box-shadow: 3px 3px 0 var(--ink);
+      margin-bottom: 18px;
+    }
+
+    .billing-step h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .billing-step p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.7fr);
+      gap: 20px;
+      align-items: stretch;
+    }
+
+    .code-panel,
+    .summary-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .code-panel pre {
+      margin: 0;
+      max-width: 100%;
+      overflow: auto;
+      color: #e8f5ee;
+      background: #14201d;
+      border-radius: 8px;
+      padding: 16px;
+      font: 13px/1.6 var(--mono);
+    }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+      padding: 12px 0;
+      font-size: 14px;
+      min-width: 0;
+    }
+
+    .summary-row:first-child {
+      padding-top: 0;
+    }
+
+    .summary-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .summary-row span {
+      color: var(--muted);
+    }
+
+    .summary-row strong {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      text-align: right;
+    }
+
+    .callout {
+      margin-top: 18px;
+      border: 1px solid #efc6b9;
+      border-radius: 8px;
+      background: #fff3ef;
+      padding: 16px;
+      color: #5f3329;
+      line-height: 1.65;
+    }
+
+    .faq-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .faq-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+      padding: 18px;
+      min-height: 190px;
+    }
+
+    .faq-item h3 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .faq-item p {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    footer {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      border-top: 1px solid var(--line);
+      padding: 28px 0 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1040px) {
+      .plan-grid,
+      .billing-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero,
+      .section-head,
+      .split {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .nav-inner {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .nav-links {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: auto;
+        justify-content: flex-start;
+        padding-bottom: 4px;
+      }
+
+      .hero {
+        min-height: auto;
+        padding-top: 46px;
+      }
+
+      .hero-facts,
+      .plan-grid,
+      .billing-grid,
+      .faq-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .plan-card {
+        min-height: 0;
+      }
+
+      .summary-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+
+      .summary-row strong {
+        text-align: left;
+      }
+
+      h1 {
+        font-size: 43px;
+      }
+
+      footer {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <script>
+    window.SITE_CONFIG = {
+      productName: "Mosaiq",
+      trialUrl: "../trial/",
+      onboardingUrl: "../onboarding/",
+      pricingUrl: "../pricing/",
+      docsUrl: "https://github.com/meilimei/Mosaiq/tree/main/docs",
+      quickstartUrl: "https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md",
+      githubUrl: "https://github.com/meilimei/Mosaiq",
+      cloudBaseUrl: "https://mosaiq-cloud-runtime.fly.dev",
+      billingContactUrl: "https://github.com/meilimei/Mosaiq/issues/new?title=Cloud%20Runtime%20billing%20upgrade"
+    };
+  </script>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="../">
+        <span class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span data-product>Mosaiq</span>
+      </a>
+      <div class="nav-links" aria-label="主导航">
+        <a href="../">首页</a>
+        <a data-config-href="trialUrl" href="../trial/">试用</a>
+        <a data-config-href="onboardingUrl" href="../onboarding/">Onboarding</a>
+        <a href="#billing">Billing</a>
+        <a data-config-href="docsUrl" href="https://github.com/meilimei/Mosaiq/tree/main/docs">Docs</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-label="Pricing hero">
+      <div>
+        <div class="eyebrow">Pricing and Billing</div>
+        <h1><span data-product>Mosaiq</span> Pricing</h1>
+        <p class="lead">
+          先让开发者免费验证 Cloud Runtime，再把真实用量接到 browser-minute 计费。试用不需要信用卡；付费档以月包分钟数 + 超额用量为核心，适合从单人 agent 到团队自动化逐步升级。
+        </p>
+        <div class="hero-actions">
+          <a class="button" data-config-href="trialUrl" href="../trial/">开始 7 天试用</a>
+          <a class="button secondary" href="#plans">查看套餐</a>
+        </div>
+        <div class="hero-facts" aria-label="计费摘要">
+          <div class="fact">
+            <strong>300 min</strong>
+            <span>公开试用额度，用于验证 API、CDP 和 Detection Lab 基线。</span>
+          </div>
+          <div class="fact">
+            <strong>$0.06</strong>
+            <span>超额 browser-minute 参考单价，账单以实际计量为准。</span>
+          </div>
+          <div class="fact">
+            <strong>No card</strong>
+            <span>试用阶段不收卡；升级由早期客户流程激活。</span>
+          </div>
+        </div>
+      </div>
+
+      <aside class="visual-panel" aria-label="Mosaiq product preview">
+        <img src="../assets/og-image.svg" alt="Mosaiq browser infrastructure preview">
+        <div class="meter-preview">
+          <div class="meter-row"><span>Unit</span><strong>billable browser-minute</strong></div>
+          <div class="meter-row"><span>Meter</span><strong>session.minute</strong></div>
+          <div class="meter-row"><span>Usage API</span><strong>/v1/usage</strong></div>
+          <div class="meter-row"><span>Trial cap</span><strong>300 minutes</strong></div>
+        </div>
+      </aside>
+    </section>
+
+    <section id="plans">
+      <div class="section-head">
+        <h2>从试用到规模化，价格和能力一起升级。</h2>
+        <p class="section-copy">
+          这些档位来自当前 PRD 的 Cloud 定价模型，并按已经落地的 Runtime 能力收敛表达。Proxy、recording、企业合规等仍以路线图或定制开通为准。
+        </p>
+      </div>
+
+      <div class="plan-grid" aria-label="Pricing plans">
+        <article class="plan-card">
+          <div class="plan-top">
+            <h3>Trial</h3>
+            <span class="tag">Public</span>
+          </div>
+          <div class="price"><strong>$0</strong><span>/ 7 天</span></div>
+          <p class="plan-note">面向首次接入验证，提交申请后立即创建 project 与一次性 API key。</p>
+          <ul class="feature-list">
+            <li>300 browser-minutes</li>
+            <li>1 个普通 session 并发</li>
+            <li>1 个 keepAlive 上限</li>
+            <li>Browserbase-style session API</li>
+            <li>无需信用卡</li>
+          </ul>
+          <a class="button secondary" data-config-href="trialUrl" href="../trial/">申请试用</a>
+        </article>
+
+        <article class="plan-card">
+          <div class="plan-top">
+            <h3>Hobby</h3>
+            <span class="tag blue">Launch</span>
+          </div>
+          <div class="price"><strong>$29</strong><span>/ mo</span></div>
+          <p class="plan-note">适合单人开发者、indie agent 项目和 Browserbase 迁移评估。</p>
+          <ul class="feature-list">
+            <li>50 browser-hours included</li>
+            <li>2 个并发 sessions</li>
+            <li>共享 persona seed library</li>
+            <li>BYOP proxy 路径优先</li>
+            <li>超额 $0.06 / minute</li>
+          </ul>
+          <a class="button secondary" data-config-href="billingContactUrl" href="https://github.com/meilimei/Mosaiq/issues/new?title=Cloud%20Runtime%20billing%20upgrade">升级咨询</a>
+        </article>
+
+        <article class="plan-card highlight">
+          <div class="plan-top">
+            <h3>Pro</h3>
+            <span class="tag coral">Most likely</span>
+          </div>
+          <div class="price"><strong>$99</strong><span>/ mo</span></div>
+          <p class="plan-note">给正在跑真实 agent 工作流的团队，重点是更高并发、上下文复用和稳定账单。</p>
+          <ul class="feature-list">
+            <li>200 browser-hours included</li>
+            <li>10 个并发 sessions</li>
+            <li>专属 persona pool</li>
+            <li>Contexts / cookie persistence</li>
+            <li>5GB proxy allowance 预留</li>
+          </ul>
+          <a class="button" data-config-href="billingContactUrl" href="https://github.com/meilimei/Mosaiq/issues/new?title=Cloud%20Runtime%20billing%20upgrade">安排升级</a>
+        </article>
+
+        <article class="plan-card">
+          <div class="plan-top">
+            <h3>Scale</h3>
+            <span class="tag">Team</span>
+          </div>
+          <div class="price"><strong>$499</strong><span>/ mo</span></div>
+          <p class="plan-note">面向中型自动化团队、长会话任务和需要专属配额护栏的生产流程。</p>
+          <ul class="feature-list">
+            <li>2000 browser-hours included</li>
+            <li>50 个并发 sessions</li>
+            <li>专属 + sticky session 路径</li>
+            <li>50GB proxy allowance 预留</li>
+            <li>月度账单与用量对账</li>
+          </ul>
+          <a class="button secondary" data-config-href="billingContactUrl" href="https://github.com/meilimei/Mosaiq/issues/new?title=Cloud%20Runtime%20billing%20upgrade">联系开通</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="billing">
+      <div class="section-head">
+        <h2>Billing 链路先跑通计量，再开放自助支付。</h2>
+        <p class="section-copy">
+          Runtime 已经记录 session.minute 用量，并提供客户可查的 usage API。早期付费采用人工审核 + Stripe metered 激活；公开 Checkout 和客户 Portal 会在试用转化数据稳定后补上。
+        </p>
+      </div>
+
+      <div class="billing-grid" aria-label="Billing flow">
+        <article class="billing-step">
+          <div class="step-number">1</div>
+          <h3>Trial key</h3>
+          <p>用户从试用页创建 project 与 API key，先跑真实 session，不需要信用卡。</p>
+        </article>
+        <article class="billing-step">
+          <div class="step-number">2</div>
+          <h3>Usage visibility</h3>
+          <p>用户用 <code>/v1/usage</code> 查看本月 browser-minutes 和估算成本，团队能提前判断预算。</p>
+        </article>
+        <article class="billing-step">
+          <div class="step-number">3</div>
+          <h3>Upgrade review</h3>
+          <p>试用达成后选择 Hobby、Pro 或 Scale；早期客户由项目侧绑定账单客户和配额。</p>
+        </article>
+        <article class="billing-step">
+          <div class="step-number">4</div>
+          <h3>Metered invoice</h3>
+          <p>付费 project 的用量进入 metered billing；账单金额以计量汇总和最终 invoice 为准。</p>
+        </article>
+      </div>
+
+      <div class="split" style="margin-top: 22px;">
+        <div class="code-panel" aria-label="Usage API example">
+          <pre><code>curl "<span data-config-text="cloudBaseUrl">https://mosaiq-cloud-runtime.fly.dev</span>/v1/usage" \
+  -H "Authorization: Bearer $MOSAIQ_API_KEY"
+
+# response
+{
+  "totals": { "session.minute": 184 },
+  "estimated_cost_usd": 11.04,
+  "unit_price_usd_per_minute": 0.06
+}</code></pre>
+        </div>
+        <div class="summary-panel">
+          <div class="summary-row"><span>计费单位</span><strong>closed session minutes</strong></div>
+          <div class="summary-row"><span>最小粒度</span><strong>1 minute / session</strong></div>
+          <div class="summary-row"><span>超额参考价</span><strong>$0.06 / minute</strong></div>
+          <div class="summary-row"><span>试用后支付</span><strong>early-access activation</strong></div>
+          <div class="summary-row"><span>公开 Portal</span><strong>next milestone</strong></div>
+        </div>
+      </div>
+
+      <div class="callout">
+        当前不在页面里伪装“已接好自助 Checkout”。这对早期产品反而更健康：先让试用用户跑通工作流、看到用量，再把真正愿意付费的 project 接入账单和更高配额。
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>几个试用转付费时最容易问的问题。</h2>
+        <p class="section-copy">
+          价格页的目的不是把所有边界条件写成合同，而是让用户知道他们什么时候会被计费、怎么估算、怎么升级，以及哪些能力仍需要确认。
+        </p>
+      </div>
+      <div class="faq-grid">
+        <article class="faq-item">
+          <h3>试用会自动收费吗？</h3>
+          <p>不会。试用 key 到期后会被停用；用户需要主动联系升级，才会进入付费账单流程。</p>
+        </article>
+        <article class="faq-item">
+          <h3>用量什么时候产生？</h3>
+          <p>session 关闭时记录 billable browser-minutes，向上取整，最少 1 分钟。长会话会按实际持续时间累积。</p>
+        </article>
+        <article class="faq-item">
+          <h3>套餐配额能改吗？</h3>
+          <p>早期客户可以按项目调整并发、keepAlive 和月度分钟上限；正式自助档位稳定后再收敛成固定配置。</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span><span data-product>Mosaiq</span> is a codename until the domain is finalized.</span>
+    <span>Runtime: <span data-config-text="cloudBaseUrl">https://mosaiq-cloud-runtime.fly.dev</span></span>
+  </footer>
+
+  <script>
+    (() => {
+      const config = window.SITE_CONFIG;
+      document.querySelectorAll("[data-product]").forEach((node) => {
+        node.textContent = config.productName;
+      });
+      document.querySelectorAll("[data-config-text]").forEach((node) => {
+        const key = node.getAttribute("data-config-text");
+        if (key && config[key]) node.textContent = config[key];
+      });
+      document.querySelectorAll("[data-config-href]").forEach((node) => {
+        const key = node.getAttribute("data-config-href");
+        if (key && config[key]) node.setAttribute("href", config[key]);
+      });
+      document.title = `${config.productName} Pricing | Cloud Runtime billing`;
+    })();
+  </script>
+</body>
+</html>

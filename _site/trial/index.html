@@ -411,6 +411,48 @@
       word-break: break-all;
     }
 
+    .next-steps {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0;
+    }
+
+    .next-step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .next-step b {
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--ink);
+      border-radius: 7px;
+      background: var(--yellow);
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      box-shadow: 2px 2px 0 var(--ink);
+    }
+
+    .next-step strong {
+      display: block;
+      font-size: 14px;
+    }
+
+    .next-step span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     footer {
       width: min(1180px, calc(100% - 32px));
       margin: 0 auto;
@@ -437,12 +479,14 @@
 
       .nav {
         align-items: flex-start;
+        flex-wrap: wrap;
       }
 
       .nav-links {
+        width: 100%;
         gap: 12px;
         flex-wrap: wrap;
-        justify-content: flex-end;
+        justify-content: flex-start;
       }
     }
 
@@ -478,6 +522,8 @@
       cloudBaseUrl: "https://mosaiq-cloud-runtime.fly.dev",
       quickstartUrl: "https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md",
       docsUrl: "https://github.com/meilimei/Mosaiq/tree/main/docs",
+      onboardingUrl: "../onboarding/",
+      pricingUrl: "../pricing/",
       githubUrl: "https://github.com/meilimei/Mosaiq"
     };
   </script>
@@ -494,6 +540,8 @@
       </a>
       <div class="nav-links">
         <a href="../">首页</a>
+        <a data-config-href="pricingUrl" href="../pricing/">Pricing</a>
+        <a data-config-href="onboardingUrl" href="../onboarding/">Onboarding</a>
         <a data-config-href="quickstartUrl" href="https://github.com/meilimei/Mosaiq/blob/main/QUICKSTART.md">Quickstart</a>
         <a data-config-href="docsUrl" href="https://github.com/meilimei/Mosaiq/tree/main/docs">Docs</a>
         <a data-config-href="githubUrl" href="https://github.com/meilimei/Mosaiq">GitHub</a>
@@ -617,6 +665,24 @@
         const projectId = payload.project_id;
         const expiresAt = new Date(payload.trial_expires_at).toLocaleString();
         const apiBaseUrl = payload.api_base_url || apiBase;
+        const onboardingUrl = payload.onboarding_url || config.onboardingUrl;
+        const pricingUrl = payload.pricing_url || config.pricingUrl;
+        try {
+          sessionStorage.setItem("mosaiqTrialOnboarding", JSON.stringify({
+            apiKey: key,
+            apiBaseUrl,
+            projectId,
+            expiresAt: payload.trial_expires_at,
+            minutesCap: payload.trial_minutes_cap,
+            sessionCap: payload.trial_session_cap,
+            keepAliveCap: payload.trial_keepalive_cap,
+            onboardingUrl,
+            pricingUrl,
+            createdAt: new Date().toISOString()
+          }));
+        } catch {
+          // sessionStorage can be unavailable in hardened browsers; the key stays visible below.
+        }
         status.className = "status is-visible";
         status.innerHTML = `
           <h3>试用 Key 已创建</h3>
@@ -630,9 +696,15 @@
           </div>
           <div class="key-box">export MOSAIQ_API_KEY="${escapeHtml(key)}"
 export MOSAIQ_API_BASE_URL="${escapeHtml(apiBaseUrl)}"</div>
+          <div class="next-steps">
+            <div class="next-step"><b>1</b><div><strong>保存 key</strong><span>明文只展示一次，先复制到本地 shell 或 CI secret。</span></div></div>
+            <div class="next-step"><b>2</b><div><strong>进入 onboarding</strong><span>页面会读取本浏览器临时保存的 key，生成创建 session 和 usage 查询命令。</span></div></div>
+            <div class="next-step"><b>3</b><div><strong>决定是否升级</strong><span>跑通真实工作流后，用 Pricing/Billing 页确认套餐和用量模型。</span></div></div>
+          </div>
           <div class="button-row">
             <button type="button" id="copy-key">复制 Key</button>
-            <a class="button secondary" href="${escapeHtml(config.quickstartUrl)}">打开 Quickstart</a>
+            <a class="button" href="${escapeHtml(onboardingUrl)}">继续 Onboarding</a>
+            <a class="button secondary" href="${escapeHtml(pricingUrl)}">Pricing/Billing</a>
           </div>
         `;
         document.getElementById("copy-key").addEventListener("click", async () => {
