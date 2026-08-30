@@ -30,29 +30,169 @@
     "amiuniqueOutliers": 0,
     "fpScannerInconsistent": 0,
     "incolumitasBadFlags": 0,
-    "weightedHits": 0.5,
+    "weightedHits": 51,
     "hits": [
+      {
+        "surface": "navigator",
+        "site": "dbi-bot",
+        "detector": "hasBotUserAgent",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "navigator",
+        "site": "dbi-bot",
+        "detector": "hasInconsistentClientHints",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "navigator",
+        "site": "dbi-bot",
+        "detector": "hasInconsistentWorkerValues",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "navigator",
+        "site": "dbi-bot",
+        "detector": "isHeadlessChrome",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "screen",
+        "site": "dbi-bot",
+        "detector": "hasHeadlessChromeDefaultScreenResolution",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "hasWebdriverInFrameTrue",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "hasWebdriverTrue",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isAutomatedWithCDP",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isAutomatedWithCDPInWebWorker",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isNightmare",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isPhantom",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isPlaywright",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isSeleniumChromeDefault",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webdriver",
+        "site": "dbi-bot",
+        "detector": "isSequentum",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "webgl",
+        "site": "dbi-bot",
+        "detector": "isWebGLInconsistent",
+        "evidence": "true",
+        "severity": "high"
+      },
+      {
+        "surface": "navigator",
+        "site": "dbi-bot",
+        "detector": "hasInconsistentChromeObject",
+        "evidence": "true",
+        "severity": "medium"
+      },
+      {
+        "surface": "other",
+        "site": "dbi-bot",
+        "detector": "isIframeOverridden",
+        "evidence": "true",
+        "severity": "medium"
+      },
+      {
+        "surface": "webgl",
+        "site": "dbi-bot",
+        "detector": "hasInconsistentGPUFeatures",
+        "evidence": "true",
+        "severity": "medium"
+      },
+      {
+        "surface": "navigator",
+        "site": "dbi-bot",
+        "detector": "hasHighHardwareConcurrency",
+        "evidence": "true",
+        "severity": "low"
+      },
       {
         "surface": "other",
         "site": "creepjs",
         "detector": "creepjs bold-fail: WebGL",
         "evidence": "hash=6108b922 (GPU 不在 CreepJS 白名单；liesCount=0，真实同款 GPU 用户同样如此，非伪装失败)",
         "severity": "low"
+      },
+      {
+        "surface": "other",
+        "site": "dbi-bot",
+        "detector": "hasSuspiciousWeakSignals",
+        "evidence": "true",
+        "severity": "low"
       }
     ],
     "hitsBySurface": {
       "canvas": 0,
-      "webgl": 0,
+      "webgl": 2,
       "audio": 0,
       "font": 0,
       "webrtc": 0,
-      "navigator": 0,
-      "screen": 0,
+      "navigator": 6,
+      "screen": 1,
       "permissions": 0,
       "timezone": 0,
       "plugins": 0,
-      "webdriver": 0,
-      "other": 1
+      "webdriver": 9,
+      "other": 3
     }
   },
   "raw": {
@@ -79,7 +219,10 @@
           "platformLabel": "Win32"
         },
         "locale": "en-US",
-        "languages": ["en-US", "en"],
+        "languages": [
+          "en-US",
+          "en"
+        ],
         "timezone": "America/New_York",
         "screen": {
           "width": 1920,
@@ -453,7 +596,7 @@
             },
             {
               "name": "navigator.mediaDevices",
-              "result": "audioinput:  id = videoinput:  id = audiooutput:  id =",
+              "result": "",
               "status": "unknown"
             },
             {
@@ -463,27 +606,27 @@
             },
             {
               "name": "Canvas1",
-              "result": "Hash: -1075423749",
+              "result": "Hash: -833110548",
               "status": "unknown"
             },
             {
               "name": "Canvas2",
-              "result": "Hash: -1075423749",
+              "result": "Hash: -833110548",
               "status": "unknown"
             },
             {
               "name": "Canvas3 (iframe sandbox)",
-              "result": "Hash: -1075423749",
+              "result": "Hash: -833110548",
               "status": "unknown"
             },
             {
               "name": "Canvas4 (iframe sandbox)",
-              "result": "Hash: -1075423749",
+              "result": "Hash: -833110548",
               "status": "unknown"
             },
             {
               "name": "Canvas5 (iframe)",
-              "result": "Hash: -1075423749",
+              "result": "Hash: -833110548",
               "status": "unknown"
             }
           ],
@@ -603,11 +746,11 @@
             },
             {
               "name": "System Time",
-              "value": "Fri May 29 2026 23:30:32 GMT-0400 (Eastern Daylight Time)"
+              "value": "Sun Aug 30 2026 05:35:33 GMT-0400 (Eastern Daylight Time)"
             },
             {
               "name": "toLocaleString",
-              "value": "5/29/2026, 11:30:32 PM"
+              "value": "8/30/2026, 5:35:33 AM"
             },
             {
               "name": "toLocaleFormat",
@@ -615,7 +758,7 @@
             },
             {
               "name": "DateTimeFormat",
-              "value": "Friday, May 29, 2026 at 11:30:32 PM Eastern Daylight Time"
+              "value": "Sunday, August 30, 2026 at 5:35:33 AM Eastern Daylight Time"
             },
             {
               "name": "hourCycle",
@@ -831,7 +974,7 @@
             },
             {
               "name": "downlink",
-              "value": "9.4"
+              "value": "9.3"
             },
             {
               "name": "downlinkMax",
@@ -847,11 +990,7 @@
             },
             {
               "name": "API Status",
-              "value": "✔ Enabled"
-            },
-            {
-              "name": "Bluetooth Adapter",
-              "value": "true"
+              "value": "✖ Disabled / Not Supported"
             },
             {
               "name": "API Status",
@@ -1166,7 +1305,7 @@
               "value": "0"
             }
           ],
-          "total": 166
+          "total": 165
         }
       },
       {
@@ -1191,7 +1330,7 @@
             },
             {
               "name": "Signature",
-              "value": "df77c7be7e59d27b21a7cd5bfa92c617"
+              "value": "73113f4975c777302a23f00a540dde71"
             },
             {
               "name": "Uniqueness",
@@ -1199,15 +1338,15 @@
             },
             {
               "name": "File Size",
-              "value": "7891 bytes"
+              "value": "8449 bytes"
             },
             {
               "name": "Number of Colors",
-              "value": "498"
+              "value": "1315"
             }
           ],
           "total": 7,
-          "canvasHash": "df77c7be7e59d27b21a7cd5bfa92c617",
+          "canvasHash": "73113f4975c777302a23f00a540dde71",
           "uniqueness": "100% (The signature is unique to our database)"
         }
       },
@@ -1628,7 +1767,7 @@
               "name": "10 -\n    Navigator properties\n    \n    List the properties present in the navigator object",
               "similarityPct": null,
               "similarityRaw": "",
-              "value": "80 properties detected"
+              "value": "79 properties detected"
             },
             {
               "name": "12 -\n    Product\n    \n    Returns the value of navigator.product",
@@ -1760,7 +1899,7 @@
               "name": "37 -\n    Media devices\n    \n    Returns the list of microphones, cameras, headphones.. presents on the device",
               "similarityPct": null,
               "similarityRaw": "",
-              "value": "1 audioinput\n    \n      1 videoinput\n    \n      1 audiooutput"
+              "value": ""
             },
             {
               "name": "38 -\n    Gyroscope\n    \n    Test to find out if a gyroscope is present on the device",
@@ -1853,7 +1992,7 @@
             {
               "title": "Location",
               "status": "unknown",
-              "summary": "LocationIP Address141.11.43.141WebRTC IP Address141.11.43.141, 74.48.108.165CountryFranceCityLyonISPStreamline Servers Pty LtdLatitude45.74906Longitude4.84789User Type by IPhostingDate & TimeTimezone from JSAmerica/New_YorkDaylight Savings"
+              "summary": "LocationIP Address20.62.254.162WebRTC IP Address20.62.254.162CountryUnited StatesCityWashingtonISPMicrosoft CorporationLatitude38.7134Longitude-78.1591User Type by IPhostingDate & TimeTimezone from JSAmerica/New_YorkDaylight Savings TimeYes"
             }
           ],
           "dangerCards": 0,
@@ -1885,11 +2024,11 @@
           "sections": [
             {
               "title": "WebRTC",
-              "subtitle": "WebRTC6a44903b host connection: candidate:2103897496 1 udp 1677729535 74.48.108.165 52156 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag jfaq network-cost 999 foundation/ip:"
+              "subtitle": "WebRTCcb16e40f host connection: candidate:945109875 1 udp 1677729535 20.62.254.162 48162 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag +7iy network-cost 999 foundation/ip:"
             },
             {
               "title": "WebRTC",
-              "subtitle": "WebRTC6a44903b host connection: candidate:2103897496 1 udp 1677729535 74.48.108.165 52156 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag jfaq network-cost 999 foundation/ip: type &"
+              "subtitle": "WebRTCcb16e40f host connection: candidate:945109875 1 udp 1677729535 20.62.254.162 48162 typ srflx raddr 0.0.0.0 rport 0 generation 0 ufrag +7iy network-cost 999 foundation/ip: type & b"
             },
             {
               "title": "audio/opus",
@@ -1897,19 +2036,19 @@
             },
             {
               "title": "Timezone",
-              "subtitle": "25.20ms Timezone2d612b4e Eastern Daylight Time America, New York -27028667038000 240"
+              "subtitle": "19.20ms Timezone2d612b4e Eastern Daylight Time America, New York -27028667038000 240"
             },
             {
               "title": "Intl",
-              "subtitle": "190.40ms Intl23d22f8d en-USJuly at Eastern Daylight TimeAmerican English21 millionnext year0 or 1one"
+              "subtitle": "4.80ms Intl23d22f8d en-USJuly at Eastern Daylight TimeAmerican English21 millionnext year0 or 1one"
             },
             {
               "title": "Headless",
-              "subtitle": ".like-headless-rating { background: linear-gradient(90deg, var(--grey-glass) 38%, #fff0 38%, #fff0 100%); } .headless-rating { background: linear-gradient(90deg, var(--error) 0%,"
+              "subtitle": ".like-headless-rating { background: linear-gradient(90deg, var(--grey-glass) 44%, #fff0 44%, #fff0 100%); } .headless-rating { background: linear-gradient(90deg, var(--error) 0%,"
             },
             {
               "title": "Resistance",
-              "subtitle": "0.80ms Resistanceeb6b354a privacy: unknown security: unknown mode: unknown extension: unknown"
+              "subtitle": "0.40ms Resistanceeb6b354a privacy: unknown security: unknown mode: unknown extension: unknown"
             },
             {
               "title": "Worker",
@@ -1917,11 +2056,11 @@
             },
             {
               "title": "WebGL",
-              "subtitle": "143.40ms WebGL6108b922 images:25d5cd97 pixels:b226532750875bab params (78): .modal-creep-canvas-webgl-parameters:checked ~ .modal-container { visibility: visible; opacity: 1;"
+              "subtitle": "81.20ms WebGL6108b922 images:25d5cd97 pixels:b226532750875bab params (78): .modal-creep-canvas-webgl-parameters:checked ~ .modal-container { visibility: visible; opacity: 1;"
             },
             {
               "title": "Screen",
-              "subtitle": "0.40ms Screene21c7846 ...screen: 1920 x 1080 ....avail: 1920 x 1040 touch: false depth: 24|24 viewport: .screen-frame { width:180px;height:101.25px; }"
+              "subtitle": "0.10ms Screene21c7846 ...screen: 1920 x 1080 ....avail: 1920 x 1040 touch: false depth: 24|24 viewport: .screen-frame { width:180px;height:101.25px; }"
             },
             {
               "title": "Canvas 2d",
@@ -1929,15 +2068,15 @@
             },
             {
               "title": "Fonts",
-              "subtitle": "582.30ms Fonts287bdab5 load (26/51): Like Windows 10 apps: unsupported \"Cambria Math\", \"DejaVu Sans\", \"Gentium Book Basic\", \"HoloLens MDL2 Assets\", \"Ink Free\", \"Javanese Text\", \"Leelawa"
+              "subtitle": "49.30ms Fonts8c07f9f1 load (15/51): Like Windows 10 apps: unsupported \"DejaVu Sans\", \"Liberation Mono\", \"Noto Color Emoji\", Bahnschrift, Cambria Math, Gadugi, HoloLens MDL2 Assets, Ink"
             },
             {
               "title": "DOMRect",
-              "subtitle": "90.00ms DOMRect0b79835f elems A: 0.26037227672485364 elems B: 0.26037227672485364 range A: 0.26037227672485364 range B: 0.26037227672485364 0.14490883605957033 😀🤵‍♂️⚧...▪✌❄"
+              "subtitle": "2.90ms DOMRectc447775c elems A: 0.26037227672485364 elems B: 0.26037227672485364 range A: 0.26037227672485364 range B: 0.26037227672485364 0.061512146377563484 😀☺🤵‍♂️...⚕◼☝"
             },
             {
               "title": "SVGRect",
-              "subtitle": "111.50ms SVGRect0f8f1d8a bBox: 0.0967765625 char: 0.04045348052978515 subs: 0.027460067749023438 text: 0.027460067749023438 0.06964058715820313 😀🤵‍♂️⚧...▪✌❄"
+              "subtitle": "6.70ms SVGRect92988e52 bBox: 0.0720953125 char: 0.03324349670410156 subs: 0.02084948425292969 text: 0.02084948425292969 0.02473778793334961 😀☺🤵‍♂️...⚕◼☝"
             },
             {
               "title": "diffs from 115",
@@ -1949,23 +2088,23 @@
             },
             {
               "title": "CSS Media Queries",
-              "subtitle": "43.80ms CSS Media Queries202401c6 @media: .modal-creep-css-media:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-cree"
+              "subtitle": "3.70ms CSS Media Queries202401c6 @media: .modal-creep-css-media:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep"
             },
             {
               "title": "Computed Style",
-              "subtitle": "160.40ms Computed Styleb0062e03 keys (1317): .modal-creep-computed-style:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .mo"
+              "subtitle": "21.80ms Computed Style171fcb3e keys (1317): .modal-creep-computed-style:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .mod"
             },
             {
               "title": "Math",
-              "subtitle": "32.50ms Math54cd8264 results: .modal-creep-maths:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-maths:checked"
+              "subtitle": "0.60ms Math54cd8264 results: .modal-creep-maths:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-maths:checked ~"
             },
             {
               "title": "Error",
-              "subtitle": "1.70ms Error92b51d39 results: .modal-creep-console-errors:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-conso"
+              "subtitle": "0.50ms Error92b51d39 results: .modal-creep-console-errors:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-creep-conso"
             },
             {
               "title": "Window",
-              "subtitle": "1.60ms Windowaa97d874 keys (1231): .modal-creep-iframe-content-window-version:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; }"
+              "subtitle": "1.80ms Window545b1cb6 keys (1223): .modal-creep-iframe-content-window-version:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; }"
             },
             {
               "title": "HTMLElement",
@@ -1973,7 +2112,7 @@
             },
             {
               "title": "Navigator",
-              "subtitle": "Navigator90812eb0 properties (80): .modal-creep-navigator-properties:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-cr"
+              "subtitle": "Navigator09ab7e2f properties (79): .modal-creep-navigator-properties:checked ~ .modal-container { visibility: visible; opacity: 1; animation: show 0.1s linear both; } .modal-cr"
             }
           ]
         }
@@ -1985,118 +2124,12 @@
         "ok": true,
         "durationMs": 0,
         "extracted": {
-          "rows": [
-            {
-              "name": "PHANTOM_UA",
-              "status": "consistent",
-              "raw": "{\"userAgent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\"}"
-            },
-            {
-              "name": "PHANTOM_PROPERTIES",
-              "status": "consistent",
-              "raw": "{\"attributesFound\":[false,false,false]}"
-            },
-            {
-              "name": "PHANTOM_ETSL",
-              "status": "consistent",
-              "raw": "{\"etsl\":33}"
-            },
-            {
-              "name": "PHANTOM_LANGUAGE",
-              "status": "consistent",
-              "raw": "{\"languages\":[\"en-US\",\"en\"]}"
-            },
-            {
-              "name": "PHANTOM_WEBSOCKET",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "MQ_SCREEN",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "PHANTOM_OVERFLOW",
-              "status": "consistent",
-              "raw": "{\"depth\":9577,\"errorMessage\":\"Maximum call stack size exceeded\",\"errorName\":\"RangeError\",\"errorStacklength\":747}"
-            },
-            {
-              "name": "PHANTOM_WINDOW_HEIGHT",
-              "status": "consistent",
-              "raw": "{\"wInnerHeight\":1080,\"wOuterHeight\":1080,\"wOuterWidth\":1920,\"wInnerWidth\":1920,\"wScreenX\":0,\"wPageXOffset\":0,\"wPageYOffset\":0,\"cWidth\":1920,\"cHeight\":619,\"sWidth\":1920,\"sHeight\":1080,\"sAvailWidth\":192"
-            },
-            {
-              "name": "HEADCHR_UA",
-              "status": "consistent",
-              "raw": "{\"userAgent\":\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\"}"
-            },
-            {
-              "name": "WEBDRIVER",
-              "status": "inconsistent",
-              "raw": "{}"
-            },
-            {
-              "name": "HEADCHR_CHROME_OBJ",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "HEADCHR_PERMISSIONS",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "HEADCHR_PLUGINS",
-              "status": "consistent",
-              "raw": "{\"plugins\":[\"PDF Viewer::Portable Document Format::internal-pdf-viewer::__application/pdf~pdf~Portable Document Format,text/pdf~pdf~Portable Document Format\",\"Chrome PDF Viewer::Portable Document Form"
-            },
-            {
-              "name": "HEADCHR_IFRAME",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "CHR_DEBUG_TOOLS",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "SELENIUM_DRIVER",
-              "status": "consistent",
-              "raw": "{\"attributesFound\":[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false]}"
-            },
-            {
-              "name": "CHR_BATTERY",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "CHR_MEMORY",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "TRANSPARENT_PIXEL",
-              "status": "consistent",
-              "raw": "{\"0\":0,\"1\":0,\"2\":0,\"3\":0}"
-            },
-            {
-              "name": "SEQUENTUM",
-              "status": "consistent",
-              "raw": "{}"
-            },
-            {
-              "name": "VIDEO_CODECS",
-              "status": "consistent",
-              "raw": "{\"h264\":\"probably\"}"
-            }
-          ],
-          "rowsTotal": 21,
-          "consistent": 20,
+          "rows": [],
+          "rowsTotal": 0,
+          "consistent": 0,
           "unsure": 0,
-          "inconsistent": 1,
-          "inconsistentTests": ["WEBDRIVER"],
+          "inconsistent": 0,
+          "inconsistentTests": [],
           "unsureTests": [],
           "fpCollect": null
         }
@@ -2163,77 +2196,89 @@
             {
               "heading": "IP Address API [1] [2]",
               "json": {
-                "ip": "141.11.43.141",
-                "rir": "RIPE",
+                "ip": "20.62.254.162",
                 "is_bogon": false,
-                "is_mobile": false,
-                "is_satellite": false,
-                "is_crawler": false,
                 "is_datacenter": true,
                 "is_tor": false,
                 "is_proxy": false,
                 "is_vpn": false,
                 "is_abuser": false,
-                "datacenter": {
-                  "datacenter": "Private Customer",
-                  "domain": "ipxo.com",
-                  "network": "141.11.43.0 - 141.11.43.255"
-                },
-                "company": {
-                  "name": "Private Customer",
-                  "abuser_score": "0 (Very Low)",
-                  "domain": "ipxo.com",
-                  "type": "hosting",
-                  "network": "141.11.43.0 - 141.11.43.255",
-                  "netname": "NET-141-11-43-0-24"
-                },
-                "abuse": {
-                  "name": "Private Customer",
-                  "address": "Private Residence",
-                  "email": "report@abuseradar.com",
-                  "phone": ""
-                },
-                "asn": {
-                  "asn": 136510,
-                  "abuser_score": "0.0378 (High)",
-                  "route": "141.11.43.0/24",
-                  "descr": "STREAMLINESERVERS-AS-AP - Streamline Servers Pty Ltd, AU",
-                  "country": "au",
-                  "active": true,
-                  "org": "Streamline Servers Pty Ltd",
-                  "domain": "streamlinevps.com",
-                  "abuse": "noc@streamlinevps.com",
-                  "type": "hosting",
-                  "updated": "2020-07-13",
-                  "rir": "APNIC"
-                },
-                "location": {
-                  "is_eu_member": true,
-                  "calling_code": "33",
-                  "currency_code": "EUR",
-                  "continent": "EU",
-                  "country": "France",
-                  "country_code": "FR",
-                  "state": "Auvergne-Rhône-Alpes",
-                  "city": "Lyon",
-                  "latitude": 45.74906,
-                  "longitude": 4.84789,
-                  "zip": "69998 CEDEX 07",
-                  "timezone": "Europe/Paris",
-                  "local_time": "2026-05-30T05:33:11+02:00",
-                  "local_time_unix": 1780111991,
-                  "is_dst": true,
-                  "utcoffset": "+02:00",
-                  "accuracy": "VERY_HIGH"
-                },
-                "elapsed_ms": 0.06
+                "company_name": "Microsoft Corporation",
+                "asn_num": 8075,
+                "asn_org": "Microsoft Corporation",
+                "cc": "US",
+                "lat": 39.03761,
+                "lon": -77.41582
               },
-              "rawSnippet": "{  \"ip\": \"141.11.43.141\",  \"rir\": \"RIPE\",  \"is_bogon\": false,  \"is_mobile\": false,  \"is_satellite\": false,  \"is_crawler\": false,  \"is_datacenter\": true,  \"is_tor\": false,  \"is_proxy\": false,  \"is_vpn\": false,  \"is_abuser\": false,  \"datacenter\": {    \"datacenter\": \"Private Customer\",    \"domain\": \"ipxo.com\",    \"network\": \"141.11.43.0 - 141.11.43.255\"  },  \"company\": {    \"name\": \"Private Customer\""
+              "rawSnippet": "{  \"ip\": \"20.62.254.162\",  \"is_bogon\": false,  \"is_datacenter\": true,  \"is_tor\": false,  \"is_proxy\": false,  \"is_vpn\": false,  \"is_abuser\": false,  \"company_name\": \"Microsoft Corporation\",  \"asn_num\": 8075,  \"asn_org\": \"Microsoft Corporation\",  \"cc\": \"US\",  \"lat\": 39.03761,  \"lon\": -77.41582}"
+            },
+            {
+              "heading": "zardaxt.py\n              -\n              Passive TCP/IP Fingerprint\n            ",
+              "json": {
+                "avg_score_os_class": {
+                  "Android": 10.89,
+                  "Chromium OS": 12.08,
+                  "Linux": 7.5,
+                  "Mac OS": 2.66,
+                  "Windows": 3.41,
+                  "iOS": 2.52
+                },
+                "details": {
+                  "client_ip": "20.62.254.162",
+                  "highest_os_avg": 12.08,
+                  "lookup_ip": "20.62.254.162",
+                  "num_fingerprints": 1,
+                  "os_highest_class": "Chromium OS",
+                  "os_mismatch": true,
+                  "perfect_score": 20.5
+                },
+                "fp": {
+                  "cap_len": 74,
+                  "dst_ip": "168.119.226.219",
+                  "dst_port": 443,
+                  "header_len": 74,
+                  "ip_checksum": 7181,
+                  "ip_df": 1,
+                  "ip_hdr_length": 5,
+                  "ip_id": 38011,
+                  "ip_mf": 0,
+                  "ip_nxt": null,
+                  "ip_off": 16384,
+                  "ip_plen": null,
+                  "ip_protocol": 6,
+                  "ip_rf": 0,
+                  "ip_tos": 0,
+                  "ip_total_length": 60,
+                  "ip_ttl": 44,
+                  "ip_version": 4,
+                  "src_ip": "20.62.254.162",
+                  "src_port": 48144,
+                  "tcp_ack": 0,
+                  "tcp_checksum": 31244,
+                  "tcp_flags": 2,
+                  "tcp_header_length": 20,
+                  "tcp_mss": 1440,
+                  "tcp_off": 10,
+                  "tcp_options": "M1440,S,T,N,W10,",
+                  "tcp_options_ordered": "MSTNW",
+                  "tcp_seq": 3199837532,
+                  "tcp_timestamp": 2944689017,
+                  "tcp_timestamp_echo_reply": 0,
+                  "tcp_urp": 0,
+                  "tcp_window_scaling": 10,
+                  "tcp_window_size": 64240,
+                  "ts": [
+                    1788082661,
+                    802029
+                  ]
+                }
+              },
+              "rawSnippet": "{  \"avg_score_os_class\": {    \"Android\": 10.89,    \"Chromium OS\": 12.08,    \"Linux\": 7.5,    \"Mac OS\": 2.66,    \"Windows\": 3.41,    \"iOS\": 2.52  },  \"details\": {    \"client_ip\": \"20.62.254.162\",    \"highest_os_avg\": 12.08,    \"lookup_ip\": \"20.62.254.162\",    \"num_fingerprints\": 1,    \"os_highest_class\": \"Chromium OS\",    \"os_mismatch\": true,    \"perfect_score\": 20.5  },  \"fp\": {    \"cap_len\": 74, "
             },
             {
               "heading": "fingerprintjs - Browser Fingerprint\n              [1]",
               "json": null,
-              "rawSnippet": "ac1a5a343290a67d91ec5f24a065543b"
+              "rawSnippet": "c2d1ac07a965a9c27705ca11c9c72d46"
             },
             {
               "heading": "WebGL Fingerprint\n              [1]",
@@ -2251,7 +2296,10 @@
                 "hardwareConcurrency": 8,
                 "vendor": "Google Inc.",
                 "language": "en-US",
-                "languages": ["en-US", "en"]
+                "languages": [
+                  "en-US",
+                  "en"
+                ]
               },
               "rawSnippet": "{\n  \"userAgent\": \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"appVersion\": \"5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"platform\": \"Win32\",\n  \"webdriver\": false,\n  \"deviceMemory\": 8,\n  \"hardwareConcurrency\": 8,\n  \"vendor\": \"Google Inc.\",\n  \"language\": \"e"
             },
@@ -2265,9 +2313,9 @@
                 "hardwareConcurrency": 8,
                 "timezone": 240,
                 "timezone2": "America/New_York",
-                "systemTime": "Fri May 29 2026 23:33:11 GMT-0400 (Eastern Daylight Time)",
+                "systemTime": "Sun Aug 30 2026 05:37:41 GMT-0400 (Eastern Daylight Time)",
                 "getTimezoneOffset": 300,
-                "toLocaleString": "5/29/2026, 11:33:11 PM",
+                "toLocaleString": "8/30/2026, 5:37:41 AM",
                 "historyLength": 12,
                 "indexedDB": true,
                 "openDatabase": false,
@@ -2301,7 +2349,10 @@
                 "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36",
                 "platform": "Win32",
                 "language": "en-US",
-                "languages": ["en-US", "en"],
+                "languages": [
+                  "en-US",
+                  "en"
+                ],
                 "screen": {
                   "wInnerHeight": 1080,
                   "wOuterHeight": 1080,
@@ -2311,7 +2362,7 @@
                   "wPageXOffset": 0,
                   "wPageYOffset": 0,
                   "cWidth": 1920,
-                  "cHeight": 5521,
+                  "cHeight": 5503,
                   "sWidth": 1920,
                   "sHeight": 1080,
                   "sAvailWidth": 1920,
@@ -2320,15 +2371,19 @@
                   "sPixelDepth": 24,
                   "wDevicePixelRatio": 1
                 },
-                "touchScreen": [0, false, false],
+                "touchScreen": [
+                  0,
+                  false,
+                  false
+                ],
                 "videoCard": [
                   "Google Inc. (Intel)",
                   "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
                 ],
                 "multimediaDevices": {
-                  "speakers": 1,
-                  "micros": 1,
-                  "webcams": 1
+                  "speakers": 0,
+                  "micros": 0,
+                  "webcams": 0
                 },
                 "productSub": "20030107",
                 "navigatorPrototype": [
@@ -2366,7 +2421,6 @@
                   "constructor~~~function Navigator() { [native code] }",
                   "deprecatedRunAdAuctionEnforcesKAnonymity~~~function get deprecatedRunAdAuctionEnforcesKAnonymity() { [native code] }",
                   "protectedAudience~~~function get protectedAudience() { [native code] }",
-                  "bluetooth~~~function get bluetooth() { [native code] }",
                   "clipboard~~~function get clipboard() { [native code] }",
                   "credentials~~~function get credentials() { [native code] }",
                   "keyboard~~~function get keyboard() { [native code] }",
@@ -2461,7 +2515,6 @@
                   "constructor",
                   "deprecatedRunAdAuctionEnforcesKAnonymity",
                   "protectedAudience",
-                  "bluetooth",
                   "clipboard",
                   "credentials",
                   "keyboard",
@@ -2523,7 +2576,11 @@
                 ],
                 "etsl": 33,
                 "screenDesc": "function get width() { [native code] }",
-                "phantomJS": [false, false, false],
+                "phantomJS": [
+                  false,
+                  false,
+                  false
+                ],
                 "nightmareJS": false,
                 "selenium": [
                   false,
@@ -2546,9 +2603,17 @@
                 ],
                 "webDriver": true,
                 "webDriverValue": false,
-                "errorsGenerated": ["azeaze is not defined", null, null, null, null, null, null],
+                "errorsGenerated": [
+                  "azeaze is not defined",
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null
+                ],
                 "resOverflow": {
-                  "depth": 9556,
+                  "depth": 9587,
                   "errorMessage": "Maximum call stack size exceeded",
                   "errorName": "RangeError",
                   "errorStacklength": 864
@@ -2669,7 +2734,7 @@
                 },
                 "webSocketSupportTimeout": true
               },
-              "rawSnippet": "{\n  \"byteLength\": \"unknown\",\n  \"appVersion\": \"5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"onLine\": true,\n  \"doNotTrack\": null,\n  \"hardwareConcurrency\": 8,\n  \"timezone\": 240,\n  \"timezone2\": \"America/New_York\",\n  \"systemTime\": \"Fri May 29 2026 23:33:11 GMT-0400 (Eastern Daylight Time)\",\n  \"getTimezoneOffset\": 300,\n  \"toLocaleString"
+              "rawSnippet": "{\n  \"byteLength\": \"unknown\",\n  \"appVersion\": \"5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36\",\n  \"onLine\": true,\n  \"doNotTrack\": null,\n  \"hardwareConcurrency\": 8,\n  \"timezone\": 240,\n  \"timezone2\": \"America/New_York\",\n  \"systemTime\": \"Sun Aug 30 2026 05:37:41 GMT-0400 (Eastern Daylight Time)\",\n  \"getTimezoneOffset\": 300,\n  \"toLocaleString"
             }
           ],
           "triggeredBadFlags": [],
@@ -2685,548 +2750,11 @@
         "ok": true,
         "durationMs": 0,
         "extracted": {
-          "botRiskScore": 75,
-          "scoreSourceText": "Bot Risk Score: 75/100",
+          "botRiskScore": 100,
+          "scoreSourceText": "Bot score 100/100",
           "scoreVerdict": "bot",
-          "attrs": [
-            {
-              "name": "accept",
-              "value": "*/*"
-            },
-            {
-              "name": "accept-encoding",
-              "value": "gzip, br"
-            },
-            {
-              "name": "accept-language",
-              "value": "en-US,en;q=0.9"
-            },
-            {
-              "name": "host",
-              "value": "fingerprint-scan.com"
-            },
-            {
-              "name": "priority",
-              "value": "u=1, i"
-            },
-            {
-              "name": "referer",
-              "value": "https://fingerprint-scan.com/"
-            },
-            {
-              "name": "sec-ch-ua",
-              "value": "\"HeadlessChrome\";v=\"147\", \"Not.A/Brand\";v=\"8\", \"Chromium\";v=\"147\""
-            },
-            {
-              "name": "sec-ch-ua-mobile",
-              "value": "?0"
-            },
-            {
-              "name": "sec-ch-ua-platform",
-              "value": "\"Windows\""
-            },
-            {
-              "name": "sec-fetch-dest",
-              "value": "empty"
-            },
-            {
-              "name": "sec-fetch-mode",
-              "value": "cors"
-            },
-            {
-              "name": "sec-fetch-site",
-              "value": "same-origin"
-            },
-            {
-              "name": "user-agent",
-              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
-            },
-            {
-              "name": "IP Address",
-              "value": "141.11.43.141"
-            },
-            {
-              "name": "Country",
-              "value": "SG"
-            },
-            {
-              "name": "City",
-              "value": "Singapore"
-            },
-            {
-              "name": "ASN",
-              "value": "136510"
-            },
-            {
-              "name": "AS Organization",
-              "value": "Private Customer"
-            },
-            {
-              "name": "Timezone",
-              "value": "Asia/Singapore"
-            },
-            {
-              "name": "HTTP Protocol",
-              "value": "HTTP/3"
-            },
-            {
-              "name": "TLS Version",
-              "value": "TLSv1.3"
-            },
-            {
-              "name": "TLS Cipher",
-              "value": "AEAD-AES128-GCM-SHA256"
-            },
-            {
-              "name": "Client TCP RTT",
-              "value": "0"
-            },
-            {
-              "name": "User Agent",
-              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
-            },
-            {
-              "name": "Platform",
-              "value": "Win32"
-            },
-            {
-              "name": "Timezone",
-              "value": "America/New_York"
-            },
-            {
-              "name": "Hardware Concurrency",
-              "value": "8"
-            },
-            {
-              "name": "Device Memory",
-              "value": "8"
-            },
-            {
-              "name": "Max Touch Points",
-              "value": "0"
-            },
-            {
-              "name": "Accelerometer",
-              "value": "false"
-            },
-            {
-              "name": "Locale Date",
-              "value": "12/31/1969, 7:00:00 PM"
-            },
-            {
-              "name": "Is Brave Browser",
-              "value": "false"
-            },
-            {
-              "name": "Has Default Chrome Extension",
-              "value": "false"
-            },
-            {
-              "name": "WebDriver",
-              "value": "false"
-            },
-            {
-              "name": "Is Selenium Chrome",
-              "value": "false"
-            },
-            {
-              "name": "CDP Check",
-              "value": "false"
-            },
-            {
-              "name": "Is Playwright",
-              "value": "false"
-            },
-            {
-              "name": "Width",
-              "value": "1920"
-            },
-            {
-              "name": "Height",
-              "value": "1080"
-            },
-            {
-              "name": "availableWidth",
-              "value": "1920"
-            },
-            {
-              "name": "availableHeight",
-              "value": "1040"
-            },
-            {
-              "name": "availLeft",
-              "value": "0"
-            },
-            {
-              "name": "availTop",
-              "value": "0"
-            },
-            {
-              "name": "devicePixelRatio",
-              "value": "1"
-            },
-            {
-              "name": "multiScreen",
-              "value": "false"
-            },
-            {
-              "name": "colorDepth",
-              "value": "24"
-            },
-            {
-              "name": "pixelDepth",
-              "value": "24"
-            },
-            {
-              "name": "innerWidth",
-              "value": "1920"
-            },
-            {
-              "name": "innerHeight",
-              "value": "1080"
-            },
-            {
-              "name": "outerWidth",
-              "value": "1920"
-            },
-            {
-              "name": "outerHeight",
-              "value": "1080"
-            },
-            {
-              "name": "screenOrientationType",
-              "value": "landscape-primary"
-            },
-            {
-              "name": "screenOrientationAngle",
-              "value": "0"
-            },
-            {
-              "name": "isFullScreen",
-              "value": "false"
-            },
-            {
-              "name": "Languages",
-              "value": "[\"en-US\",\"en\"]"
-            },
-            {
-              "name": "Language",
-              "value": "en-US"
-            },
-            {
-              "name": "speakers",
-              "value": "1"
-            },
-            {
-              "name": "micros",
-              "value": "1"
-            },
-            {
-              "name": "webcams",
-              "value": "1"
-            },
-            {
-              "name": "plugins",
-              "value": "PDF Viewer, Chrome PDF Viewer, Chromium PDF Viewer, Microsoft Edge PDF Viewer, WebKit built-in PDF"
-            },
-            {
-              "name": "Number",
-              "value": "5"
-            },
-            {
-              "name": "Mime Types",
-              "value": "application/pdf, text/pdf"
-            },
-            {
-              "name": "Number",
-              "value": "2"
-            },
-            {
-              "name": "architecture",
-              "value": "x86"
-            },
-            {
-              "name": "bitness",
-              "value": "64"
-            },
-            {
-              "name": "platformVersion",
-              "value": "15.0.0"
-            },
-            {
-              "name": "WebGL Vendor",
-              "value": "Google Inc. (Intel)"
-            },
-            {
-              "name": "WebGL Renderer",
-              "value": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-            },
-            {
-              "name": "WebGL Vendor",
-              "value": "Google Inc. (Intel)"
-            },
-            {
-              "name": "WebGL Renderer",
-              "value": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)"
-            },
-            {
-              "name": "User Agent",
-              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36"
-            },
-            {
-              "name": "Languages",
-              "value": "[\"en-US\",\"en\"]"
-            },
-            {
-              "name": "Platform",
-              "value": "Win32"
-            },
-            {
-              "name": "Hardware Concurrency",
-              "value": "8"
-            },
-            {
-              "name": "CDP Check",
-              "value": "false"
-            },
-            {
-              "name": "Is Same As Main JS Context",
-              "value": "true"
-            },
-            {
-              "name": "Voice URI",
-              "value": "Microsoft David Desktop - English (United States)"
-            },
-            {
-              "name": "Name",
-              "value": "Microsoft David Desktop - English (United States)"
-            },
-            {
-              "name": "Lang",
-              "value": "en-US"
-            },
-            {
-              "name": "Local Service",
-              "value": "true"
-            },
-            {
-              "name": "Default",
-              "value": "true"
-            },
-            {
-              "name": "Number of Voices",
-              "value": "3"
-            },
-            {
-              "name": "Number of Local Services",
-              "value": "3"
-            },
-            {
-              "name": "Number of Google Voices",
-              "value": "1"
-            },
-            {
-              "name": "Has Russian Local Voice",
-              "value": "false"
-            },
-            {
-              "name": "parameters",
-              "value": "3c504025"
-            },
-            {
-              "name": "challenge",
-              "value": "3179729d"
-            },
-            {
-              "name": "acos",
-              "value": "1.4473588658278522"
-            },
-            {
-              "name": "acosh",
-              "value": "709.889355822726"
-            },
-            {
-              "name": "acoshPf",
-              "value": "355.291251501643"
-            },
-            {
-              "name": "asin",
-              "value": "0.12343746096704435"
-            },
-            {
-              "name": "asinh",
-              "value": "0.881373587019543"
-            },
-            {
-              "name": "asinhPf",
-              "value": "0.8813735870195429"
-            },
-            {
-              "name": "atanh",
-              "value": "0.5493061443340548"
-            },
-            {
-              "name": "atanhPf",
-              "value": "0.5493061443340548"
-            },
-            {
-              "name": "atan",
-              "value": "0.4636476090008061"
-            },
-            {
-              "name": "sin",
-              "value": "0.8178819121159085"
-            },
-            {
-              "name": "sinh",
-              "value": "1.1752011936438014"
-            },
-            {
-              "name": "sinhPf",
-              "value": "1.1752011936438014"
-            },
-            {
-              "name": "cos",
-              "value": "-0.8390715290095377"
-            },
-            {
-              "name": "cosh",
-              "value": "1.5430806348152437"
-            },
-            {
-              "name": "coshPf",
-              "value": "1.5430806348152437"
-            },
-            {
-              "name": "tan",
-              "value": "-1.4214488238747245"
-            },
-            {
-              "name": "tanh",
-              "value": "0.7615941559557649"
-            },
-            {
-              "name": "tanhPf",
-              "value": "0.7615941559557649"
-            },
-            {
-              "name": "exp",
-              "value": "2.718281828459045"
-            },
-            {
-              "name": "expm1",
-              "value": "1.718281828459045"
-            },
-            {
-              "name": "expm1Pf",
-              "value": "1.718281828459045"
-            },
-            {
-              "name": "log1p",
-              "value": "2.3978952727983707"
-            },
-            {
-              "name": "log1pPf",
-              "value": "2.3978952727983707"
-            },
-            {
-              "name": "powPI",
-              "value": "1.9275814160560206e-50"
-            },
-            {
-              "name": "hash",
-              "value": "3b96dfd2"
-            },
-            {
-              "name": "Supported Media Capabilities",
-              "value": "[{\"name\":\"video/mp4; codecs=\\\"avc1.42E01E\\\"\",\"supported\":true,\"smooth\":true,\"powerEfficient\":false},{\"name\":\"audio/mp4; codecs=\\\"mp4a.40.2\\\"\",\"supported\":true,\"smooth\":true,\"powerEfficient\":true},{\"name\":\"video/webm; codecs=\\\"vp09.00.10.08\\\"\",\"supported\":true,\"smooth\":true,\"powerEfficient\":false},{\""
-            },
-            {
-              "name": "Number",
-              "value": "9"
-            },
-            {
-              "name": "Width",
-              "value": "0"
-            },
-            {
-              "name": "Height",
-              "value": "0"
-            },
-            {
-              "name": "Fonts",
-              "value": "[\"Calibri\",\"Franklin Gothic\",\"MS UI Gothic\",\"MT Extra\",\"Marlett\",\"Segoe UI Light\",\"SimHei\",\"Univers CE 55 Medium\"]"
-            },
-            {
-              "name": "Number",
-              "value": "8"
-            },
-            {
-              "name": "Color Gamut",
-              "value": "NOT_AVAILABLE"
-            },
-            {
-              "name": "Any Pointer",
-              "value": "fine,any"
-            },
-            {
-              "name": "Any Hover",
-              "value": "hover,any"
-            },
-            {
-              "name": "Canvas",
-              "value": "7e50fa36"
-            },
-            {
-              "name": "Canvas Modified",
-              "value": "true"
-            },
-            {
-              "name": "size",
-              "value": "0"
-            },
-            {
-              "name": "WebGPU",
-              "value": "NOT_AVAILABLE"
-            },
-            {
-              "name": "ogg",
-              "value": "probably"
-            },
-            {
-              "name": "mp3",
-              "value": "probably"
-            },
-            {
-              "name": "wav",
-              "value": "probably"
-            },
-            {
-              "name": "m4a",
-              "value": "maybe"
-            },
-            {
-              "name": "aac",
-              "value": "probably"
-            },
-            {
-              "name": "h264",
-              "value": "probably"
-            },
-            {
-              "name": "webm",
-              "value": "probably"
-            },
-            {
-              "name": "Iframe Overridden",
-              "value": "false"
-            },
-            {
-              "name": "WebDriver",
-              "value": "false"
-            }
-          ],
-          "attrsTotal": 134,
+          "attrs": [],
+          "attrsTotal": 0,
           "highRiskHit": false,
           "lowRiskHit": false,
           "botDetectedText": false
@@ -3236,7 +2764,7 @@
   },
   "error": null,
   "meta": {
-    "sdkVersion": "0.10.0",
+    "sdkVersion": "0.10.1",
     "chromiumVersion": "baseline"
   }
 }
